@@ -1,0 +1,199 @@
+{
+  "common": {
+    "appName": "Kosmo",
+    "cancel": "Cancel",
+    "submit": "Submit",
+    "language": "Language",
+    "languageEnglish": "English",
+    "languageSpanish": "Español"
+  },
+  "app": {
+    "shell": {
+      "skipToContent": "Skip to content"
+    },
+    "home": {
+      "title": "Tasks",
+      "placeholder": "Task views arrive in a later phase. From here you will launch and monitor workflow runs."
+    },
+    "workspace": "Workspace",
+    "userMenu": "User menu (not available yet)"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "subtitle": "Access your Kosmo workspace.",
+      "username": "Username",
+      "usernamePlaceholder": "your-username",
+      "password": "Password",
+      "passwordPlaceholder": "Your password",
+      "action": "Sign in",
+      "pending": "Signing in…",
+      "error": "Sign-in failed. Check your username and password.",
+      "logout": "Sign out"
+    }
+  },
+  "nav": {
+    "primary": "Main navigation",
+    "tasks": "Tasks",
+    "newTask": "New task",
+    "history": "History",
+    "workflows": "Workflows",
+    "context": "Context",
+    "administration": "Administration",
+    "agents": "Agents",
+    "mcps": "MCPs",
+    "skills": "Skills",
+    "extensions": "Extensions",
+    "repositories": "Repositories",
+    "applications": "Applications",
+    "audit": "Audit",
+    "openMenu": "Open navigation menu",
+    "closeMenu": "Close navigation menu",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "comingSoon": "This section will be available in a later phase.",
+    "routeTitles": {
+      "tasks": {
+        "history": "History"
+      },
+      "workflows": "Workflows",
+      "context": "Context",
+      "admin": {
+        "agents": "Agents",
+        "mcps": "MCPs",
+        "skills": "Skills",
+        "extensions": "Extensions",
+        "repositories": "Repositories",
+        "applications": "Applications",
+        "audit": "Audit"
+      }
+    },
+    "roleAdmin": "Admin"
+  },
+  "tasks": {
+    "new": {
+      "title": "Create a task",
+      "description": "Start a task from a workflow. Choose its inputs and follow progress from your task history.",
+      "formTitle": "Task details",
+      "formDescription": "Choose the topic the selected workflow will analyze.",
+      "submit": "Create task"
+    },
+    "list": {
+      "title": "Tasks",
+      "description": "Recent workflow runs.",
+      "empty": "No tasks yet",
+      "emptyDescription": "Create a task to start your first workflow."
+    },
+    "topic": "Analysis topic",
+    "topicPlaceholder": "e.g. API security in the payment service",
+    "workflow": "Workflow",
+    "workflowDescription": "Analyze a topic and review the resulting findings and artifacts.",
+    "submitError": "Could not create the task. Please try again.",
+    "submitting": "Creating?",
+    "loadError": "Tasks could not be loaded.",
+    "loading": "Loading?",
+    "back": "Back to tasks",
+    "stop": "Stop task",
+    "confirmStop": "Stop this task?",
+    "nodes": "Workflow progress",
+    "noNodes": "No steps recorded yet.",
+    "notes": {
+      "validation_failed": "Validation failed on attempt {{attempt}} ({{level}}).",
+      "validation_passed": "Validation passed successfully.",
+      "input_requested": "The workflow needs more information.",
+      "input_answer": "A response was submitted.",
+      "agent_auth_missing": "Provider authentication is missing."
+    },
+    "artifacts": "Artifacts",
+    "artifactDownloadError": "Could not download this artifact.",
+    "noArtifacts": "No artifacts yet.",
+    "answerLabel": "Your answer",
+    "sendAnswer": "Send answer",
+    "notesTitle": "Run notes"
+  },
+  "task": {
+    "state": {
+      "queued": "Queued",
+      "running": "Running",
+      "waiting_for_input": "Waiting for input",
+      "stopping": "Stopping",
+      "stopped": "Stopped",
+      "failed": "Failed",
+      "success": "Succeeded",
+      "allocating": "Waiting for capacity"
+    }
+  },
+  "errors": {
+    "node": {
+      "validation_exhausted": "Validation failed after {{attempts}} attempts for {{node}}."
+    },
+    "workflow": {
+      "ai_validation_level_count": "The AI validation levels are invalid.",
+      "artifact_not_declared": "An output artifact was not declared.",
+      "cycle": "The workflow contains a cycle.",
+      "disconnected": "The workflow contains disconnected nodes.",
+      "duplicate_node_id": "The workflow has duplicate node IDs.",
+      "edge_node_missing": "A workflow edge references a missing node.",
+      "end_count": "The workflow must have one end node.",
+      "end_outgoing_edge": "The end node cannot have outgoing edges.",
+      "invalid": "The workflow definition is invalid.",
+      "name_conflict": "A workflow with this name already exists.",
+      "not_found": "Workflow not found.",
+      "start_count": "The workflow must have one start node.",
+      "start_incoming_edge": "The start node cannot have incoming edges.",
+      "start_input_required": "A required start input is missing."
+    },
+    "auth": {
+      "invalid_credentials": "The username or password is incorrect."
+    },
+    "agent": {
+      "runtime_failed": "Agent runtime failed.",
+      "input_missing": "The agent requested input that is not available."
+    },
+    "artifact": {
+      "not_found": "Artifact not found."
+    },
+    "executor": {
+      "not_registered": "No executor is registered for this node."
+    },
+    "permission": {
+      "denied": "Permission denied."
+    },
+    "script": {
+      "failed": "Script execution failed.",
+      "timeout": "Script execution timed out."
+    },
+    "task": {
+      "input_answer_pending": "A response is already pending.",
+      "input_not_requested": "This task is not waiting for input.",
+      "invalid_input": "The task input is invalid.",
+      "invalid_transition": "This task state transition is not allowed.",
+      "node_failed": "A workflow node failed.",
+      "not_found": "Task not found."
+    },
+    "provider": {
+      "config_not_found": "Provider configuration not found.",
+      "config_invalid": "Provider configuration is invalid.",
+      "providers_missing": "Provider configuration must contain a provider.",
+      "provider_invalid": "Each provider entry must be an object.",
+      "provider_options_invalid": "Provider options must be an object.",
+      "models_invalid": "Provider models must be an object.",
+      "model_invalid": "The model configuration is invalid.",
+      "auth_invalid": "Authentication configuration is invalid.",
+      "auth_missing": "Add provider credentials before continuing.",
+      "verification_timeout": "Provider verification timed out.",
+      "verification_failed": "Provider verification failed.",
+      "ambiguous_config": "More than one group provider configuration applies. Ask an administrator to resolve the conflict.",
+      "forbidden": "You do not have permission to manage this provider configuration.",
+      "global_admin_only": "Only administrators can create global provider configurations.",
+      "group_forbidden": "You can only configure groups you belong to."
+    }
+  },
+  "workflow": {
+    "validation": {
+      "exists_parseable": "The artifact must exist and be parseable as {{format}}.",
+      "required_sections": "Required sections are missing: {{sections}}.",
+      "content_rule": "The artifact does not satisfy the content rule: {{rule}}."
+    }
+  }
+}

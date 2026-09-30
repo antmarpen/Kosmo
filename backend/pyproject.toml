@@ -1,0 +1,41 @@
+# Kosmo backend: FastAPI service, Temporal worker, and shared contracts.
+# Run with `uv run uvicorn app.main:app` (API) or
+# `uv run python -m worker.run_worker` (Temporal worker) from this directory.
+
+[project]
+name = "kosmo-backend"
+version = "0.1.0"
+description = "Kosmo backend: FastAPI API service, Temporal worker, and shared contracts."
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.20",
+    "argon2-cffi>=25.1.0",
+    "asyncpg>=0.31",
+    "cryptography>=50.0.2",
+    "docker>=7.1",
+    "fastapi>=0.142",
+    "pydantic-settings>=2.15",
+    "pyjwt>=2.15.1",
+    "python-multipart>=0.0.32",
+    "sqlalchemy[asyncio]>=2.1",
+    "temporalio>=1.33",
+    "uvicorn[standard]>=0.54",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "pytest>=9.1",
+    "pytest-asyncio>=1.0",
+]
+
+# The backend is an application (imported from the working directory), not an
+# installable distribution; uv only manages its dependencies.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import the application (`app`, `worker`, `shared`) from the backend root.
+pythonpath = ["."]
+markers = ["docker: requires Docker Engine and agent runtime credentials"]

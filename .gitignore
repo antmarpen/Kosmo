@@ -216,3 +216,24 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local agent configuration, skills, and tool state
+.agents/
+.opencode/
+.superpowers/
+.impeccable/
+.playwright-mcp/
+/skills-lock.json
+
+# --- Kosmo runtime/build artifacts (WP-01) ---
+
+# Node / frontend
+node_modules/
+.pnpm-store/
+
+# Test and coverage artifacts not covered by the rules above
+coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/playwright/.cache/

@@ -1,0 +1,4 @@
+# pnpm 11 build-script policy (replaces onlyBuiltDependencies et al).
+# esbuild needs its postinstall to provision the platform binary for vite build.
+allowBuilds:
+  esbuild: true

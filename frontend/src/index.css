@@ -1,0 +1,73 @@
+/* Kosmo design tokens — Tailwind v4 + shadcn/ui variable theme.
+ *
+ * Palette (OKLCH, restrained product strategy): pure white background, cool
+ * steel-blue primary (brand seed hue 210), near-black ink with a cool cast.
+ * Body text ink reaches ~13:1 contrast on white; muted foreground ~6:1.
+ * A single warm brass accent (--brand-accent) carries the brand mark only.
+ */
+@import "tailwindcss";
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.24 0.02 235);
+  --card: oklch(0.985 0.003 220);
+  --card-foreground: oklch(0.24 0.02 235);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.02 235);
+  --primary: oklch(0.53 0.096 212);
+  --primary-foreground: oklch(0.985 0.003 220);
+  --secondary: oklch(0.955 0.007 220);
+  --secondary-foreground: oklch(0.32 0.03 235);
+  --muted: oklch(0.96 0.005 220);
+  --muted-foreground: oklch(0.46 0.022 235);
+  --accent: oklch(0.955 0.008 215);
+  --accent-foreground: oklch(0.3 0.03 235);
+  --destructive: oklch(0.55 0.19 27);
+  --destructive-foreground: oklch(0.985 0.003 220);
+  --border: oklch(0.9 0.008 225);
+  --input: oklch(0.88 0.01 225);
+  --ring: oklch(0.62 0.09 212);
+  --brand-accent: oklch(0.72 0.13 80);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand-accent: var(--brand-accent);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans antialiased;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

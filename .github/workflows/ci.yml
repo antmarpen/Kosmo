@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: kosmo
+          POSTGRES_PASSWORD: kosmo
+          POSTGRES_DB: kosmo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kosmo -d kosmo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # RR-04's durable-input boundary tests run against this migrated
+      # kosmo_test database (test-only credentials).
+      KOSMO_TEST_DATABASE_URL: postgresql+asyncpg://kosmo:kosmo@localhost:5432/kosmo_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install backend dependencies
+        run: uv sync --project backend --group dev
+      - name: Run backend tests
+        run: uv run --project backend --directory backend pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        run: pnpm -C frontend install --frozen-lockfile
+      - name: Run frontend tests
+        run: pnpm -C frontend test
+      - name: Build frontend
+        run: pnpm -C frontend build
+
+  client-regen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install backend dependencies
+        run: uv sync --project backend
+      - name: Install frontend dependencies
+        run: pnpm -C frontend install --frozen-lockfile
+      - name: Export OpenAPI without starting a server
+        working-directory: backend
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          from app.main import create_app
+
+          Path("../openapi.json").write_text(json.dumps(create_app().openapi()), encoding="utf-8")
+          PY
+      - name: Regenerate client types
+        run: pnpm -C frontend exec openapi-typescript ../openapi.json -o src/api/schema.d.ts
+      - name: Check generated client is current
+        run: git diff --exit-code -- frontend/src/api/schema.d.ts
+
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: docker compose -f docker-compose.yml config -q
+
+# Phase 1 limitation: docker-marked integration tests and Playwright E2E remain local-only.
+# The backend job provisions PostgreSQL (kosmo_test) for RR-04's durable-input
+# boundary tests; all other backend tests are unit/fake-repository scope.

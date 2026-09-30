@@ -1,0 +1,57 @@
+# Kosmo production-mode override.
+#
+# Usage: `just up-prod` (equivalent to:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
+# ).
+#
+# Differences vs the dev base (docker-compose.yml):
+# - backend/worker/frontend run from built images; no source bind mounts, no
+#   --reload, no WATCHFILES polling, no dev dependency groups.
+# - The frontend is the nginx production build (static dist + /api proxy with
+#   SSE-safe buffering off).
+# - postgres and temporal are inherited unchanged from the base file.
+#
+# NOTE: dev and prod share the container_name entries (kosmo-*) — run
+# `just down` before switching modes.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: kosmo-backend:local
+    volumes: []
+    environment:
+      UV_LINK_MODE: ""
+      UV_COMPILE_BYTECODE: ""
+      WATCHFILES_FORCE_POLLING: ""
+    command: ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: kosmo-backend:local
+    volumes: []
+    environment:
+      UV_LINK_MODE: ""
+      UV_COMPILE_BYTECODE: ""
+      WATCHFILES_FORCE_POLLING: ""
+    command: ["uv", "run", "--no-sync", "python", "-m", "worker.run_worker"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: kosmo-frontend:local
+    volumes: []
+    command: []
+    environment:
+      API_PROXY_TARGET: ""
+      CHOKIDAR_USEPOLLING: ""

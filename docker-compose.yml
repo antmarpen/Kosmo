@@ -1,0 +1,244 @@
+# Kosmo local development stack (also the reference deployment topology).
+#
+# Requires: Docker Desktop (Windows/macOS) or a Docker Engine with Compose v2.
+# Start from the repository root with `just up`; stop with `just down`.
+# No `.env` file is required: local development values are set below.
+#
+# TEMPORAL DATABASE DECISION (WP-01, reported for the decisions table):
+# Temporal runs against the SAME PostgreSQL instance as the application, in
+# its own databases `temporal` and `temporal_visibility`, which the
+# temporalio/auto-setup image creates and migrates automatically. The
+# application database stays `kosmo`. Rationale: one database container to
+# run, upgrade, and back up locally while the schemas remain logically
+# separated; temporalio/auto-setup fully manages its schema on this shared
+# instance. If load or lifecycle requirements diverge later, the `temporal`
+# service can point at a second PostgreSQL container by changing
+# POSTGRES_SEEDS (and credentials) below — no application changes needed.
+
+name: kosmo
+
+services:
+  postgres:
+    container_name: kosmo-postgres
+    # Latest stable major; Temporal's `postgres12` plugin supports PostgreSQL
+    # 12+ and works against this version (verified in WP-01).
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: kosmo
+      POSTGRES_PASSWORD: kosmo # local development only; never in production
+      POSTGRES_DB: kosmo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kosmo -d kosmo"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  temporal:
+    container_name: kosmo-temporal
+    # Self-hosted Temporal server; auto-setup creates the schema, then starts
+    # the server in this same container. The frontend (gRPC) listens on 7233.
+    # Pinned to 1.29.7: the newest tag published under temporalio/auto-setup —
+    # server series 1.30/1.31 do not publish auto-setup images (the image is
+    # slated for retirement in favor of `temporalio/server` + AUTO_SETUP=true).
+    # Reported to the architecture decisions table in WP-01.
+    image: temporalio/auto-setup:1.29.7
+    environment:
+      DB: postgres12 # Temporal's plugin name for PostgreSQL 12+
+      DB_PORT: "5432"
+      POSTGRES_USER: kosmo
+      POSTGRES_PWD: kosmo # local development only
+      POSTGRES_SEEDS: postgres
+      DBNAME: temporal
+      VISIBILITY_DBNAME: temporal_visibility
+      # Bind gRPC on all interfaces; the image default binds only the
+      # container IP, which breaks the loopback healthcheck below.
+      BIND_ON_IP: 0.0.0.0
+    ports:
+      - "7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # TCP probe of the frontend port (the image ships bash but not nc/curl).
+      test: ["CMD-SHELL", "bash -c 'echo -n > /dev/tcp/127.0.0.1/7233'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  backend:
+    container_name: kosmo-backend
+    # FastAPI API service running under uvicorn with the pinned uv/Python
+    # image; source is bind-mounted and dependencies are synced into a named
+    # volume at container start (uv.lock is enforced with --frozen).
+    image: ghcr.io/astral-sh/uv:python3.14-bookworm-slim
+    working_dir: /app
+    networks:
+      - default
+      - agent-local
+    volumes:
+      - ./backend:/app
+      - backend-venv:/app/.venv
+      - task-storage:/var/lib/kosmo/tasks
+    environment:
+      KOSMO_DATABASE_URL: postgresql+asyncpg://kosmo:kosmo@postgres:5432/kosmo
+      KOSMO_TEMPORAL_HOST: temporal:7233
+      KOSMO_TEMPORAL_NAMESPACE: default
+      KOSMO_TEMPORAL_TASK_QUEUE: kosmo-tasks
+      # Local-development fallback; override per environment via the .env file
+      # (KOSMO_JWT_SECRET=...) — .env is gitignored. Never use in production.
+      KOSMO_JWT_SECRET: ${KOSMO_JWT_SECRET:-dev-only-change-me}
+      KOSMO_CONFIG_ENCRYPTION_KEY: ${KOSMO_CONFIG_ENCRYPTION_KEY:-}
+      UV_LINK_MODE: copy
+      UV_COMPILE_BYTECODE: "0" # keep dev syncs fast
+      WATCHFILES_FORCE_POLLING: "true" # reliable --reload on bind mounts
+    command: >-
+      sh -c "uv sync --frozen &&
+             uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  worker:
+    container_name: kosmo-worker
+    # Temporal worker: connects to the temporal service, polls the task queue,
+    # and registers the no-op placeholder workflow (real interpreter: WP-10).
+    image: ghcr.io/astral-sh/uv:python3.14-bookworm-slim
+    working_dir: /app
+    networks:
+      - default
+      - agent-local
+    volumes:
+      - ./backend:/app
+      - worker-venv:/app/.venv
+      - task-storage:/var/lib/kosmo/tasks
+      # Docker Engine API; Docker Desktop exposes its Linux VM socket here.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      KOSMO_DATABASE_URL: postgresql+asyncpg://kosmo:kosmo@postgres:5432/kosmo
+      KOSMO_TEMPORAL_HOST: temporal:7233
+      KOSMO_TEMPORAL_NAMESPACE: default
+      KOSMO_TEMPORAL_TASK_QUEUE: kosmo-tasks
+      KOSMO_TASK_STORAGE_ROOT: /var/lib/kosmo/tasks
+      KOSMO_TASK_STORAGE_VOLUME: task-storage
+      KOSMO_SANDBOX_IMAGE: kosmo-sandbox:local
+      # E2E forcing flag: makes AI validation fail deterministically (WP-20).
+      KOSMO_E2E_FAIL_VALIDATION: ${KOSMO_E2E_FAIL_VALIDATION:-}
+      KOSMO_OPENCODE_IMAGE: kosmo-opencode:local
+      KOSMO_AGENT_CPU: ${KOSMO_AGENT_CPU:-1.0}
+      KOSMO_AGENT_MEMORY: ${KOSMO_AGENT_MEMORY:-512m}
+      KOSMO_JWT_SECRET: ${KOSMO_JWT_SECRET:-dev-only-change-me}
+      KOSMO_CONFIG_ENCRYPTION_KEY: ${KOSMO_CONFIG_ENCRYPTION_KEY:-}
+      KOSMO_VALIDATOR_MCP_URL: ${KOSMO_VALIDATOR_MCP_URL:-http://backend:8000/mcp/validator}
+      UV_LINK_MODE: copy
+      UV_COMPILE_BYTECODE: "0"
+    command: >-
+      sh -c "uv sync --frozen &&
+             uv run python -m worker.run_worker"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sandbox:
+    # Image-builder-only service: builds kosmo-sandbox:local for the worker's
+    # dynamically created sandbox containers. Not a running service — excluded
+    # from the default up flow via profile; build with `just build-sandbox`.
+    profiles: ["image-build"]
+    image: kosmo-sandbox:local
+    build:
+      context: ./backend/docker/sandbox
+
+  opencode:
+    # Profile-gated image builder for the dynamically created ACP agent.
+    profiles: ["image-build"]
+    image: kosmo-opencode:local
+    build:
+      context: ./backend/docker/opencode
+
+  frontend:
+    container_name: kosmo-frontend
+    # Vite dev server serving the SPA on 5173; `/api` requests are proxied to
+    # the backend service (API_PROXY_TARGET). Dependencies are installed at
+    # container start from the committed pnpm-lock.yaml.
+    image: node:24-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+      # pnpm 11 build-script policy lives in frontend/pnpm-workspace.yaml
+      # (allowBuilds); no env override needed or honored by pnpm 11.
+      # HMR gate: host-edit-driven dev on Docker Desktop bind mounts may need
+      # file polling (inotify events do not cross the mount). Enable per
+      # developer with CHOKIDAR_USEPOLLING=true (default off — polling across
+      # the bind mount starved the Vite event loop in WP-01 diagnostics).
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-false}
+      # No CHOKIDAR_USEPOLLING here: polling across the Docker Desktop bind
+      # mount starves the Vite event loop and slows every response to
+      # seconds (measured); plain inotify events work fine without it.
+    command: >-
+      sh -c "npm install --global pnpm@11.2.2 &&
+             pnpm install --frozen-lockfile &&
+             pnpm dev"
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_started
+    healthcheck:
+      # busybox wget (shipped with node:24-alpine) instead of a node -e probe:
+      # the node probe races Vite's busy event loop during dependency install
+      # and first boot and exceeds the 5s timeout. start_period is generous
+      # because first boot installs the global pnpm and project dependencies.
+      test: ["CMD-SHELL", "wget -q -T 3 -O /dev/null http://127.0.0.1:5173/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  backend-venv:
+  worker-venv:
+  frontend-node-modules:
+
+  task-storage:
+    name: task-storage
+
+# Separate network for dynamically created agent/sandbox containers
+# (attached at runtime by the worker via the Docker SDK). Separate from the
+# default compose network. Docker Desktop bridge networks do NOT provide
+# destination-level egress filtering: containers can reach arbitrary internet
+# destinations, not only provider APIs/platform endpoints. Phase 1 limits
+# network attachment to this separate network; an enforcing egress proxy or
+# firewall is required for destination allowlisting (phase-2 security work).
+# Backend and worker join it so agents can reach platform endpoints.
+networks:
+  default:
+  agent-local:
+    name: kosmo-agent-local

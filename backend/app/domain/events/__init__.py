@@ -1,0 +1,1 @@
+"""Persisted task progress events."""

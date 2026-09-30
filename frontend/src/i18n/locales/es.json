@@ -1,0 +1,199 @@
+{
+  "common": {
+    "appName": "Kosmo",
+    "cancel": "Cancelar",
+    "submit": "Enviar",
+    "language": "Idioma",
+    "languageEnglish": "English",
+    "languageSpanish": "Español"
+  },
+  "app": {
+    "shell": {
+      "skipToContent": "Saltar al contenido"
+    },
+    "home": {
+      "title": "Tareas",
+      "placeholder": "Las vistas de tareas llegarán en una fase posterior. Desde aquí podrás lanzar y supervisar tus flujos de trabajo."
+    },
+    "workspace": "Espacio de trabajo",
+    "userMenu": "Menú de usuario (aún no disponible)"
+  },
+  "auth": {
+    "login": {
+      "title": "Iniciar sesión",
+      "subtitle": "Accede a tu espacio de trabajo Kosmo.",
+      "username": "Usuario",
+      "usernamePlaceholder": "tu-usuario",
+      "password": "Contraseña",
+      "passwordPlaceholder": "Tu contraseña",
+      "action": "Iniciar sesión",
+      "pending": "Iniciando sesi?n?",
+      "error": "No se pudo iniciar sesi?n. Comprueba el usuario y la contrase?a.",
+      "logout": "Cerrar sesi?n"
+    }
+  },
+  "nav": {
+    "primary": "Navegación principal",
+    "tasks": "Tareas",
+    "newTask": "Nueva tarea",
+    "history": "Historial",
+    "workflows": "Flujos de trabajo",
+    "context": "Contexto",
+    "administration": "Administración",
+    "agents": "Agentes",
+    "mcps": "MCP",
+    "skills": "Habilidades",
+    "extensions": "Extensiones",
+    "repositories": "Repositorios",
+    "applications": "Aplicaciones",
+    "audit": "Auditoría",
+    "openMenu": "Abrir menú de navegación",
+    "closeMenu": "Cerrar menú de navegación",
+    "collapseSidebar": "Contraer barra lateral",
+    "expandSidebar": "Expandir barra lateral",
+    "comingSoon": "Esta sección estará disponible en una fase posterior.",
+    "routeTitles": {
+      "tasks": {
+        "history": "Historial"
+      },
+      "workflows": "Flujos de trabajo",
+      "context": "Contexto",
+      "admin": {
+        "agents": "Agentes",
+        "mcps": "MCP",
+        "skills": "Habilidades",
+        "extensions": "Extensiones",
+        "repositories": "Repositorios",
+        "applications": "Aplicaciones",
+        "audit": "Auditoría"
+      }
+    },
+    "roleAdmin": "Admin"
+  },
+  "tasks": {
+    "new": {
+      "title": "Crear una tarea",
+      "description": "Inicia una tarea desde un flujo de trabajo. Elige sus datos y sigue el progreso desde el historial.",
+      "formTitle": "Detalles de la tarea",
+      "formDescription": "Elige el tema que analizar? el flujo seleccionado.",
+      "submit": "Crear tarea"
+    },
+    "list": {
+      "title": "Tareas",
+      "description": "Ejecuciones recientes de flujos de trabajo.",
+      "empty": "A?n no hay tareas",
+      "emptyDescription": "Crea una tarea para iniciar tu primer flujo."
+    },
+    "topic": "Tema de an?lisis",
+    "topicPlaceholder": "p. ej., seguridad de API en el servicio de pagos",
+    "workflow": "Flujo de trabajo",
+    "workflowDescription": "Analiza un tema y revisa los hallazgos y artefactos generados.",
+    "submitError": "No se pudo crear la tarea. Int?ntalo de nuevo.",
+    "submitting": "Creando?",
+    "loadError": "No se pudieron cargar las tareas.",
+    "loading": "Cargando?",
+    "back": "Volver a tareas",
+    "stop": "Detener tarea",
+    "confirmStop": "?Detener esta tarea?",
+    "nodes": "Progreso del flujo",
+    "noNodes": "A?n no hay pasos registrados.",
+    "notes": {
+      "validation_failed": "La validación falló en el intento {{attempt}} ({{level}}).",
+      "validation_passed": "La validaci?n se complet? correctamente.",
+      "input_requested": "El flujo solicita informaci?n adicional.",
+      "input_answer": "Se envi? una respuesta.",
+      "agent_auth_missing": "Faltan las credenciales del proveedor."
+    },
+    "artifacts": "Artefactos",
+    "noArtifacts": "A?n no hay artefactos.",
+    "answerLabel": "Tu respuesta",
+    "sendAnswer": "Enviar respuesta",
+    "notesTitle": "Notas de ejecuci?n",
+    "artifactDownloadError": "No se pudo descargar este artefacto."
+  },
+  "task": {
+    "state": {
+      "queued": "En cola",
+      "running": "En curso",
+      "waiting_for_input": "Esperando respuesta",
+      "stopping": "Deteniendo",
+      "stopped": "Detenida",
+      "failed": "Fallida",
+      "success": "Completada",
+      "allocating": "Esperando capacidad"
+    }
+  },
+  "errors": {
+    "node": {
+      "validation_exhausted": "La validación agotó {{attempts}} intentos para {{node}}."
+    },
+    "workflow": {
+      "ai_validation_level_count": "Los niveles de validaci?n de IA no son v?lidos.",
+      "artifact_not_declared": "No se declar? un artefacto de salida.",
+      "cycle": "El flujo contiene un ciclo.",
+      "disconnected": "El flujo contiene nodos desconectados.",
+      "duplicate_node_id": "El flujo contiene IDs de nodo duplicados.",
+      "edge_node_missing": "Una conexi?n referencia un nodo inexistente.",
+      "end_count": "El flujo debe tener un nodo final.",
+      "end_outgoing_edge": "El nodo final no puede tener conexiones salientes.",
+      "invalid": "La definici?n del flujo no es v?lida.",
+      "name_conflict": "Ya existe un flujo con ese nombre.",
+      "not_found": "No se encontr? el flujo.",
+      "start_count": "El flujo debe tener un nodo inicial.",
+      "start_incoming_edge": "El nodo inicial no puede tener conexiones entrantes.",
+      "start_input_required": "Falta un dato inicial obligatorio."
+    },
+    "auth": {
+      "invalid_credentials": "El usuario o la contrase?a no son v?lidos."
+    },
+    "agent": {
+      "runtime_failed": "Falló el entorno del agente.",
+      "input_missing": "El agente solicit? datos que no est?n disponibles."
+    },
+    "artifact": {
+      "not_found": "No se encontr? el artefacto."
+    },
+    "executor": {
+      "not_registered": "No hay un ejecutor registrado para este nodo."
+    },
+    "permission": {
+      "denied": "Permiso denegado."
+    },
+    "script": {
+      "failed": "Fall? la ejecuci?n del script.",
+      "timeout": "Se agot? el tiempo de ejecuci?n del script."
+    },
+    "task": {
+      "input_answer_pending": "Ya hay una respuesta pendiente.",
+      "input_not_requested": "La tarea no est? esperando una respuesta.",
+      "invalid_input": "Los datos de la tarea no son v?lidos.",
+      "invalid_transition": "No se permite este cambio de estado.",
+      "node_failed": "Fall? un nodo del flujo.",
+      "not_found": "No se encontr? la tarea."
+    },
+    "provider": {
+      "config_not_found": "No se encontró la configuración del proveedor.",
+      "config_invalid": "La configuración del proveedor no es válida.",
+      "providers_missing": "La configuración debe incluir un proveedor.",
+      "provider_invalid": "Cada entrada de proveedor debe ser un objeto.",
+      "provider_options_invalid": "Las opciones del proveedor deben ser un objeto.",
+      "models_invalid": "Los modelos del proveedor deben ser un objeto.",
+      "model_invalid": "La configuración del modelo no es válida.",
+      "auth_invalid": "La configuración de autenticación no es válida.",
+      "auth_missing": "Añade las credenciales del proveedor para continuar.",
+      "verification_timeout": "Se agotó el tiempo de verificación del proveedor.",
+      "verification_failed": "No se pudo verificar el proveedor.",
+      "ambiguous_config": "Se aplican varias configuraciones de proveedor de grupo. Pide a un administrador que resuelva el conflicto.",
+      "forbidden": "No tienes permiso para administrar esta configuración del proveedor.",
+      "global_admin_only": "Solo los administradores pueden crear configuraciones globales de proveedores.",
+      "group_forbidden": "Solo puedes configurar grupos a los que perteneces."
+    }
+  },
+  "workflow": {
+    "validation": {
+      "exists_parseable": "El artefacto debe existir y poder analizarse como {{format}}.",
+      "required_sections": "Faltan secciones obligatorias: {{sections}}.",
+      "content_rule": "El artefacto no cumple la regla de contenido: {{rule}}."
+    }
+  }
+}
