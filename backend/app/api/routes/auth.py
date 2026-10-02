@@ -7,6 +7,7 @@ from app.core.db import get_db
 from app.domain.identity.repository import IdentityRepository
 from app.domain.identity.schemas import Credentials, RefreshRequest, UserResponse
 from app.domain.identity.service import IdentityService
+from app.domain.identity.scope_policy import get_allowed_scopes
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -34,3 +35,12 @@ async def logout(payload: RefreshRequest, user=Depends(get_current_user), db: As
 @router.get("/me", response_model=UserResponse)
 async def me(user=Depends(get_current_user)):
     return UserResponse(id=user.id, username=user.username, role=user.role.value)
+
+
+@router.get("/capabilities")
+async def capabilities(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    memberships = await IdentityRepository(db).groups_with_membership_roles(user.id)
+    user.memberships = {group["id"]: group["role"] for group in memberships}
+    scopes = get_allowed_scopes(user, memberships)
+    return {"scopes": scopes, "groups": [group for group in memberships
+            if group["id"] in scopes["groups"]]}

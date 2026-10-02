@@ -16,6 +16,11 @@ class UserRole(str, enum.Enum):
     admin = "admin"
 
 
+class GroupMembershipRole(str, enum.Enum):
+    member = "member"
+    group_manager = "group_manager"
+
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -45,3 +50,7 @@ class GroupMembership(Base):
     __tablename__ = "group_memberships"
     group_id: Mapped[str] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[GroupMembershipRole] = mapped_column(
+        Enum(GroupMembershipRole, name="group_membership_role"), nullable=False,
+        default=GroupMembershipRole.member,
+    )

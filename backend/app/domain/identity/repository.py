@@ -1,7 +1,7 @@
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.identity.models import Session, User
+from app.domain.identity.models import Group, GroupMembership, Session, User
 
 
 class IdentityRepository:
@@ -13,6 +13,13 @@ class IdentityRepository:
 
     async def get_user(self, user_id):
         return await self.db.get(User, user_id)
+
+    async def groups_with_membership_roles(self, user_id):
+        result = await self.db.execute(select(Group.id, Group.name, GroupMembership.role).join(
+            GroupMembership, GroupMembership.group_id == Group.id
+        ).where(GroupMembership.user_id == user_id))
+        return [{"id": group_id, "name": name, "role": getattr(role, "value", role)}
+                for group_id, name, role in result.all()]
 
     async def add_user(self, user):
         self.db.add(user)
