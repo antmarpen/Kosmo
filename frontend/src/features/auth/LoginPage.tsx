@@ -9,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 
 import { LanguageSwitcher } from "./LanguageSwitcher";
@@ -28,9 +29,10 @@ export function resolveAuthenticatedDestination(from?: IntendedLocation | null):
 }
 
 /**
- * Visual-only login page (WP-02). Submission is intentionally inert — no API
- * calls here. Auth wiring (login request, tokens, redirects) lands with WP-06.
- * Layout is mobile-first: full-height column, fluid card up to max-w-sm.
+ * Login page (WP-02, auth wiring added in WP-06). Submission goes through
+ * `AuthProvider.login`; in-flight feedback is delegated to the shared
+ * `Button` `loading` prop (spinner, aria-busy, disabled). Layout is
+ * mobile-first: full-height column, fluid card up to max-w-sm.
  */
 export function LoginPage() {
   const { t } = useTranslation();
@@ -107,8 +109,9 @@ export function LoginPage() {
                   />
                 </div>
                 {error && <p role="alert" className="text-sm text-destructive">{t("auth.login.error")}</p>}
-                <Button type="submit" className="w-full" disabled={pending}>
-                  {pending ? t("auth.login.pending") : t("auth.login.action")}
+                <Button type="submit" className="w-full" loading={pending}>
+                  <Icon name="login" aria-hidden="true" />
+                  {t("auth.login.action")}
                 </Button>
               </form>
             </CardContent>

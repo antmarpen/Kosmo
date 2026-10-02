@@ -21,7 +21,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
       role="group"
       aria-label={t("common.language")}
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5",
+        "inline-flex items-center gap-0.5 rounded-full border border-border bg-card p-0.5",
         className,
       )}
     >
@@ -34,7 +34,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
             aria-pressed={isActive}
             onClick={() => changeLanguage(language)}
             className={cn(
-              "rounded-sm px-2 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              "rounded-full px-2 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
               isActive
                 ? "bg-primary text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground",

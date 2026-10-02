@@ -1,8 +1,9 @@
-﻿import { render, screen } from "@testing-library/react";
+﻿import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { clearTokens } from "@/api/auth";
 import { LANGUAGE_STORAGE_KEY } from "@/i18n";
 import { LoginPage } from "./LoginPage";
 import { AuthProvider } from "./AuthProvider";
@@ -15,6 +16,8 @@ const EN = {
   username: "Username",
   password: "Password",
   action: "Sign in",
+  pending: "Signing in…",
+  error: "Sign-in failed. Check your username and password.",
 };
 
 const ES = {
@@ -30,9 +33,19 @@ async function switchTo(language: "English" | "Español") {
   await user.click(screen.getByRole("button", { name: language }));
 }
 
+/** Number of login POST requests issued through the mocked transport. */
+function loginCallCount(calls: unknown[][]) {
+  return calls.filter((call) => call[0] instanceof Request && (call[0] as Request).url.endsWith("/auth/login")).length;
+}
+
 describe("LoginPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    clearTokens();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders the login form with English strings by default", () => {
@@ -43,6 +56,9 @@ describe("LoginPage", () => {
     expect(screen.getByLabelText(EN.username)).toBeInTheDocument();
     expect(screen.getByLabelText(EN.password)).toHaveAttribute("type", "password");
     expect(screen.getByRole("button", { name: EN.action })).toBeInTheDocument();
+    // The submit action carries a representative leading icon.
+    const submitButton = screen.getByRole("button", { name: EN.action });
+    expect(submitButton.querySelector('[data-slot="icon"]')).not.toBeNull();
     // Brand mark and wordmark are visible.
     expect(screen.getAllByText("Kosmo").length).toBeGreaterThan(0);
   });
@@ -104,6 +120,62 @@ describe("LoginPage", () => {
 
     // No element pins a fixed pixel/rem width that would overflow at 375px.
     expect(container.innerHTML).not.toMatch(/w-\[\d+(px|rem)\]/);
+  });
+
+  it("keeps the action label and shows busy feedback while signing in", async () => {
+    let resolveLogin!: (response: Response) => void;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      () => new Promise<Response>((resolve) => { resolveLogin = resolve; }),
+    );
+    renderLogin();
+    fireEvent.change(screen.getByLabelText(EN.username), { target: { value: "admin" } });
+    fireEvent.change(screen.getByLabelText(EN.password), { target: { value: "secret" } });
+    fireEvent.submit(screen.getByRole("form", { name: EN.title }));
+
+    // The label is unchanged while in flight — no separate "Signing in…" string.
+    const button = screen.getByRole("button", { name: EN.action });
+    expect(screen.queryByText(EN.pending)).not.toBeInTheDocument();
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    // The shared Button renders its decorative spinner.
+    expect(within(button).getByText("progress_activity")).toBeInTheDocument();
+
+    await waitFor(() => expect(loginCallCount(fetchMock.mock.calls)).toBe(1));
+    resolveLogin(new Response(JSON.stringify({ detail: "Invalid credentials" }), { status: 401, headers: { "Content-Type": "application/json" } }));
+    await waitFor(() => expect(button).toBeEnabled());
+  });
+
+  it("does not call the login API twice on duplicate submits while pending", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      () => new Promise<Response>(() => undefined),
+    );
+    renderLogin();
+    fireEvent.change(screen.getByLabelText(EN.username), { target: { value: "admin" } });
+    fireEvent.change(screen.getByLabelText(EN.password), { target: { value: "secret" } });
+    fireEvent.submit(screen.getByRole("form", { name: EN.title }));
+    await waitFor(() => expect(loginCallCount(fetchMock.mock.calls)).toBe(1));
+
+    // The busy submit button is disabled, so a second activation attempt is swallowed.
+    const button = screen.getByRole("button", { name: EN.action });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(loginCallCount(fetchMock.mock.calls)).toBe(1);
+  });
+
+  it("re-enables and shows the localized error when sign-in fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Invalid credentials" }), { status: 401, headers: { "Content-Type": "application/json" } }),
+    );
+    renderLogin();
+    fireEvent.change(screen.getByLabelText(EN.username), { target: { value: "admin" } });
+    fireEvent.change(screen.getByLabelText(EN.password), { target: { value: "secret" } });
+    fireEvent.submit(screen.getByRole("form", { name: EN.title }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(EN.error);
+    const button = screen.getByRole("button", { name: EN.action });
+    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute("aria-busy");
   });
 });
 

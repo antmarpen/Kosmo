@@ -4,11 +4,22 @@
  * steel-blue primary (brand seed hue 210), near-black ink with a cool cast.
  * Body text ink reaches ~13:1 contrast on white; muted foreground ~6:1.
  * A single warm brass accent (--brand-accent) carries the brand mark only.
+ *
+ * Scale and affordance: 12px radius base with a derived sm–xl scale, ink-tinted
+ * low-alpha elevation (shadow-xs/sm), and base-layer cursor rules guaranteeing
+ * a pointer on enabled interactive elements and not-allowed on disabled ones.
  */
 @import "tailwindcss";
 
+/* Material Symbols Rounded — self-hosted variable icon font. The woff2 asset
+ * is bundled from the `material-symbols` package; no request to Google Fonts
+ * at runtime (AC-02). */
+@import "material-symbols/rounded.css";
+
 :root {
-  --radius: 0.5rem;
+  /* AC-03 — medium rounding: 12px base, derived scale keeps small controls
+   * proportionate (sm 8 / md 10 / lg 12 / xl 16). Pills are never produced. */
+  --radius: 0.75rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.24 0.02 235);
   --card: oklch(0.985 0.003 220);
@@ -56,6 +67,13 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  /* AC-03 — refined elevation: ink-tinted, low-alpha, short-range shadows
+   * replace the default neutral gray drop; blur stays ≤ 6px so bordered
+   * surfaces keep a crisp single-depth read. */
+  --shadow-xs: 0 1px 2px 0 oklch(0.24 0.02 235 / 0.05);
+  --shadow-sm:
+    0 1px 2px 0 oklch(0.24 0.02 235 / 0.04),
+    0 2px 6px -1px oklch(0.24 0.02 235 / 0.05);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans", sans-serif;
 }
@@ -69,5 +87,56 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* AC-03 — typography: balanced heading lines read more composed in cards
+   * and page headers; no effect on body prose. */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  /* AC-04 — pointer affordance on every enabled interactive element. Kept in
+   * the base layer so new components inherit the contract automatically. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href],
+  select:not(:disabled),
+  summary,
+  label[for],
+  label:has(input:not(:disabled)),
+  label:has(select:not(:disabled)),
+  label:has(button:not(:disabled)),
+  label:has(a[href]),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"] {
+    cursor: pointer;
+  }
+
+  /* Disabled controls never show the pointer. Declared after the pointer
+   * rules so equal-specificity role selectors (e.g. a disabled
+   * `[role="menuitem"]`) lose the cascade tie to `not-allowed`.
+   * `[data-disabled]` covers Radix primitives that signal disabled state
+   * through data attributes rather than `aria-disabled`. */
+  :disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
+
+  /* Respect reduced-motion preferences: non-essential motion collapses to
+   * near-instant instead of being removed, so state changes stay visible. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
