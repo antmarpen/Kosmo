@@ -98,13 +98,13 @@ retain completed node executions and validated artifact references for recovery.
 
 ## Technology stack
 
-Agreed direction as of 2026-09-30:
+Agreed direction as of 2026-10-02:
 
 - **Frontend** (`frontend/`): Vite, React, TypeScript, Tailwind CSS with
-  shadcn/ui, React Flow for the graph editor, `@lobehub/icons` for AI provider
-  icons plus `lucide-react` for general icons, TanStack Query, Zod, React
+  shadcn/ui, React Flow for the graph editor, `material-symbols` (self-hosted Material Symbols Rounded for general UI icons) plus `@lobehub/icons` for AI/provider brand marks, TanStack Query, Zod, React
   Router, and an OpenAPI-generated API client (openapi-typescript +
-  openapi-fetch), managed with pnpm. Tests: Vitest with React Testing Library,
+  openapi-fetch), managed with pnpm. Includes Radix UI primitives for
+  dropdowns, tooltips, and dialogs. Tests: Vitest with React Testing Library,
   Playwright for E2E. openapi-typescript generates types; openapi-fetch uses
   them for typed requests. Runtime validation remains a separate concern.
 - **Backend** (`backend/`): FastAPI with uv, SQLAlchemy 2.0 (async) with

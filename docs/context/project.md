@@ -25,7 +25,19 @@ Kosmo has successfully completed the Phase 1 — Foundations and Execution Proof
 - **Localization:** i18n support for English (`en`) and Spanish (`es`) using nested JSON catalogs.
 - **Continuous Integration:** GitHub Actions pipeline covering backend, frontend, client-regen, and compose-config, using a dedicated PostgreSQL service for boundary testing.
 
+### UI Refresh Implementation (2026-10-02)
+- Local Material Symbols Rounded for general UI icons; bundle size optimization remains a future consideration.
+- Pill-shaped action buttons, medium-rounded surfaces, and consistent pointers;
+  user-initial dropdown in the shell.
+- Generic Add actions (`common.add` shared key) for providers, workflows, and
+  tasks; shared `RowActions` for workflow/task rows.
+- Loading state support for shared Buttons.
+- Styled confirmation dialogs and tooltips.
+- Spanish (`es`) catalog repaired and synchronized.
+- **DEFERRED:** Provider instance management and provider row CRUD/editing remain pending (Phase 2/P2-09).
+
 ### Outstanding Live Proofs & Phase 2 Roadmap
+
 The following items are part of the next development cycle:
 - **Agent Egress:** destination-level agent egress filtering.
 - **Configuration UI:** provider-config management, model list/catalog browsing, and unified UI.
@@ -67,7 +79,7 @@ The following items are part of the next development cycle:
   model and reasoning effort, MCP servers, skills), and versioned workflows
   with one active version.
 - Stack (2026-09-30): frontend with Vite + React + TypeScript, Tailwind CSS +
-  shadcn/ui, React Flow, `@lobehub/icons` + `lucide-react`, TanStack Query,
+  shadcn/ui, React Flow, `material-symbols` (self-hosted Material Symbols Rounded for general UI icons) plus `@lobehub/icons` for AI/provider brand marks, TanStack Query,
   Zod, React Router, and openapi-typescript + openapi-fetch; backend with
   FastAPI + uv, SQLAlchemy 2.0 async + Alembic on PostgreSQL, Pydantic v2,
   pytest; pnpm manages frontend dependencies. The whole app runs under Docker Compose in a `frontend/` + `backend/`
@@ -348,8 +360,18 @@ local agent setup aligned before relying on an end-to-end workflow guarantee.
     disk), audit retention on task deletion, accounting for voluntary validator
     MCP checks, and task-stop permissions beyond the launcher. The limit of
     three failed completion validations is confirmed.
-11. **Visibility and model details:** meaning of public workflow visibility and
-    the "Jev" decision technology (future). Editor panel behavior is confirmed.
+11. **Workflow visibility and model details (gap):** there is no per-workflow
+    visibility or ownership today. `workflows` has no owner/scope column;
+    `GET /workflows` and `GET /workflows/{id}` require only authentication, so
+    any role (including `runner`) can read any workflow's active definition;
+    and any `admin`/`builder` can create a draft on any existing workflow,
+    seeded from its latest published version. Existence and draft privacy are
+    handled (nonexistent ids and other users' drafts return 404; role-gated
+    mutations return 403), but a workflow the caller "cannot access" is not
+    representable. Resolve with a scope/owner model like provider configs
+    (personal/group/global). Also pending: meaning of public workflow
+    visibility and the "Jev" decision technology (future). Editor panel
+    behavior is confirmed.
 12. **Development-agent configuration:** local setup remains outside version
     control; this is distinct from product-managed agents and integrations.
 
