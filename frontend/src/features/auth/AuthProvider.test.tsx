@@ -82,6 +82,17 @@ describe("authentication flow", () => {
     expect(localStorage.getItem("kosmo.refresh")).toBe("rotated");
   });
 
+  it("retains authorization on multipart requests", async () => {
+    setTokens("access", "refresh");
+    const form = new FormData();
+    form.append("file", "provider.json");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+    await api.POST("/auth/logout", { body: form } as never);
+    const request = fetchMock.mock.calls[0][0] as Request;
+    expect(request.headers.get("Authorization")).toBe("Bearer access");
+    expect(request.headers.get("Content-Type")).toMatch(/^multipart\/form-data; boundary=/);
+  });
+
   it("does not rotate refresh again for a late 401 from the prior access token", async () => {
     setTokens("expired", "one-use-refresh");
     const pendingInitial: Array<(response: Response) => void> = [];
