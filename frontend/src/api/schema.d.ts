@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Capabilities */
+        get: operations["capabilities_auth_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tasks/events": {
         parameters: {
             query?: never;
@@ -168,6 +185,57 @@ export interface paths {
         put?: never;
         /** Validate Artifact */
         post: operations["validate_artifact_mcp_validator_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/providers/opencode/config/candidate/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Candidate */
+        post: operations["validate_candidate_providers_opencode_config_candidate_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/providers/opencode/config/candidate/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Candidate Models */
+        post: operations["candidate_models_providers_opencode_config_candidate_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/providers/opencode/config/candidate/verify-model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Candidate Model */
+        post: operations["verify_candidate_model_providers_opencode_config_candidate_verify_model_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -314,6 +382,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflows/{workflow_id}/drafts/{draft_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Draft */
+        post: operations["publish_draft_workflows__workflow_id__drafts__draft_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflow_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Version */
+        post: operations["activate_version_workflows__workflow_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workflows/{workflow_id}": {
         parameters: {
             query?: never;
@@ -331,10 +433,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflows/{workflow_id}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Drafts */
+        get: operations["list_drafts_workflows__workflow_id__drafts_get"];
+        put?: never;
+        /** Create Draft */
+        post: operations["create_draft_workflows__workflow_id__drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflow_id}/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Draft */
+        get: operations["get_draft_workflows__workflow_id__drafts__draft_id__get"];
+        /** Save Draft */
+        put: operations["save_draft_workflows__workflow_id__drafts__draft_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflow_id}/drafts/{draft_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Draft */
+        post: operations["validate_draft_workflows__workflow_id__drafts__draft_id__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivateWorkflowRequest */
+        ActivateWorkflowRequest: {
+            /** Version Id */
+            version_id: string;
+            /** Expected Active Revision */
+            expected_active_revision: number;
+            /**
+             * Confirm Stale Base
+             * @default false
+             */
+            confirm_stale_base: boolean;
+        };
         /** ActiveVersionResponse */
         ActiveVersionResponse: {
             /** Id */
@@ -387,6 +554,41 @@ export interface components {
             opencode_json: string;
             /** Auth Json */
             auth_json?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Visibility
+             * @default personal
+             */
+            visibility: string;
+            /** Group Id */
+            group_id?: string | null;
+            /** Verification Id */
+            verification_id?: string | null;
+        };
+        /** CandidateConfig */
+        CandidateConfig: {
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Auth */
+            auth?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** CandidateModelVerification */
+        CandidateModelVerification: {
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Auth */
+            auth?: {
+                [key: string]: unknown;
+            } | null;
+            /** Model */
+            model: string;
         };
         /** Credentials */
         Credentials: {
@@ -394,6 +596,18 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /** DecisionNode */
+        DecisionNode: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "decision";
+            /** Id */
+            id: string;
+            /** Selected Next Node Id */
+            selected_next_node_id: string;
         };
         /** Edge */
         Edge: {
@@ -475,6 +689,16 @@ export interface components {
             /** Node Ids */
             node_ids: string[];
             loop?: components["schemas"]["LoopPolicy"] | null;
+        };
+        /** PublishDraftRequest */
+        PublishDraftRequest: {
+            /** Expected Pub Revision */
+            expected_pub_revision: number;
+            /**
+             * Confirm Overwrite
+             * @default false
+             */
+            confirm_overwrite: boolean;
         };
         /** RefreshRequest */
         RefreshRequest: {
@@ -590,11 +814,63 @@ export interface components {
             /** Name */
             name: string;
             /** Nodes */
-            nodes: (components["schemas"]["StartNode"] | components["schemas"]["ScriptNode"] | components["schemas"]["HttpNode"] | components["schemas"]["AiNode"] | components["schemas"]["EndNode"])[];
+            nodes: (components["schemas"]["StartNode"] | components["schemas"]["ScriptNode"] | components["schemas"]["HttpNode"] | components["schemas"]["AiNode"] | components["schemas"]["EndNode"] | components["schemas"]["DecisionNode"] | components["schemas"]["WorkflowNode"])[];
             /** Edges */
             edges: components["schemas"]["Edge"][];
             /** Phases */
             phases?: components["schemas"]["Phase"][] | null;
+        };
+        /** WorkflowDraftMetadata */
+        WorkflowDraftMetadata: {
+            /** Id */
+            id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** WorkflowDraftResponse */
+        WorkflowDraftResponse: {
+            /** Id */
+            id: string;
+            /** Revision */
+            revision: number;
+            /** Definition */
+            definition: {
+                [key: string]: unknown;
+            };
+            /** Layout */
+            layout: {
+                [key: string]: unknown;
+            };
+        };
+        /** WorkflowDraftSave */
+        WorkflowDraftSave: {
+            /** Definition */
+            definition: {
+                [key: string]: unknown;
+            };
+            /** Layout */
+            layout?: {
+                [key: string]: unknown;
+            };
+            /** Expected Revision */
+            expected_revision: number;
+        };
+        /** WorkflowNode */
+        WorkflowNode: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "workflow";
+            /** Id */
+            id: string;
+            /** Workflow Id */
+            workflow_id: string;
         };
         /** WorkflowResponse */
         WorkflowResponse: {
@@ -602,6 +878,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Publication Revision */
+            publication_revision: number;
             active_version: components["schemas"]["ActiveVersionResponse"] | null;
         };
         /** WorkflowVersionResponse */
@@ -806,6 +1084,26 @@ export interface operations {
             };
         };
     };
+    capabilities_auth_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     stream_task_events_tasks_events_get: {
         parameters: {
             query?: never;
@@ -927,6 +1225,105 @@ export interface operations {
             };
         };
     };
+    validate_candidate_providers_opencode_config_candidate_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidate_models_providers_opencode_config_candidate_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_candidate_model_providers_opencode_config_candidate_verify_model_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateModelVerification"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_opencode_config_metadata_providers_opencode_config_get: {
         parameters: {
             query?: never;
@@ -982,7 +1379,9 @@ export interface operations {
     };
     delete_opencode_config_providers_opencode_config_delete: {
         parameters: {
-            query?: never;
+            query?: {
+                config_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -996,6 +1395,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1256,6 +1664,77 @@ export interface operations {
             };
         };
     };
+    publish_draft_workflows__workflow_id__drafts__draft_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_version_workflows__workflow_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateWorkflowRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_workflow_workflows__workflow_id__get: {
         parameters: {
             query?: never;
@@ -1274,6 +1753,170 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_drafts_workflows__workflow_id__drafts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDraftMetadata"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_draft_workflows__workflow_id__drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_draft_workflows__workflow_id__drafts__draft_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_draft_workflows__workflow_id__drafts__draft_id__put: {
+        parameters: {
+            query?: {
+                validate?: boolean;
+            };
+            header?: never;
+            path: {
+                workflow_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDraftSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_draft_workflows__workflow_id__drafts__draft_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
