@@ -1,12 +1,18 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import i18next from "i18next";
+import { NODE_DRAG_MIME } from "./Canvas";
 import { createNode } from "./nodeDefaults";
 
 const { get, post, put } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 vi.mock("@/api/auth", () => ({ api: { GET: get, POST: post, PUT: put } }));
 
 import { EditorPage } from "./EditorPage";
+
+/** Resolves through i18next so assertions hold both before and after the pending catalog keys land. */
+const catalogText = (key: string, params?: Record<string, unknown>) => String(i18next.t(key as never, params as never));
 
 vi.mock("@xyflow/react", async () => {
   const React = await import("react");
@@ -17,7 +23,8 @@ vi.mock("@xyflow/react", async () => {
       React.createElement("button", { onClick: () => props.onConnect({ source: "end", target: "start" }) }, "connect invalid"),
       React.createElement("button", { onClick: () => props.onNodesChange([{ type: "position", id: "start", position: { x: 42, y: 84 } }]) }, "move start"),
       React.createElement("button", { onClick: () => props.onSelectionChange({ nodes: [{ id: "start" }], edges: [] }) }, "select start"),
-      React.createElement("button", { onClick: () => props.onSelectionChange({ nodes: [{ id: "end" }], edges: [] }) }, "select end")),
+      React.createElement("button", { onClick: () => props.onSelectionChange({ nodes: [{ id: "end" }], edges: [] }) }, "select end"),
+      React.createElement("button", { onClick: () => props.onSelectionChange({ nodes: [], edges: [] }) }, "clear selection")),
     Handle: () => null, Position: { Left: "left", Right: "right" }, Background: () => null, Controls: () => null,
     addEdge: (edge: any, edges: any[]) => [...edges, edge],
   };
@@ -30,6 +37,7 @@ vi.mock("@xyflow/react", async () => {
  * - POST /workflows/{workflow_id}/drafts → 201 {draft_id, revision}
  * - PUT /workflows/{workflow_id}/drafts/{draft_id}?validate= → {revision, issues?}
  * - GET /workflows/{workflow_id} → WorkflowResponse {id, name, publication_revision, active_version}
+ * - GET /workflows/{workflow_id}/versions → WorkflowVersionSummary[] {id, version, published_at, is_active}
  * - POST /workflows/{workflow_id}/drafts/{draft_id}/publish → 201 WorkflowVersionResponse
  * - POST /workflows/{workflow_id}/activate → {version_id, active_revision}
  */
@@ -43,10 +51,15 @@ const draftResponse = { id: "draft-1", revision: 1, definition: baseDefinition, 
 /** A definition the client-side validation accepts (end reachable from start). */
 const validDefinition = { ...baseDefinition, edges: [{ from: "start", to: "end" }] };
 const workflowPath = "/workflows/{workflow_id}";
+const versionsPath = "/workflows/{workflow_id}/versions";
 const publishPath = "/workflows/{workflow_id}/drafts/{draft_id}/publish";
 const activatePath = "/workflows/{workflow_id}/activate";
 const workflowResponse = { id: "wf-1", name: "Sample workflow", publication_revision: 2, active_version: { id: "wf-1:3", version: 3, definition: {} } };
 const publishResponse = { id: "wf-1:4", workflow_id: "wf-1", version: 4, definition: {} };
+/** GET /workflows/{workflow_id}/versions → WorkflowVersionSummary[] (metadata only, newest first). */
+const versionsResponse = [
+  { id: "wf-1:3", version: 3, published_at: "2026-10-01T00:00:00Z", is_active: true },
+];
 
 function LocationProbe() {
   const location = useLocation();
@@ -66,6 +79,7 @@ function mockGets(overrides: Record<string, unknown> = {}) {
     if (path === "/workflows/{workflow_id}/drafts/{draft_id}") return Promise.resolve({ data: draftResponse });
     if (path === "/workflows/{workflow_id}/drafts") return Promise.resolve({ data: [{ id: "draft-1", revision: 1, updated_at: "2026-10-01T00:00:00Z" }] });
     if (path === workflowPath) return Promise.resolve({ data: workflowResponse });
+    if (path === versionsPath) return Promise.resolve({ data: versionsResponse });
     return Promise.resolve({ data: null });
   });
 }
@@ -168,6 +182,19 @@ describe("workflow editor page", () => {
     expect(screen.getByText("Saved")).toBeInTheDocument();
   });
 
+  it("saves an edited workflow name through the draft save contract", async () => {
+    renderPage();
+    const nameField = await screen.findByLabelText(catalogText("workflowEditor.nameLabel"));
+    expect(nameField).toHaveValue("Sample workflow");
+    fireEvent.change(nameField, { target: { value: "Renamed workflow" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    const [, options] = put.mock.calls[0] as [string, { body: { definition: { name: string } } }];
+    expect(options.body.definition.name).toBe("Renamed workflow");
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+  });
+
   it("falls back to the blank start/end seed when a draft has no usable definition", async () => {
     mockGets({ "/workflows/{workflow_id}/drafts/{draft_id}": { data: { id: "draft-1", revision: 1, definition: {}, layout: {} } } });
     renderPage();
@@ -175,9 +202,46 @@ describe("workflow editor page", () => {
     expect(screen.getByTestId("flow")).toBeInTheDocument();
   });
 
+  it("seeds a blank draft with the workflow's own name instead of Untitled workflow", async () => {
+    // A workflow created as "Quarterly review" seeds its draft as {}; the
+    // editor must show the collected name, never the "Untitled workflow"
+    // placeholder that publishing would silently rename the workflow to.
+    mockGets({
+      "/workflows/{workflow_id}/drafts/{draft_id}": { data: { id: "draft-1", revision: 1, definition: {}, layout: {} } },
+      [workflowPath]: { data: { id: "wf-1", name: "Quarterly review", publication_revision: 0, active_version: null } },
+    });
+    renderPage();
+
+    const nameField = await screen.findByLabelText(catalogText("workflowEditor.nameLabel"));
+    expect(nameField).toHaveValue("Quarterly review");
+    expect(screen.queryByDisplayValue("Untitled workflow")).not.toBeInTheDocument();
+  });
+
+  it("carries the workflow's collected name through save and publish", async () => {
+    // Blank seed + the collected name: connecting the graph makes the draft
+    // publishable, so publishing saves first and both requests must carry
+    // the workflow's name — publishing never renames it to a placeholder.
+    mockGets({
+      "/workflows/{workflow_id}/drafts/{draft_id}": { data: { id: "draft-1", revision: 1, definition: {}, layout: {} } },
+      [workflowPath]: { data: { id: "wf-1", name: "Quarterly review", publication_revision: 0, active_version: null } },
+    });
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: "connect valid" }));
+    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    const [, saveOptions] = put.mock.calls[0] as [string, { body: { definition: { name: string } } }];
+    expect(saveOptions.body.definition.name).toBe("Quarterly review");
+    await waitFor(() => expect(callsTo(publishPath)).toHaveLength(1));
+    const notice = await screen.findByTestId("editor-notice");
+    expect(notice).toHaveAttribute("data-key", "workflowEditor.publishSuccess");
+  });
+
   it("creates a draft when the editor opens an existing workflow without one", async () => {
     get.mockImplementation((path: string) => {
       if (path === "/workflows/{workflow_id}/drafts") return Promise.resolve({ data: [] });
+      if (path === workflowPath) return Promise.resolve({ data: workflowResponse });
       if (path === "/workflows/{workflow_id}/drafts/{draft_id}") return Promise.resolve({ data: { ...draftResponse, id: "draft-new" } });
       return Promise.resolve({ data: null });
     });
@@ -193,9 +257,12 @@ describe("workflow editor page", () => {
     await screen.findByTestId("flow");
     const propertiesToggle = screen.getByRole("button", { name: "Node properties" });
     const paletteToggle = screen.getByRole("button", { name: "Add node" });
-    expect(propertiesToggle).toHaveAttribute("aria-expanded", "false");
+    // Nothing is selected yet: the panel has nothing to show, so the toggle
+    // is disabled instead of revealing an empty sheet.
+    expect(propertiesToggle).toBeDisabled();
     // Selecting a node opens the properties sheet so it is immediately editable.
     fireEvent.click(screen.getByRole("button", { name: "select start" }));
+    expect(propertiesToggle).toBeEnabled();
     expect(propertiesToggle).toHaveAttribute("aria-expanded", "true");
     // The two sheets are mutually exclusive so neither can cover the other.
     fireEvent.click(paletteToggle);
@@ -206,6 +273,59 @@ describe("workflow editor page", () => {
     expect(paletteToggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(propertiesToggle);
     expect(propertiesToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("renders the properties panel only while a node is selected", async () => {
+    renderPage();
+    await screen.findByTestId("flow");
+    // No selection: the desktop panel is not rendered at all.
+    expect(screen.queryByRole("complementary", { name: "Node properties" })).not.toBeInTheDocument();
+    // Selecting a node surfaces the panel with that node's content...
+    fireEvent.click(screen.getByRole("button", { name: "select start" }));
+    expect(screen.getByRole("heading", { name: "Node properties: Start" })).toBeInTheDocument();
+    // ...selecting another node swaps it...
+    fireEvent.click(screen.getByRole("button", { name: "select end" }));
+    expect(screen.getByRole("heading", { name: "Node properties: End" })).toBeInTheDocument();
+    // ...and clicking the canvas pane clears the selection and closes the panel.
+    fireEvent.click(screen.getByRole("button", { name: "clear selection" }));
+    expect(screen.queryByRole("complementary", { name: "Node properties" })).not.toBeInTheDocument();
+  });
+
+  it("filters the node catalog from the search field and reports when nothing matches", async () => {
+    renderPage();
+    await screen.findByTestId("flow");
+    const palette = screen.getByRole("complementary", { name: "Node types" });
+    const search = screen.getByRole("searchbox", { name: "Search node types" });
+    await userEvent.type(search, "script");
+    expect(within(palette).getByRole("button", { name: "Add Script" })).toBeInTheDocument();
+    expect(within(palette).queryByRole("button", { name: "Add Start" })).not.toBeInTheDocument();
+    // A query nothing matches keeps the search honest instead of silently
+    // hiding the catalog.
+    await userEvent.clear(search);
+    await userEvent.type(search, "zzz");
+    expect(within(palette).queryByRole("button", { name: /^Add/ })).not.toBeInTheDocument();
+    expect(within(palette).getByText(/No node types match/)).toBeInTheDocument();
+    // Clearing the query restores the full catalog.
+    await userEvent.clear(search);
+    expect(within(palette).getByRole("button", { name: "Add Start" })).toBeInTheDocument();
+  });
+
+  it("describes each catalog entry under its type name", async () => {
+    renderPage();
+    await screen.findByTestId("flow");
+    const palette = screen.getByRole("complementary", { name: "Node types" });
+    expect(within(palette).getByText("Run a Python script in an isolated sandbox.")).toBeInTheDocument();
+    expect(within(palette).getByText("Delegate a step to an AI agent.")).toBeInTheDocument();
+  });
+
+  it("starts a palette drag carrying the node type for the canvas drop", async () => {
+    renderPage();
+    await screen.findByTestId("flow");
+    const setData = vi.fn();
+    const button = screen.getByRole("button", { name: "Add Script" });
+    fireEvent.dragStart(button, { dataTransfer: { setData, effectAllowed: "" } });
+    expect(button).toHaveAttribute("draggable", "true");
+    expect(setData).toHaveBeenCalledWith(NODE_DRAG_MIME, "script");
   });
 
   it("renders flat backend API errors through the Kosmo error alert", async () => {
@@ -221,12 +341,18 @@ describe("workflow editor page", () => {
     fireEvent.click(screen.getByRole("button", { name: /publish/i }));
 
     expect(await screen.findByTestId("publish-blocked")).toBeInTheDocument();
-    expect(screen.getByTestId("publish-blocked")).toHaveTextContent("No end node is reachable from the start node.");
+    expect(screen.getByTestId("publish-blocked")).toHaveTextContent(catalogText("workflowEditor.validation.noReachableEnd"));
     expect(post).not.toHaveBeenCalled();
   });
 
   it("publishes with the publication revision and shows the new version", async () => {
-    mockGets({ "/workflows/{workflow_id}/drafts/{draft_id}": { data: { ...draftResponse, definition: validDefinition } } });
+    mockGets({
+      "/workflows/{workflow_id}/drafts/{draft_id}": { data: { ...draftResponse, definition: validDefinition } },
+      [versionsPath]: { data: [
+        { id: "wf-1:4", version: 4, published_at: "2026-10-02T00:00:00Z", is_active: false },
+        { id: "wf-1:3", version: 3, published_at: "2026-10-01T00:00:00Z", is_active: true },
+      ] },
+    });
     renderPage();
     await screen.findByTestId("flow");
     fireEvent.click(screen.getByRole("button", { name: /publish/i }));
@@ -249,6 +375,141 @@ describe("workflow editor page", () => {
     fireEvent.click(screen.getByRole("button", { name: /activate/i }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/published version/i)).toHaveValue("wf-1:4");
+  });
+
+  it("publishes without touching the active version while the activate option stays off", async () => {
+    mockGets({ "/workflows/{workflow_id}/drafts/{draft_id}": { data: { ...draftResponse, definition: validDefinition } } });
+    renderPage();
+    await screen.findByTestId("flow");
+    // Spec AC-P2-06: the option is off by default; publishing alone changes nothing.
+    expect(screen.getByRole("checkbox", { name: catalogText("workflowEditor.activateAfterPublish") })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+
+    const notice = await screen.findByTestId("editor-notice");
+    expect(notice).toHaveAttribute("data-key", "workflowEditor.publishSuccess");
+    expect(callsTo(activatePath)).toHaveLength(0);
+  });
+
+  it("activates the just-published version as a separate request when the activate option is checked", async () => {
+    mockGets({ "/workflows/{workflow_id}/drafts/{draft_id}": { data: { ...draftResponse, definition: validDefinition } } });
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("checkbox", { name: catalogText("workflowEditor.activateAfterPublish") }));
+    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+
+    await waitFor(() => expect(callsTo(activatePath)).toHaveLength(1));
+    expect(post).toHaveBeenCalledWith(activatePath, {
+      params: { path: { workflow_id: "wf-1" } },
+      body: { version_id: "wf-1:4", expected_active_revision: 3, confirm_stale_base: false },
+    });
+    const notices = await screen.findAllByTestId("editor-notice");
+    expect(notices.map((notice) => notice.getAttribute("data-key"))).toEqual(["workflowEditor.publishSuccess", "workflowEditor.activateSuccess"]);
+  });
+
+  it("offers every published version after a reload and marks the active one", async () => {
+    mockGets({ [versionsPath]: { data: [
+      { id: "wf-1:2", version: 2, published_at: "2026-09-30T00:00:00Z", is_active: false },
+      { id: "wf-1:3", version: 3, published_at: "2026-10-01T00:00:00Z", is_active: true },
+    ] } });
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: /activate/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    const select = within(dialog).getByLabelText(/published version/i);
+    // A previously published inactive version is selectable after a reload;
+    // the active one is marked and preselected when nothing was just published.
+    expect(within(select).getByRole("option", { name: "Version 2" })).toBeInTheDocument();
+    expect(within(select).getByRole("option", { name: catalogText("workflowEditor.activateOptionActive", { version: 3 }) })).toBeInTheDocument();
+    expect(select).toHaveValue("wf-1:3");
+    fireEvent.change(select, { target: { value: "wf-1:2" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(callsTo(activatePath)).toHaveLength(1));
+    expect(callsTo(activatePath)[0]?.[1]?.body).toEqual({ version_id: "wf-1:2", expected_active_revision: 3, confirm_stale_base: false });
+  });
+
+  it("defaults the picker to the newest version when nothing is active after a reload", async () => {
+    // Publishing without activating, then reloading, leaves no active version
+    // and no just-published one: the newest candidate must still be selectable
+    // and the confirm action operable (AR-02).
+    mockGets({
+      [workflowPath]: { data: { ...workflowResponse, active_version: null } },
+      [versionsPath]: { data: [
+        { id: "wf-1:1", version: 1, published_at: "2026-10-01T00:00:00Z", is_active: false },
+      ] },
+    });
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: /activate/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    const select = within(dialog).getByLabelText(/published version/i);
+    expect(select).toHaveValue("wf-1:1");
+    const confirm = within(dialog).getByRole("button", { name: "Confirm" });
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(callsTo(activatePath)).toHaveLength(1));
+    expect(callsTo(activatePath)[0]?.[1]?.body).toEqual({ version_id: "wf-1:1", expected_active_revision: 0, confirm_stale_base: false });
+  });
+
+  it("requests the picker's first version page with limit and offset", async () => {
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: /activate/i }));
+    await screen.findByRole("dialog");
+
+    const versionsCalls = get.mock.calls.filter(([path]) => path === versionsPath);
+    expect(versionsCalls).toHaveLength(1);
+    const [, options] = versionsCalls[0] as [string, { params: { query: { limit: number; offset: number } } }];
+    expect(options.params.query).toEqual({ limit: 50, offset: 0 });
+  });
+
+  it("appends the next version page via load more and hides the control when pages end", async () => {
+    // A full first page (versions 51..2) means more pages exist; the next
+    // page comes back short (only version 1), which is the end of the list.
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      id: `wf-1:${51 - index}`, version: 51 - index, published_at: "2026-10-01T00:00:00Z", is_active: false,
+    }));
+    const secondPage = [{ id: "wf-1:1", version: 1, published_at: "2026-09-30T00:00:00Z", is_active: false }];
+    get.mockImplementation((path: string, options?: { params?: { query?: { offset?: number } } }) => {
+      if (path === versionsPath) {
+        const offset = options?.params?.query?.offset ?? 0;
+        return Promise.resolve({ data: offset === 0 ? firstPage : secondPage });
+      }
+      if (path === "/workflows/{workflow_id}/drafts/{draft_id}") return Promise.resolve({ data: draftResponse });
+      if (path === "/workflows/{workflow_id}/drafts") return Promise.resolve({ data: [{ id: "draft-1", revision: 1, updated_at: "2026-10-01T00:00:00Z" }] });
+      if (path === workflowPath) return Promise.resolve({ data: workflowResponse });
+      return Promise.resolve({ data: null });
+    });
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: /activate/i }));
+    const dialog = await screen.findByRole("dialog");
+    const select = within(dialog).getByLabelText(/published version/i);
+    // Only the first page is listed before loading more.
+    expect(within(select).getByRole("option", { name: "Version 2" })).toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: "Version 1" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: catalogText("workflowEditor.activateLoadMore") }));
+
+    // The next request walks the accumulated offset...
+    await waitFor(() => expect(get).toHaveBeenCalledWith(versionsPath, { params: { path: { workflow_id: "wf-1" }, query: { limit: 50, offset: 50 } } }));
+    // ...its versions are appended to the same picker...
+    expect(within(select).getByRole("option", { name: "Version 1" })).toBeInTheDocument();
+    expect(within(select).getAllByRole("option")).toHaveLength(51);
+    // ...and the control disappears: a short page means no more versions.
+    expect(within(dialog).queryByRole("button", { name: catalogText("workflowEditor.activateLoadMore") })).not.toBeInTheDocument();
+  });
+
+  it("hides the load-more control when the first version page is short", async () => {
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: /activate/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText(/published version/i)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: catalogText("workflowEditor.activateLoadMore") })).not.toBeInTheDocument();
   });
 
   it("saves unsaved changes before publishing them", async () => {
@@ -368,5 +629,45 @@ describe("workflow editor page", () => {
     await waitFor(() => expect(callsTo(activatePath)).toHaveLength(2));
     expect(callsTo(activatePath)[1]?.[1]?.body).toEqual({ version_id: "wf-1:3", expected_active_revision: 3, confirm_stale_base: true });
     expect(await screen.findByTestId("editor-notice")).toHaveAttribute("data-key", "workflowEditor.activateSuccess");
+  });
+
+  it("maps server draft-validation issues to the affected node and keeps unlocatable ones in the summary", async () => {
+    put.mockResolvedValue({ data: { revision: 2, issues: [
+      { message_key: "errors.workflow.workflow_not_found", params: { node_id: "start", workflow_id: "absent" } },
+      { message_key: "errors.workflow.cycle", params: {} },
+    ] } });
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+
+    // The located issue surfaces on the affected node's properties panel…
+    fireEvent.click(screen.getByRole("button", { name: "select start" }));
+    const panel = screen.getByRole("complementary", { name: catalogText("editor.properties") });
+    const locatedText = catalogText("errors.workflow.workflow_not_found", { node_id: "start", workflow_id: "absent" });
+    expect(within(panel).getByText(locatedText)).toBeInTheDocument();
+    // …exactly once: it does not leak into the global summary…
+    expect(screen.getAllByText(locatedText)).toHaveLength(1);
+    // …and the unlocatable issue stays in the summary instead of a node.
+    expect(screen.getByText(catalogText("errors.workflow.cycle"))).toBeInTheDocument();
+    expect(within(panel).queryByText(catalogText("errors.workflow.cycle"))).not.toBeInTheDocument();
+  });
+
+  it("keeps the Save-draft label with aria-busy while the save is in flight", async () => {
+    let resolveSave: (value: unknown) => void = () => {};
+    put.mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    const saveButton = screen.getByRole("button", { name: "Save draft" });
+    expect(saveButton).toHaveAttribute("aria-busy", "true");
+    expect(saveButton).toBeDisabled();
+    // The label stays put; only the shared spinner and aria-busy signal flight.
+    expect(saveButton).toHaveTextContent("Save draft");
+    expect(saveButton).not.toHaveTextContent(catalogText("workflowEditor.saving"));
+
+    resolveSave({ data: { revision: 2, issues: [] } });
+    await waitFor(() => expect(saveButton).not.toBeDisabled());
   });
 });

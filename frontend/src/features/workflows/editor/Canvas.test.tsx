@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Canvas } from "./Canvas";
+import { Canvas, NODE_DRAG_MIME } from "./Canvas";
 import { createNode, deserializeWorkflow, type WorkflowEditorState } from "./model";
 
 // jsdom does not implement ResizeObserver, which React Flow requires for node
@@ -132,5 +132,64 @@ describe("workflow editor canvas (real React Flow)", () => {
       expect(nodeElement("end")).toHaveClass("selected");
     });
     expect(captured.selections.at(-1)?.nodeIds).toEqual(["start", "end"]);
+  });
+
+  it("adds a node at the drop position when a palette drag is dropped on the canvas", async () => {
+    const onDropNode = vi.fn();
+    render(
+      <Canvas
+        state={baseState()}
+        onPositionChange={vi.fn()}
+        onSelectionChange={vi.fn()}
+        onConnect={vi.fn()}
+        onDeleteSelection={vi.fn()}
+        onDropNode={onDropNode}
+      />,
+    );
+    const surface = document.querySelector(".workflow-canvas") as HTMLElement;
+    const dataTransfer = {
+      types: [NODE_DRAG_MIME],
+      getData: (mime: string) => (mime === NODE_DRAG_MIME ? "script" : ""),
+      dropEffect: "none",
+    };
+    // Entering with a node-type payload marks the canvas as the drop target.
+    fireEvent.dragEnter(surface, { dataTransfer });
+    expect(surface).toHaveAttribute("data-dragover", "true");
+    // dragOver must not be prevented for foreign payloads...
+    fireEvent.dragOver(surface, { dataTransfer: { types: ["text/plain"], getData: () => "" }, clientX: 10, clientY: 10 });
+    fireEvent.dragEnter(surface, { dataTransfer: { types: ["text/plain"], getData: () => "" } });
+    // ...but our payload's dragOver enables the drop and the drop reports the
+    // type plus a flow-space position.
+    fireEvent.dragOver(surface, { dataTransfer, clientX: 120, clientY: 80 });
+    fireEvent.drop(surface, { dataTransfer, clientX: 120, clientY: 80 });
+    await waitFor(() => expect(onDropNode).toHaveBeenCalledTimes(1));
+    expect(onDropNode).toHaveBeenCalledWith("script", expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }));
+    // The drop ended the drag: the highlight clears.
+    expect(surface).not.toHaveAttribute("data-dragover");
+  });
+
+  it("ignores drops that do not carry a known node type", async () => {
+    const onDropNode = vi.fn();
+    render(
+      <Canvas
+        state={baseState()}
+        onPositionChange={vi.fn()}
+        onSelectionChange={vi.fn()}
+        onConnect={vi.fn()}
+        onDeleteSelection={vi.fn()}
+        onDropNode={onDropNode}
+      />,
+    );
+    const surface = document.querySelector(".workflow-canvas") as HTMLElement;
+    const dataTransfer = {
+      types: [NODE_DRAG_MIME],
+      getData: (mime: string) => (mime === NODE_DRAG_MIME ? "definitely-not-a-type" : ""),
+      dropEffect: "none",
+    };
+    fireEvent.dragEnter(surface, { dataTransfer });
+    fireEvent.dragOver(surface, { dataTransfer, clientX: 10, clientY: 10 });
+    fireEvent.drop(surface, { dataTransfer, clientX: 10, clientY: 10 });
+    expect(onDropNode).not.toHaveBeenCalled();
+    expect(surface).not.toHaveAttribute("data-dragover");
   });
 });

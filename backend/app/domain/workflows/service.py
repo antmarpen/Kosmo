@@ -2,24 +2,63 @@ from app.domain.workflows.validation import validate_workflow
 from datetime import datetime, timedelta, timezone
 from pydantic import ValidationError
 from shared.errors import ConflictError, ErrorDetail, NotFoundError, PermissionDeniedError, ValidationFailedError
-from shared.graph.schema import WorkflowDefinition
+from shared.graph.schema import WorkflowDefinition, WorkflowNode
 
 
 class WorkflowService:
     def __init__(self, repository):
         self.repository = repository
 
+    async def _workflow_reference_check(self, definition):
+        """Bounded existence resolver for Workflow-node references.
+
+        Pre-fetches only the referenced workflow ids and returns a synchronous
+        resolver for validate_workflow, which stays free of ORM and service
+        imports. Returns None when the definition references no sub-workflow.
+        """
+        referenced = {node.workflow_id for node in definition.nodes if isinstance(node, WorkflowNode)}
+        if not referenced:
+            return None
+        existing = {workflow_id for workflow_id in referenced
+                    if await self.repository.get_workflow(workflow_id) is not None}
+        return lambda workflow_id: workflow_id in existing
+
     async def publish(self, definition, published_by=None):
-        validate_workflow(definition)
-        workflow = await self.repository.get_by_name(definition.name)
-        if workflow is None:
-            workflow = await self.repository.create_workflow(definition.name)
+        """Bootstrap helper: create a workflow and publish its first version.
+
+        Only system bootstrap (the seed script) uses this. The HTTP API never
+        exposes it: creating is done by create_workflow, and an existing
+        workflow publishes through publish_draft so the publication lock,
+        revision precondition, and confirmation semantics always apply.
+        """
+        validate_workflow(definition, await self._workflow_reference_check(definition))
+        definition = _normalized_definition(definition)
+        if await self.repository.find_name_conflict(definition.name) is not None:
+            raise ConflictError("errors.workflow.name_conflict", {"name": definition.name})
+        workflow = await self.repository.create_workflow(definition.name)
         workflow_id = _value(workflow, "id")
         version = await self.repository.next_version(workflow_id)
         row = await self.repository.create_version(workflow_id, version, definition.model_dump(mode="json", by_alias=True), published_by)
         if hasattr(self.repository, "increment_publication_revision"):
             await self.repository.increment_publication_revision(workflow)
         return {"id": _value(row, "id"), "workflow_id": workflow_id, "version": version, "definition": definition.model_dump(mode="json", by_alias=True)}
+
+    async def create_workflow(self, name, author_id):
+        """Create a workflow with an empty initial draft for its author.
+
+        Creation never publishes: the first version appears only through the
+        draft-publish path. Names are required and case-insensitively unique.
+        """
+        cleaned = name.strip()
+        if not cleaned:
+            raise ValidationFailedError("errors.workflow.name_required")
+        if await self.repository.find_name_conflict(cleaned) is not None:
+            raise ConflictError("errors.workflow.name_conflict", {"name": cleaned})
+        workflow = await self.repository.create_workflow(cleaned)
+        workflow_id = _value(workflow, "id")
+        draft = await self.repository.create_draft(workflow_id, author_id, None, {}, {})
+        return {**self._workflow_view(workflow, None, 1),
+                "draft_id": _value(draft, "id"), "draft_revision": _value(draft, "revision")}
 
     async def publish_draft(self, workflow_id, draft_id, user, expected_pub_revision, confirm_overwrite=False):
         draft = await self.get_draft(workflow_id, draft_id, user)
@@ -39,9 +78,20 @@ class WorkflowService:
             raise ConflictError("errors.workflow.stale_base_confirmation_required", {"active_version_id": _value(active, "id")})
         try:
             definition = WorkflowDefinition.model_validate(_value(draft, "definition"))
-            validate_workflow(definition)
+            validate_workflow(definition, await self._workflow_reference_check(definition))
         except ValidationError as error:
             raise ValidationFailedError("errors.workflow.invalid_definition") from error
+        # The published definition carries the workflow name: renaming in the
+        # editor renames the workflow itself. The name is normalized exactly
+        # like creation (blank names are rejected by validate_workflow above),
+        # case-insensitive uniqueness still applies, and the rename is part of
+        # the locked publication transaction.
+        definition = _normalized_definition(definition)
+        if definition.name != _value(workflow, "name"):
+            conflict = await self.repository.find_name_conflict(definition.name, exclude_workflow_id=workflow_id)
+            if conflict is not None:
+                raise ConflictError("errors.workflow.name_conflict", {"name": definition.name})
+            await self.repository.rename_workflow(workflow_id, definition.name)
         next_version = await self.repository.next_version(workflow_id)
         row = await self.repository.create_version(workflow_id, next_version, definition.model_dump(mode="json", by_alias=True), user.id)
         await self.repository.increment_publication_revision(workflow)
@@ -63,11 +113,36 @@ class WorkflowService:
         await self.repository.activate(workflow_id, version_id)
         return version
 
-    async def list_workflows(self):
+    async def list_published_versions(self, workflow_id, limit, offset=0):
+        """Offset-paginated metadata for published versions, newest first.
+
+        Feeds the activation picker so a previously published inactive
+        version stays selectable after a reload; pages small enough for the
+        picker keep the listing bounded, and "load more" walks the offset.
+        Read-only; activation itself remains an explicit, separate step.
+        """
+        if await self.repository.get_workflow(workflow_id) is None:
+            raise NotFoundError("errors.workflow.not_found")
+        active = await self.repository.get_active_version(workflow_id)
+        active_id = _value(active, "id") if active is not None else None
+        return [{"id": _value(version, "id"), "version": _value(version, "version"),
+                 "published_at": _value(version, "created_at"),
+                 "is_active": _value(version, "id") == active_id}
+                for version in await self.repository.list_versions(workflow_id, limit, offset)]
+
+    async def list_workflows(self, author_id):
+        """List view with the caller's own draft count per workflow.
+
+        Drafts are author-private everywhere else, so the reported count
+        covers only drafts owned by `author_id`; the repository resolves all
+        counts in one grouped query instead of one query per workflow.
+        """
+        draft_counts = await self.repository.count_drafts_by_author(author_id)
         result = []
         for workflow in await self.repository.list_workflows():
-            active = await self.repository.get_active_version(_value(workflow, "id"))
-            result.append(self._workflow_view(workflow, active))
+            workflow_id = _value(workflow, "id")
+            active = await self.repository.get_active_version(workflow_id)
+            result.append(self._workflow_view(workflow, active, draft_counts.get(workflow_id, 0)))
         return result
 
     async def get_workflow(self, workflow_id):
@@ -115,7 +190,7 @@ class WorkflowService:
         draft = await self.get_draft(workflow_id, draft_id, user)
         try:
             definition = WorkflowDefinition.model_validate(_value(draft, "definition"))
-            validate_workflow(definition)
+            validate_workflow(definition, await self._workflow_reference_check(definition))
         except ValidationFailedError as error:
             return [detail.__dict__ for detail in error.details]
         except ValidationError as error:
@@ -123,11 +198,22 @@ class WorkflowService:
         return []
 
     @staticmethod
-    def _workflow_view(workflow, active):
+    def _workflow_view(workflow, active, draft_count=0):
         return {"id": _value(workflow, "id"), "name": _value(workflow, "name"),
                 "publication_revision": _value(workflow, "publication_revision"),
-                "active_version": None if active is None else {"id": _value(active, "id"), "version": _value(active, "version"), "definition": _value(active, "definition")}}
+                "active_version": None if active is None else {"id": _value(active, "id"), "version": _value(active, "version"), "definition": _value(active, "definition")},
+                "draft_count": draft_count}
 
 
 def _value(row, key):
     return row[key] if isinstance(row, dict) else getattr(row, key)
+
+
+def _normalized_definition(definition: WorkflowDefinition) -> WorkflowDefinition:
+    """Trim the definition name exactly like creation does.
+
+    Creation strips the entered name before storing it, so publication must
+    never reintroduce surrounding whitespace through a rename; the trimmed
+    name is what both the workflow row and the published version carry.
+    """
+    return definition.model_copy(update={"name": definition.name.strip()})

@@ -56,7 +56,9 @@ describe("ScriptEditor modal", () => {
   it("shows the Script properties as a read-only summary plus an edit button, with no editor", () => {
     render(<PropertiesPanel state={panelWithScript("pass\nprint(1)")} onUpdate={vi.fn()} />);
     expect(screen.getByRole("button", { name: expected("editScript") })).toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    // No direct code editor outside the modal; the declared-input controls the
+    // panel shows are not code editors.
+    expect(screen.queryByRole("textbox", { name: "Code" })).not.toBeInTheDocument();
     expect(screen.getByText(lineCount(2))).toBeInTheDocument();
     // Read-only monospace preview of the stored code.
     const preview = screen.getByLabelText("Code");

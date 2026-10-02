@@ -60,6 +60,11 @@ def test_workflow_node_requires_nonempty_existing_reference():
     assert validate_workflow(workflow_node_definition("child"), workflow_exists=lambda workflow_id: workflow_id == "child") is None
 
 
+def test_workflow_node_without_resolver_fails_closed():
+    """Callers must inject existence checking: absent resolver means the reference cannot be verified."""
+    assert "errors.workflow.workflow_not_found" in keys(workflow_node_definition("child"))
+
+
 def test_workflow_node_reports_missing_reference():
     with pytest.raises(ValidationFailedError) as caught:
         validate_workflow(workflow_node_definition("missing"), workflow_exists=lambda _: False)

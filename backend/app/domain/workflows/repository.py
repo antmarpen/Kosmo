@@ -13,9 +13,26 @@ class WorkflowRepository:
     async def get_by_name(self, name):
         return await self.db.scalar(select(Workflow).where(Workflow.name == name))
 
+    async def find_name_conflict(self, name, exclude_workflow_id=None):
+        query = select(Workflow).where(func.lower(Workflow.name) == name.lower())
+        if exclude_workflow_id is not None:
+            query = query.where(Workflow.id != exclude_workflow_id)
+        return await self.db.scalar(query)
+
     async def create_workflow(self, name):
         row = Workflow(name=name)
         self.db.add(row)
+        try:
+            await self.db.flush()
+        except IntegrityError as error:
+            raise ConflictError("errors.workflow.name_conflict") from error
+        return row
+
+    async def rename_workflow(self, workflow_id, name):
+        row = await self.db.get(Workflow, workflow_id)
+        if row is None:
+            return None
+        row.name = name
         try:
             await self.db.flush()
         except IntegrityError as error:
@@ -28,6 +45,16 @@ class WorkflowRepository:
 
     async def get_latest_version(self, workflow_id):
         return await self.db.scalar(select(WorkflowVersion).where(WorkflowVersion.workflow_id == workflow_id).order_by(WorkflowVersion.version.desc()).limit(1))
+
+    async def list_versions(self, workflow_id, limit, offset=0):
+        """Bounded, offset-paginated metadata source for the activation picker, newest first."""
+        return list((await self.db.scalars(
+            select(WorkflowVersion)
+            .where(WorkflowVersion.workflow_id == workflow_id)
+            .order_by(WorkflowVersion.version.desc())
+            .offset(offset)
+            .limit(limit)
+        )).all())
 
     async def create_version(self, workflow_id, version, definition, published_by=None):
         row = WorkflowVersion(workflow_id=workflow_id, version=version, definition=definition, published_by=published_by)
@@ -74,6 +101,15 @@ class WorkflowRepository:
         query = select(WorkflowDraft).where(WorkflowDraft.author_id == author_id)
         query = query.where(WorkflowDraft.workflow_id == workflow_id) if workflow_id else query
         return list((await self.db.scalars(query.order_by(WorkflowDraft.updated_at.desc()))).all())
+
+    async def count_drafts_by_author(self, author_id):
+        """Grouped per-workflow draft counts for one author in a single query."""
+        rows = (await self.db.execute(
+            select(WorkflowDraft.workflow_id, func.count())
+            .where(WorkflowDraft.author_id == author_id)
+            .group_by(WorkflowDraft.workflow_id)
+        )).all()
+        return {workflow_id: count for workflow_id, count in rows}
 
     async def get_draft(self, workflow_id, draft_id):
         return await self.db.scalar(select(WorkflowDraft).where(WorkflowDraft.id == draft_id, WorkflowDraft.workflow_id == workflow_id))

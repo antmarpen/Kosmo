@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import i18next from "i18next";
@@ -12,7 +12,7 @@ vi.mock("@/api/auth", () => ({ api: { GET: get, POST: post } }));
 import { WorkflowListPage } from "./WorkflowListPage";
 
 /** Resolves through i18next so assertions hold both before and after the pending catalog keys land. */
-const catalogText = (key: string) => String(i18next.t(key as never));
+const catalogText = (key: string, params?: Record<string, unknown>) => String(i18next.t(key as never, params as never));
 
 // jsdom does not implement ResizeObserver, which the Radix popper-based
 // tooltip content measures with (same no-op stub convention as
@@ -26,26 +26,18 @@ vi.stubGlobal("ResizeObserver", ResizeObserverStub);
 
 /**
  * Exact backend contracts (backend/app/api/routes/workflows.py, backed by
- * backend/tests/domain/test_workflow_drafts.py):
- * - POST /workflows → 201 WorkflowVersionResponse {id, workflow_id, version, definition}
- * - POST /workflows/{workflow_id}/drafts → 201 {draft_id, revision}
+ * backend/tests/domain/test_workflow_publication.py):
+ * - POST /workflows → 201 WorkflowCreatedResponse {id, name, publication_revision, active_version, draft_id, draft_revision}
  * - Error bodies are flat {code, message_key, params?, details?} (backend/app/api/errors.py).
  */
 const createdWorkflow = {
-  id: "ver-1",
-  workflow_id: "wf-new",
-  version: 1,
-  definition: {
-    schema_version: "v1",
-    name: "Untitled workflow",
-    nodes: [
-      { type: "start", id: "start", input_form: [{ name: "topic", type: "string", required: true, label_message_key: "workflow.topic.label" }] },
-      { type: "end", id: "end" },
-    ],
-    edges: [{ from: "start", to: "end" }],
-  },
+  id: "wf-new",
+  name: "Review flow",
+  publication_revision: 0,
+  active_version: null,
+  draft_id: "draft-1",
+  draft_revision: 1,
 };
-const createdDraft = { draft_id: "draft-1", revision: 1 };
 
 function LocationProbe() {
   const location = useLocation();
@@ -90,15 +82,33 @@ describe("workflow list", () => {
     expect(within(draft).getByText("Publication status unavailable")).toBeInTheDocument();
   });
 
-  it("offers the generic Add action and the descriptive first-run CTA with a leading add icon", async () => {
+  it("renders the caller's draft count per row and stays quiet at zero", async () => {
+    // Drafts are author-private: the backend already reports only the
+    // caller's own drafts per workflow (test_workflow_publication.py).
+    get.mockResolvedValue({ data: [
+      { id: "wf-1", name: "Reviewed", active_version: null, draft_count: 2 },
+      { id: "wf-2", name: "Pristine", active_version: null, draft_count: 0 },
+    ] });
+    renderPage();
+
+    const row = await screen.findByRole("listitem", { name: /Reviewed/ });
+    expect(within(row).getByText(catalogText("workflows.list.draftCount", { count: 2 }))).toBeInTheDocument();
+    // Zero drafts show no count badge instead of a meaningless "0 drafts".
+    const clean = screen.getByRole("listitem", { name: /Pristine/ });
+    expect(within(clean).queryByText(catalogText("workflows.list.draftCount", { count: 0 }))).not.toBeInTheDocument();
+  });
+
+  it("offers the generic Add action and the descriptive first-run CTA, both opening the creation dialog", async () => {
     renderPage();
     expect(await screen.findByText("No workflows yet")).toBeInTheDocument();
 
-    const add = screen.getByRole("button", { name: "Add" });
-    expect(within(add).getByText(ICON_NAMES.add)).toHaveAttribute("aria-hidden", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
-    const createFirst = screen.getByRole("button", { name: "Create your first workflow" });
-    expect(within(createFirst).getByText(ICON_NAMES.add)).toHaveAttribute("aria-hidden", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByRole("button", { name: "Create your first workflow" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it("renders each row's Edit action as a trailing icon link inside the shared actions group", async () => {
@@ -157,49 +167,83 @@ describe("workflow list", () => {
     expect(edit).toHaveAccessibleName("Edit");
   });
 
-  it("creates a workflow and a draft from the backend contracts, then navigates to the editor URL", async () => {
+  it("asks for a name, creates only a workflow with an initial draft, and lands in the editor", async () => {
     post.mockReset();
-    post.mockResolvedValueOnce({ data: createdWorkflow }).mockResolvedValueOnce({ data: createdDraft });
+    post.mockResolvedValueOnce({ data: createdWorkflow });
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "Add" }));
 
-    expect(post).toHaveBeenNthCalledWith(1, "/workflows", { body: createdWorkflow.definition });
-    expect(post).toHaveBeenNthCalledWith(2, "/workflows/{workflow_id}/drafts", { params: { path: { workflow_id: createdWorkflow.workflow_id } } });
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(catalogText("workflows.new.nameLabel")), "Review flow");
+    await userEvent.click(within(dialog).getByRole("button", { name: catalogText("workflows.new.action") }));
+
+    // Creation sends the entered name only; the initial draft comes back in
+    // the same response and no version is published.
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith("/workflows", { body: { name: "Review flow" } });
     expect(await screen.findByTestId("location")).toHaveTextContent("/workflows/wf-new/edit?draftId=draft-1");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("keeps a stable label with busy feedback while creation is in flight and ignores duplicate submits", async () => {
+  it("keeps the dialog open with the entered name and surfaces a duplicate-name conflict", async () => {
     post.mockReset();
-    const pending = deferred();
-    post.mockImplementationOnce(() => pending.promise).mockResolvedValueOnce({ data: createdDraft });
-    renderPage();
-    const create = await screen.findByRole("button", { name: "Create your first workflow" });
-    await userEvent.click(create);
-    expect(create).toBeDisabled();
-    expect(create).toHaveAttribute("aria-busy", "true");
-    // The displayed label stays stable while loading; feedback comes from the
-    // decorative inline spinner instead of a label swap.
-    expect(within(create).getByText("Create your first workflow")).toBeInTheDocument();
-    expect(within(create).getByText(ICON_NAMES.spinner)).toHaveAttribute("aria-hidden", "true");
-
-    await userEvent.click(create);
-    pending.resolve({ data: createdWorkflow });
-    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
-    expect(post).toHaveBeenNthCalledWith(1, "/workflows", expect.anything());
-    expect(await screen.findByTestId("location")).toHaveTextContent("/workflows/wf-new/edit");
-  });
-
-  it("surfaces backend draft-creation errors without navigating and re-enables creation", async () => {
-    post.mockReset();
-    post.mockResolvedValueOnce({ data: createdWorkflow })
-      .mockResolvedValueOnce({ error: { code: "NOT_FOUND", message_key: "errors.workflow.not_found", params: {}, details: [] } });
+    post.mockResolvedValueOnce({ error: { code: "CONFLICT", message_key: "errors.workflow.name_conflict", params: { name: "Review flow" }, details: [] } });
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "Add" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Workflow not found.");
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(catalogText("workflows.new.nameLabel")), "Review flow");
+    await userEvent.click(within(dialog).getByRole("button", { name: catalogText("workflows.new.action") }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("A workflow with this name already exists.");
+    expect(within(dialog).getByLabelText(catalogText("workflows.new.nameLabel"))).toHaveValue("Review flow");
     expect(screen.queryByTestId("location")).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Add" })).toBeEnabled());
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a stable submit label with busy feedback, holds the dialog open, and ignores duplicate submits", async () => {
+    post.mockReset();
+    const pending = deferred();
+    post.mockImplementationOnce(() => pending.promise);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Add" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(catalogText("workflows.new.nameLabel")), "Review flow");
+    const submit = within(dialog).getByRole("button", { name: catalogText("workflows.new.action") });
+    await userEvent.click(submit);
+    expect(submit).toBeDisabled();
+    expect(submit).toHaveAttribute("aria-busy", "true");
+    // The displayed label stays stable while loading; feedback comes from the
+    // decorative inline spinner instead of a label swap.
+    expect(within(submit).getByText(catalogText("workflows.new.action"))).toBeInTheDocument();
+    expect(within(submit).getByText(ICON_NAMES.spinner)).toHaveAttribute("aria-hidden", "true");
+    // Escape cannot dismiss the dialog while the creation is in flight.
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.click(submit);
+    expect(post).toHaveBeenCalledTimes(1);
+
+    pending.resolve({ data: createdWorkflow });
+    expect(await screen.findByTestId("location")).toHaveTextContent("/workflows/wf-new/edit?draftId=draft-1");
+  });
+
+  it("surfaces backend creation errors without navigating and re-enables creation", async () => {
+    post.mockReset();
+    post.mockResolvedValueOnce({ error: { code: "PERMISSION_DENIED", message_key: "errors.permission.denied", params: {}, details: [] } });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Add" }));
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(catalogText("workflows.new.nameLabel")), "Review flow");
+    await userEvent.click(within(dialog).getByRole("button", { name: catalogText("workflows.new.action") }));
+
+    // Creation is a single call; a backend failure keeps the dialog open with
+    // the entered name and re-enables the submit for a corrected attempt.
+    expect(await screen.findByRole("alert")).toHaveTextContent("Permission denied.");
+    expect(screen.queryByTestId("location")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: catalogText("workflows.new.action") })).toBeEnabled();
   });
 
   it("renders flat backend API errors through the Kosmo error alert", async () => {

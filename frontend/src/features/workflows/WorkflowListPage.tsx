@@ -1,17 +1,22 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/auth";
 import { RowActionLink, RowActions } from "@/components/RowActions";
 import { KosmoErrorAlert, type KosmoError } from "@/components/KosmoErrorAlert";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
+import { Input } from "@/components/ui/input";
 import type { components } from "@/api/schema";
 
 type Workflow = components["schemas"]["WorkflowResponse"];
-type CreatedWorkflow = components["schemas"]["WorkflowVersionResponse"];
-/** Contract of POST /workflows/{workflow_id}/drafts (route has no response_model). */
-type CreatedDraft = { draft_id: string; revision: number };
+/**
+ * Contract of POST /workflows: create-only. The response carries the workflow
+ * plus its initial draft; no version is published at creation.
+ */
+type CreatedWorkflow = components["schemas"]["WorkflowCreatedResponse"];
 
 function unwrap<T>(result: { data?: T; error?: unknown }): T {
   if (result.error || result.data === undefined) throw result.error ?? new Error("Empty API response");
@@ -31,8 +36,18 @@ export function WorkflowListPage() {
   const navigate = useNavigate();
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<KosmoError | null>(null);
+  // Creation dialog state: the workflow name is required and case-insensitively
+  // unique, so conflicts from the backend surface inside the dialog and keep
+  // the entered name for correction.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [createError, setCreateError] = useState<KosmoError | null>(null);
+  // Focus contract shared with ConfirmDialog/ActivateDialog: initial focus on
+  // the name field (the form's primary input), restore the opener on close.
+  const nameRef = useRef<HTMLInputElement>(null);
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,28 +63,24 @@ export function WorkflowListPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const createWorkflow = async () => {
+  const submitCreate = async (event: FormEvent) => {
+    event.preventDefault();
+    if (creating) return;
     setCreating(true);
-    setError(null);
-    const name = t("workflows.new.defaultName");
+    setCreateError(null);
     try {
-      const created: CreatedWorkflow = unwrap(await api.POST("/workflows", { body: {
-        schema_version: "v1",
-        name,
-        nodes: [
-          { type: "start", id: "start", input_form: [{ name: "topic", type: "string", required: true, label_message_key: "workflow.topic.label" }] },
-          { type: "end", id: "end" },
-        ],
-        edges: [{ from: "start", to: "end" }],
-      } }));
-      const draft = unwrap(await api.POST("/workflows/{workflow_id}/drafts", { params: { path: { workflow_id: created.workflow_id } } })) as CreatedDraft;
-      if (!draft.draft_id) throw new Error("Draft response did not include draft_id");
-      navigate(`/workflows/${created.workflow_id}/edit?draftId=${encodeURIComponent(draft.draft_id)}`);
+      const created: CreatedWorkflow = unwrap(await api.POST("/workflows", { body: { name: name.trim() } }));
+      setCreateOpen(false);
+      navigate(`/workflows/${created.id}/edit?draftId=${encodeURIComponent(created.draft_id)}`);
     } catch (cause) {
-      setError(toKosmoError(cause));
+      setCreateError(toKosmoError(cause));
     } finally {
       setCreating(false);
     }
+  };
+
+  const holdOpenWhileCreating = (event: Event) => {
+    if (creating) event.preventDefault();
   };
 
   return <section className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 sm:px-8 sm:py-10">
@@ -78,7 +89,7 @@ export function WorkflowListPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-balance">{t("workflows.list.title")}</h1>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{t("workflows.list.description")}</p>
       </div>
-      <Button className="w-full sm:w-auto" loading={creating} onClick={() => void createWorkflow()}>
+      <Button className="w-full sm:w-auto" onClick={() => { setCreateError(null); setCreateOpen(true); }}>
         <Icon name="add" />
         {t("common.add")}
       </Button>
@@ -89,7 +100,7 @@ export function WorkflowListPage() {
       <div className="mt-8 rounded-lg border border-border bg-card px-5 py-8 sm:px-7">
         <h2 className="font-medium">{t("workflows.list.emptyTitle")}</h2>
         <p className="mt-1 max-w-xl text-sm leading-6 text-muted-foreground">{t("workflows.list.emptyDescription")}</p>
-        <Button className="mt-5" variant="outline" loading={creating} onClick={() => void createWorkflow()}>
+        <Button className="mt-5" variant="outline" onClick={() => { setCreateError(null); setCreateOpen(true); }}>
           <Icon name="add" />
           {t("workflows.new.createFirst")}
         </Button>
@@ -106,6 +117,8 @@ export function WorkflowListPage() {
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {active ? <span className="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">{t("workflows.list.activeVersion", { version: active.version })}</span> : <span className="inline-flex items-center rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">{t("workflows.list.noActiveVersion")}</span>}
                 <span className={active ? "inline-flex items-center rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary" : "inline-flex items-center rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground"}>{active ? t("workflows.list.published") : t("workflows.list.publicationUnknown")}</span>
+                {/* Drafts are author-private: the count covers only the caller's own drafts. */}
+                {workflow.draft_count > 0 && <span className="inline-flex items-center rounded-md border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">{t("workflows.list.draftCount", { count: workflow.draft_count })}</span>}
                 <span className="text-xs text-muted-foreground">{updatedAt ? new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium" }).format(new Date(updatedAt)) : t("workflows.list.dateUnavailable")}</span>
               </div>
             </div>
@@ -127,5 +140,52 @@ export function WorkflowListPage() {
         })}
       </ul>
     )}
+
+    <Dialog open={createOpen} onOpenChange={(open) => { if (!creating) setCreateOpen(open); }}>
+      <DialogContent
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          lastFocusedRef.current = document.activeElement as HTMLElement | null;
+          nameRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          lastFocusedRef.current?.focus();
+          lastFocusedRef.current = null;
+        }}
+        onEscapeKeyDown={holdOpenWhileCreating}
+        onInteractOutside={holdOpenWhileCreating}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("workflows.new.dialogTitle" as never)}</DialogTitle>
+          <DialogDescription>{t("workflows.new.dialogDescription" as never)}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={(event) => void submitCreate(event)} className="flex flex-col gap-4">
+          <label htmlFor="workflow-create-name" className="grid gap-1.5 text-sm font-medium">
+            {t("workflows.new.nameLabel" as never)}
+            <Input
+              id="workflow-create-name"
+              ref={nameRef}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder={t("workflows.new.namePlaceholder" as never)}
+              autoComplete="off"
+              maxLength={200}
+              required
+              disabled={creating}
+            />
+          </label>
+          {createError && <KosmoErrorAlert error={createError} />}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={creating} onClick={() => setCreateOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="submit" loading={creating} disabled={!name.trim()}>
+              {t("workflows.new.action")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </section>;
 }

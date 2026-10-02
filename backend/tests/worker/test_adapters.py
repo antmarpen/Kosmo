@@ -583,4 +583,7 @@ def test_real_opencode_container_round_trip():
         "model": os.getenv("KOSMO_PROVIDER_TEST_MODEL", "opencode/big-pickle"),
     }))
     assert result["ok"] is True
-    assert result["response_snippet"].strip()
+    # The result carries only the non-empty-response assertion and latency;
+    # the agent's words never leave the container.
+    assert result["response_non_empty"] is True
+    assert "response_snippet" not in result

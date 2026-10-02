@@ -8,6 +8,10 @@ class PublishDraftRequest(BaseModel):
     confirm_overwrite: bool = False
 
 
+class CreateWorkflowRequest(BaseModel):
+    name: str = Field(max_length=200)
+
+
 class ActivateWorkflowRequest(BaseModel):
     version_id: str
     expected_active_revision: int = Field(ge=0)
@@ -27,11 +31,27 @@ class ActiveVersionResponse(BaseModel):
     definition: dict
 
 
+class WorkflowVersionSummary(BaseModel):
+    """Listing metadata for the activation picker; never carries the definition."""
+
+    id: str
+    version: int
+    published_at: datetime
+    is_active: bool
+
+
 class WorkflowResponse(BaseModel):
     id: str
     name: str
     publication_revision: int
     active_version: ActiveVersionResponse | None
+    """Drafts of this workflow owned by the requesting user (drafts are author-private)."""
+    draft_count: int = 0
+
+
+class WorkflowCreatedResponse(WorkflowResponse):
+    draft_id: str
+    draft_revision: int
 
 
 class WorkflowDraftSave(BaseModel):

@@ -13,6 +13,10 @@ def validate_workflow(
 ) -> None:
     """Validate graph-wide invariants and raise one error containing every violation."""
     issues: list[ErrorDetail] = []
+    # A blank or whitespace-only workflow name is rejected like at creation:
+    # publication must never rename a workflow to an unnamed draft.
+    if not definition.name.strip():
+        issues.append(_detail("name_required"))
     nodes = definition.nodes
     ids = [node.id for node in nodes]
     node_ids = set(ids)

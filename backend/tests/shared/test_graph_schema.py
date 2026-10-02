@@ -68,6 +68,26 @@ def test_new_node_variants_reject_extra_fields():
         WorkflowDefinition.model_validate(value)
 
 
+def http_definition(outputs):
+    value = valid_definition()
+    value["nodes"][1] = {"type": "http", "id": "http", "method": "GET", "url": "https://example.invalid", "outputs": outputs}
+    return value
+
+
+def test_http_node_outputs_accept_empty_and_valid_identifier_lists():
+    assert WorkflowDefinition.model_validate(http_definition([])).nodes[1].outputs == []
+    assert WorkflowDefinition.model_validate(http_definition(["report", "summary.md"])).nodes[1].outputs == ["report", "summary.md"]
+
+
+@pytest.mark.parametrize("outputs", [["../escape"], ["bad/name"], ["x" * 65], [""], ["nested/file"]])
+def test_http_node_output_violations_are_structured_issues_not_type_errors(outputs):
+    with pytest.raises(ValidationError) as caught:
+        WorkflowDefinition.model_validate(http_definition(outputs))
+    error = caught.value.errors()[0]
+    assert error["type"] == "string_pattern_mismatch"
+    assert error["loc"] == ("nodes", 1, "http", "outputs", 0)
+
+
 @pytest.mark.parametrize("location,value", [
     ("node", "/etc/passwd"), ("node", "../escape"), ("node", "bad/name"),
     ("node", "x" * 65), ("node", ""), ("field", "../escape"),

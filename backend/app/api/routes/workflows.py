@@ -4,9 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_roles
 from app.core.db import get_db
 from app.domain.workflows.repository import WorkflowRepository
-from app.domain.workflows.schemas import ActivateWorkflowRequest, PublishDraftRequest, WorkflowDraftMetadata, WorkflowDraftResponse, WorkflowDraftSave, WorkflowResponse, WorkflowVersionResponse
+from app.domain.workflows.schemas import ActivateWorkflowRequest, CreateWorkflowRequest, PublishDraftRequest, WorkflowCreatedResponse, WorkflowDraftMetadata, WorkflowDraftResponse, WorkflowDraftSave, WorkflowResponse, WorkflowVersionResponse, WorkflowVersionSummary
 from app.domain.workflows.service import WorkflowService
-from shared.graph.schema import WorkflowDefinition
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -15,9 +14,10 @@ def service(db: AsyncSession) -> WorkflowService:
     return WorkflowService(WorkflowRepository(db))
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=WorkflowVersionResponse, dependencies=[Depends(require_roles("admin", "builder"))])
-async def publish(definition: WorkflowDefinition, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await service(db).publish(definition, user.id)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=WorkflowCreatedResponse, dependencies=[Depends(require_roles("admin", "builder"))])
+async def create_workflow(body: CreateWorkflowRequest, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Create a workflow with an initial empty draft; never publishes a version."""
+    return await service(db).create_workflow(body.name, user.id)
 
 
 @router.post("/{workflow_id}/drafts/{draft_id}/publish", status_code=status.HTTP_201_CREATED, response_model=WorkflowVersionResponse, dependencies=[Depends(require_roles("admin", "builder"))])
@@ -32,13 +32,21 @@ async def activate_version(workflow_id: str, body: ActivateWorkflowRequest, db: 
 
 
 @router.get("", response_model=list[WorkflowResponse])
-async def list_workflows(_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await service(db).list_workflows()
+async def list_workflows(user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await service(db).list_workflows(user.id)
 
 
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
 async def get_workflow(workflow_id: str, _user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await service(db).get_workflow(workflow_id)
+
+
+@router.get("/{workflow_id}/versions", response_model=list[WorkflowVersionSummary])
+async def list_workflow_versions(workflow_id: str, limit: int = Query(50, ge=1, le=100),
+                                 offset: int = Query(0, ge=0),
+                                 _user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Bounded, offset-paginated listing of published versions (metadata only) for the activation picker."""
+    return await service(db).list_published_versions(workflow_id, limit, offset)
 
 
 @router.post("/{workflow_id}/drafts", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_roles("admin", "builder"))])

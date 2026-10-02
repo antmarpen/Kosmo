@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Background, Controls, Handle, Position, ReactFlow, type Connection, type Edge, type EdgeChange, type Node, type NodeChange, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -24,20 +24,30 @@ function EditorNode({ data, selected }: NodeProps<Node<{ kind: WorkflowNode["typ
 export const nodeVisuals = visual;
 export const workflowNodeTypes = { workflowNode: EditorNode };
 
+/** Drag-and-drop payload MIME for palette → canvas node additions. */
+export const NODE_DRAG_MIME = "application/x-kosmo-node-type";
+const NODE_KINDS = new Set(Object.keys(visual) as WorkflowNode["type"][]);
+
 export type CanvasProps = {
   state: WorkflowEditorState;
   onPositionChange: (positions: Record<string, { x: number; y: number }>) => void;
   onSelectionChange: (nodeIds: string[], edge?: WorkflowEdge) => void;
   onConnect: (edge: WorkflowEdge) => void;
   onDeleteSelection: () => void;
+  /** Palette drag dropped on the canvas: adds a node of `type` at `position` (flow space). */
+  onDropNode?: (type: WorkflowNode["type"], position: { x: number; y: number }) => void;
 };
 
 type CanvasNode = Node<{ kind: WorkflowNode["type"] }>;
 
-export function Canvas({ state, onPositionChange, onSelectionChange, onConnect, onDeleteSelection }: CanvasProps) {
+export function Canvas({ state, onPositionChange, onSelectionChange, onConnect, onDeleteSelection, onDropNode }: CanvasProps) {
   const { t } = useTranslation();
-  const flow = useRef<{ fitView: () => void } | null>(null);
+  const flow = useRef<{ fitView: () => void; screenToFlowPosition: (position: { x: number; y: number }) => { x: number; y: number } } | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
+  // Palette drag feedback: dragenter/leave bubble from the pane's children, so
+  // a depth counter (not a boolean toggle) decides when the highlight shows.
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
   // Bumped when React Flow reports node dimensions so the nodes memo rebuilds
   // entries carrying the measured size; the following renders are idempotent.
   const [measuredTick, setMeasuredTick] = useState(0);
@@ -203,7 +213,58 @@ export function Canvas({ state, onPositionChange, onSelectionChange, onConnect, 
     commitSelection(selectedNodes.map((node) => node.id), selectedEdges[0] ? { from: selectedEdges[0].source, to: selectedEdges[0].target } : null);
   }, [commitSelection]);
 
-  return <div ref={canvas} className="workflow-canvas relative min-h-0 flex-1" onKeyDown={(event) => { if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); onDeleteSelection(); } }} tabIndex={0} aria-label={t("workflowEditor.canvas")}>
+  // Palette drag-and-drop: only payloads carrying the node-type MIME mark the
+  // canvas as a drop target. dragenter/leave bubble from the pane's children,
+  // so a depth counter decides when the highlight shows; dragOver must
+  // preventDefault for the browser to allow the drop at all.
+  const isNodeDrag = (event: DragEvent<HTMLDivElement>) => event.dataTransfer.types.includes(NODE_DRAG_MIME);
+  const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    if (!isNodeDrag(event)) return;
+    dragDepth.current += 1;
+    setDragOver(true);
+  };
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!isNodeDrag(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!isNodeDrag(event)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  };
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    const type = event.dataTransfer.getData(NODE_DRAG_MIME) as WorkflowNode["type"];
+    dragDepth.current = 0;
+    setDragOver(false);
+    if (!NODE_KINDS.has(type)) return;
+    event.preventDefault();
+    // React Flow's own conversion when the instance is ready (every real
+    // browser); the same math over the persisted viewport otherwise (jsdom,
+    // where React Flow never initializes without real measurements).
+    const position = flow.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      ?? (() => {
+        const rect = canvas.current?.getBoundingClientRect();
+        const { x, y, zoom } = state.layout.viewport;
+        return rect
+          ? { x: (event.clientX - rect.left - x) / zoom, y: (event.clientY - rect.top - y) / zoom }
+          : { x: event.clientX, y: event.clientY };
+      })();
+    onDropNode?.(type, position);
+  };
+
+  return <div
+    ref={canvas}
+    className={`workflow-canvas relative min-h-0 flex-1 outline-none ${dragOver ? "ring-2 ring-inset ring-primary/40" : ""}`}
+    data-dragover={dragOver || undefined}
+    onDragEnter={handleDragEnter}
+    onDragOver={handleDragOver}
+    onDragLeave={handleDragLeave}
+    onDrop={handleDrop}
+    onKeyDown={(event) => { if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); onDeleteSelection(); } }}
+    tabIndex={0}
+    aria-label={t("workflowEditor.canvas")}
+  >
     <ReactFlow nodes={nodes} edges={edges} nodeTypes={workflowNodeTypes} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={handleConnect} onSelectionChange={mirrorSelection} onInit={(instance) => { flow.current = instance; }} onNodeClick={() => canvas.current?.focus()} onPaneClick={() => commitSelection([], null)} fitView deleteKeyCode={null} nodesDraggable nodesConnectable elementsSelectable>
       <Background color="#aab7c4" gap={22} size={1} /><Controls />
     </ReactFlow>

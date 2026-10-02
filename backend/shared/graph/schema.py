@@ -38,7 +38,7 @@ class HttpNode(ContractModel):
     id: str = Field(pattern=SAFE_IDENTIFIER)
     method: str
     url: str
-    outputs: list[str] = Field(pattern=SAFE_IDENTIFIER)
+    outputs: list[SafeIdentifier]
 
 
 class AgentConfig(ContractModel):

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createNode, deleteEdge, deleteNode, deserializeWorkflow, serializeWorkflow, validateWorkflow, type WorkflowEditorState, type WorkflowNode } from "./model";
+import { createNode, deleteEdge, deleteNode, deserializeWorkflow, parseFormFieldArray, parseJsonObject, serializeWorkflow, validateWorkflow, type WorkflowEditorState, type WorkflowNode } from "./model";
 
 const nodes: WorkflowNode[] = [
   { type: "start", id: "start", input_form: [] },
@@ -47,5 +47,68 @@ describe("workflow editor model", () => {
   it("provides defaults for Decision and Workflow nodes", () => {
     expect(createNode("decision", "d")).toEqual({ type: "decision", id: "d", selected_next_node_id: "" });
     expect(createNode("workflow", "w")).toEqual({ type: "workflow", id: "w", workflow_id: "" });
+  });
+});
+
+describe("safe JSON paste parsing", () => {
+  const validField = { name: "topic", type: "string", required: true, label_message_key: "workflow.topic.label" };
+
+  it("accepts a structurally valid FormField array, including the empty array", () => {
+    expect(parseFormFieldArray(JSON.stringify([validField]))).toEqual({ ok: true, value: [validField] });
+    expect(parseFormFieldArray("[]")).toEqual({ ok: true, value: [] });
+  });
+
+  it("rejects a non-array value as a container-kind failure", () => {
+    expect(parseFormFieldArray('{"name":"topic"}')).toEqual({ ok: false, reason: "kind" });
+  });
+
+  it.each([
+    ["[{}]"],
+    ['[{"name":3,"type":"string","required":true,"label_message_key":"k"}]'],
+    ['[{"name":"topic","type":"string","required":true}]'],
+    ['[{"name":"topic","type":"integer","required":true,"label_message_key":"k"}]'],
+    ['[{"name":"topic","type":"string","required":"yes","label_message_key":"k"}]'],
+    ['["topic"]'],
+    ["[null]"],
+    ["[[]]"],
+  ])("rejects structurally invalid form entries as shape failures: %j", (text) => {
+    expect(parseFormFieldArray(text)).toEqual({ ok: false, reason: "shape" });
+  });
+
+  it("rejects malformed JSON as a syntax failure", () => {
+    expect(parseFormFieldArray("[{")).toEqual({ ok: false, reason: "malformed" });
+    expect(parseFormFieldArray("not json")).toEqual({ ok: false, reason: "malformed" });
+  });
+
+  it("accepts JSON objects for validation params and preserves unknown keys verbatim", () => {
+    const text = '{"artifact":"summary.md","custom_flag":true,"unknown_key":[1,2]}';
+    expect(parseJsonObject(text)).toEqual({ ok: true, value: { artifact: "summary.md", custom_flag: true, unknown_key: [1, 2] } });
+  });
+
+  it.each(["[]", '"text"', "3", "null"])("rejects non-object params as container-kind failures: %j", (text) => {
+    expect(parseJsonObject(text)).toEqual({ ok: false, reason: "kind" });
+  });
+
+  it("rejects malformed params JSON as a syntax failure", () => {
+    expect(parseJsonObject('{"artifact":')).toEqual({ ok: false, reason: "malformed" });
+  });
+
+  it("round-trips a valid pasted input_form and edited params through save/reload", () => {
+    const form = parseFormFieldArray(JSON.stringify([validField]));
+    const params = parseJsonObject('{"artifact":"summary.md","custom_flag":true}');
+    expect(form.ok && params.ok).toBe(true);
+    if (!form.ok || !params.ok) return;
+    const editor = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [createNode("start", "start"), createNode("ai", "ai"), createNode("end", "end")], edges: [{ from: "start", to: "ai" }, { from: "ai", to: "end" }] });
+    editor.selection.nodeIds = ["start"];
+    const saved = serializeWorkflow({
+      ...editor,
+      definition: { ...editor.definition, nodes: editor.definition.nodes.map((node) => (node.type === "start" ? { ...node, input_form: form.value } : node.type === "ai" ? { ...node, validation: { levels: node.validation.levels.map((level, index) => (index === 0 ? { ...level, params_schema: params.value } : level)) } } : node)) },
+    });
+    const reloaded = deserializeWorkflow(saved);
+    const start = reloaded.definition.nodes.find((node) => node.id === "start") as Extract<WorkflowNode, { type: "start" }>;
+    const ai = reloaded.definition.nodes.find((node) => node.id === "ai") as Extract<WorkflowNode, { type: "ai" }>;
+    expect(start.input_form).toEqual([validField]);
+    expect(ai.validation.levels[0].params_schema).toEqual({ artifact: "summary.md", custom_flag: true });
+    expect(validateWorkflow(reloaded).nodeErrors["start"]).toBeUndefined();
   });
 });

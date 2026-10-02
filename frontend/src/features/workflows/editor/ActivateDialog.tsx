@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export type PublishedVersionChoice = { id: string; version: number };
+export type PublishedVersionChoice = { id: string; version: number; /** Marks the currently active version (from the published-version listing). */ is_active?: boolean };
 
 export type ActivateDialogProps = {
   open: boolean;
@@ -22,16 +22,28 @@ export type ActivateDialogProps = {
   /** While the activation request is in flight the dialog cannot be dismissed. */
   loading?: boolean;
   onConfirm: (versionId: string) => void;
+  /**
+   * Whether the server has more published-version pages after `candidates`.
+   * When true (and `onLoadMore` is set) an explicit load-more control lets
+   * the user reach older published versions beyond the first page.
+   */
+  hasMore?: boolean;
+  /** While the next version page is loading. */
+  loadingMore?: boolean;
+  /** Appends the next page of published versions to `candidates`. */
+  onLoadMore?: () => void;
 };
 
 /**
  * Version picker for explicit activation (publishing never activates on its
- * own). Only shows versions the editor can name — the one just published in
- * this session and the currently active one — because the API has no
- * version-list endpoint yet. The parent owns the activate request; this
- * dialog only reports the chosen version id.
+ * own). Candidates come from the published-version listing, so every published
+ * version — including previously published inactive ones — stays selectable
+ * after a reload; the currently active one is marked. Older versions beyond
+ * the loaded pages stay reachable through the load-more control. The parent
+ * owns the activate request and the version pagination; this dialog only
+ * reports the chosen version id and forwards load-more clicks.
  */
-export function ActivateDialog({ open, onOpenChange, candidates, versionId, loading = false, onConfirm }: ActivateDialogProps) {
+export function ActivateDialog({ open, onOpenChange, candidates, versionId, loading = false, onConfirm, hasMore = false, loadingMore = false, onLoadMore }: ActivateDialogProps) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(versionId);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -66,12 +78,12 @@ export function ActivateDialog({ open, onOpenChange, candidates, versionId, load
         onInteractOutside={holdOpenWhileLoading}
       >
         <DialogHeader>
-          <DialogTitle>{t("workflowEditor.activateTitle" as never)}</DialogTitle>
-          <DialogDescription>{t("workflowEditor.activateDescription" as never)}</DialogDescription>
+          <DialogTitle>{t("workflowEditor.activateTitle")}</DialogTitle>
+          <DialogDescription>{t("workflowEditor.activateDescription")}</DialogDescription>
         </DialogHeader>
         {candidates.length > 0 ? (
           <label htmlFor="workflow-activate-version" className="grid gap-1.5 text-sm font-medium">
-            {t("workflowEditor.activateVersionLabel" as never)}
+            {t("workflowEditor.activateVersionLabel")}
             {/* Select styling mirrored from VerifyConnectionDialog until a
                 shared select primitive is extracted. */}
             <select
@@ -83,13 +95,28 @@ export function ActivateDialog({ open, onOpenChange, candidates, versionId, load
             >
               {candidates.map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>
-                  {t("workflows.list.activeVersion", { version: candidate.version })}
+                  {candidate.is_active
+                    // Pending catalog key (coordinator adds it).
+                    ? String(t("workflowEditor.activateOptionActive" as never, { version: candidate.version } as never))
+                    : t("workflows.list.activeVersion", { version: candidate.version })}
                 </option>
               ))}
             </select>
           </label>
         ) : (
-          <p className="rounded-md bg-muted/60 px-3 py-3 text-sm">{t("workflowEditor.activateNoVersions" as never)}</p>
+          <p className="rounded-md bg-muted/60 px-3 py-3 text-sm">{t("workflowEditor.activateNoVersions")}</p>
+        )}
+        {candidates.length > 0 && hasMore && onLoadMore && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            loading={loadingMore}
+            onClick={onLoadMore}
+          >
+            {t("workflowEditor.activateLoadMore")}
+          </Button>
         )}
         <DialogFooter>
           <Button ref={cancelRef} type="button" variant="outline" disabled={loading} onClick={() => onOpenChange(false)}>

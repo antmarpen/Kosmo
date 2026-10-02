@@ -2,7 +2,7 @@ import uuid
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,8 +13,12 @@ JsonType = JSON().with_variant(JSONB, "postgresql")
 
 class Workflow(Base):
     __tablename__ = "workflows"
+    # Workflow names are case-insensitively unique at the database level
+    # through a functional unique index on lower(name) (migration 0020), so
+    # concurrent "Billing"/"billing" creations or renames cannot both win.
+    __table_args__ = (Index("uq_workflows_name_ci", func.lower(text("name")), unique=True),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
     publication_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
