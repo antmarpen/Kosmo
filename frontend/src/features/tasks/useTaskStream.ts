@@ -17,6 +17,12 @@ export function useTaskStream(taskId: string | undefined, onEvent: (event: TaskE
         if (!response.ok || !response.body) throw new Error("Stream unavailable");
         failures = 0;
         if (pollTimer) { clearInterval(pollTimer); pollTimer = undefined; }
+        // Resuming after a normal close or an error has no guaranteed event:
+        // changes whose event id is already committed to lastId are never
+        // replayed, and a successful connect resets the failure counter, so
+        // the polling fallback may never engage. Reconcile once per resumed
+        // connection; poll is a plain reload and cannot loop.
+        if (lastId) callbacks.current.poll();
         const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = "", current: Partial<TaskEvent> = {};
         while (!stopped) {
           const { value, done } = await reader.read(); if (done) break;

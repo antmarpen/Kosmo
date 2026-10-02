@@ -24,8 +24,17 @@ async function bodyOf(input: any) { return input instanceof Request ? input.clon
 function setup(path: string, fetcher: typeof fetch) { setTokens("test", "refresh"); globalThis.fetch = vi.fn(fetcher); return render(<AuthProvider><MemoryRouter initialEntries={[path]}><Routes><Route path="/tasks" element={<TaskListPage/>}/><Route path="/tasks/new" element={<NewTaskPage/>}/><Route path="/tasks/:id" element={<TaskDetailPage/>}/></Routes></MemoryRouter></AuthProvider>); }
 const task = (state = "failed", notes: any[] = []) => ({ id:"t1",state,workflow_id:"reference-security-analysis",created_at:"2026-09-30T12:00:00Z",node_executions:[{id:"n1",node_id:"analyze",state,error:{code:"VALIDATION_EXHAUSTED",message_key:"errors.node.validation_exhausted",params:{attempts:3,node:"analyze"}}},{id:"n2",node_id:"runtime",state,error:{code:"AGENT_RUNTIME_FAILED",message_key:"errors.agent.runtime_failed",params:{reason:"RuntimeError"}}}],notes,artifacts:[] });
 const inputRequest = [{ id:"input-request", message_key:"tasks.notes.input_requested", params:{ answer_recorded:false, node_execution_id:"node-exec-7", request_id:"request-9" } }];
-/** WorkflowResponse fixtures: `active_version` is null until a version is published (backend/app/domain/workflows/schemas.py). */
-const activeVersion = { id: "ver-1", version: 1, definition: {} };
+/** WorkflowResponse fixtures: `active_version` is null until a version is published (backend/app/domain/workflows/schemas.py). The published definition carries the Start node's authored input_form (schema v1). */
+const activeVersion = {
+  id: "ver-1",
+  version: 1,
+  definition: {
+    schema_version: "v1",
+    name: "reference-security-analysis",
+    nodes: [{ type: "start", id: "start", input_form: [{ name: "topic", type: "string", required: true, label_message_key: "tasks.topic" }] }],
+    edges: [],
+  },
+};
 const launchableWorkflow = (id: string, name: string) => ({ id, name, active_version: activeVersion });
 const draftWorkflow = (id: string, name: string) => ({ id, name, active_version: null });
 /** Resolves through i18next so assertions hold both before and after the pending catalog keys land. */
@@ -38,6 +47,83 @@ describe("task views",()=>{
     setup("/tasks",vi.fn(async(input:any)=>requestUrl(input)==="/api/tasks/events"?stream():new Response(JSON.stringify([ {...task(listCalls++===0?"queued":"running"),notes:[]} ]))));
     expect(await screen.findByText("Queued")).toBeInTheDocument();
     await screen.findByText("Running",{}, {timeout:3000});
+  });
+  it("never regresses the detail badge to a stale out-of-order response",async()=>{
+    let eventCalls=0, detailCalls=0;
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      // One SSE state event triggers a second load; the stream then stays open
+      // (empty) so no further loads interfere with the race under test.
+      if(path==="/api/tasks/t1/events")return eventCalls++===0?stream("task.state",{task_id:"t1",state:"failed"}):emptyStream();
+      if(path==="/api/tasks/t1"){
+        // Mount load is slow and carries the OLDER snapshot; the
+        // SSE-triggered load resolves fast with the NEWER state. The slow
+        // stale response must never overwrite the fresher badge.
+        return detailCalls++===0
+          ? new Promise<Response>(resolve=>setTimeout(()=>resolve(new Response(JSON.stringify({task:{...task("running"),notes:[]}}))),250))
+          : new Response(JSON.stringify({task:{...task("failed"),notes:[]}}));
+      }
+      return new Response(JSON.stringify({task:{...task("failed"),notes:[]}}));
+    });
+    setup("/tasks/t1",fetcher);
+    // The SSE-triggered load resolves fast with the fresh state; the slow
+    // mount response (older snapshot) lands afterwards and must be ignored:
+    // the badge must stay on the fresh state, never regress to the stale one.
+    await new Promise(resolve=>setTimeout(resolve,600));
+    expect(screen.getAllByText("Failed").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Running")).toHaveLength(0);
+  });
+  it("reconciles a state change missed across a normal stream close",async()=>{
+    // Observed freeze (e2e phase1): the reload triggered by an event can race
+    // the backend commit and still report the older state; the stream then
+    // closes normally and the resumed connection has no new event to deliver
+    // (the event id is already committed to Last-Event-ID). The reconnect
+    // itself must reconcile, or the badge stays stale forever.
+    let streamCalls=0, detailCalls=0;
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      if(path==="/api/tasks/t1/events"){
+        streamCalls++;
+        // First connection delivers the state event, then closes normally.
+        // The resumed connection stays open but has no event to replay.
+        return streamCalls===1?stream("task.state",{task_id:"t1",state:"failed"}):emptyStream();
+      }
+      if(path==="/api/tasks/t1"){
+        detailCalls++;
+        // The event-triggered reload races the commit and still observes the
+        // older state; only a reload fired after the reconnect sees "failed".
+        return new Response(JSON.stringify({task:{...task(detailCalls<=2?"running":"failed"),notes:[]}}));
+      }
+      return new Response(JSON.stringify({task:{...task("failed"),notes:[]}}));
+    });
+    setup("/tasks/t1",fetcher);
+    expect((await screen.findAllByText("Running")).length).toBeGreaterThan(0);
+    await screen.findAllByText("Failed",{}, {timeout:4000});
+    await waitFor(()=>expect(screen.queryAllByText("Running")).toHaveLength(0));
+  });
+  it("resumes with Last-Event-ID and applies events replayed after a normal close",async()=>{
+    let streamCalls=0, detailCalls=0;
+    const cursors:(string|null)[]=[];
+    const gapEvent=new Response(new ReadableStream({async start(controller){await new Promise(resolve=>setTimeout(resolve,30));controller.enqueue(new TextEncoder().encode(`id: 2\nevent: task.state\ndata: ${JSON.stringify({task_id:"t1",state:"failed"})}\n\n`));}}),{status:200});
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      if(path==="/api/tasks/t1/events"){
+        streamCalls++;
+        cursors.push(input instanceof Request?input.headers.get("Last-Event-ID"):null);
+        return streamCalls===1?stream("task.state",{task_id:"t1",state:"running"}):gapEvent;
+      }
+      if(path==="/api/tasks/t1"){
+        detailCalls++;
+        return new Response(JSON.stringify({task:{...task(detailCalls<=2?"running":"failed"),notes:[]}}));
+      }
+      return new Response(JSON.stringify({task:{...task("failed"),notes:[]}}));
+    });
+    setup("/tasks/t1",fetcher);
+    expect((await screen.findAllByText("Running")).length).toBeGreaterThan(0);
+    await screen.findAllByText("Failed",{}, {timeout:4000});
+    await waitFor(()=>expect(screen.queryAllByText("Running")).toHaveLength(0));
+    expect(cursors[0]).toBeNull();
+    expect(cursors[1]).toBe("1");
   });
   it("routes task-list 401 recovery through the shared refresh client",async()=>{
     let listAttempts=0;
@@ -103,6 +189,26 @@ describe("task views",()=>{
     await user.click(screen.getByRole("button",{name:"Add"}));
     await screen.findByText("reference-security-analysis");
     await waitFor(async()=>expect(await bodyOf(fetcher.mock.calls.find(call=>requestUrl(call[0])==="/api/tasks")![0])).toEqual({workflow_id:"reference-security-analysis",input_values:{topic:"smoke"}}));
+  });
+  it("renders the authored start input_form and submits typed values",async()=>{
+    const user=userEvent.setup();
+    const inputForm=[
+      {name:"topic",type:"string",required:true,label_message_key:"tasks.topic"},
+      {name:"retries",type:"number",required:true,label_message_key:"tasks.nodes"},
+      {name:"verbose",type:"boolean",required:false,label_message_key:"tasks.artifacts"},
+    ];
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      if(path==="/api/workflows")return new Response(JSON.stringify([{id:"wf-form",name:"Form flow",active_version:{id:"ver-1",version:1,definition:{schema_version:"v1",name:"Form flow",nodes:[{type:"start",id:"start",input_form:inputForm}],edges:[]}}}]));
+      if(path==="/api/tasks")return new Response(JSON.stringify({id:"t1",state:"queued"}),{status:201});
+      return new Response(JSON.stringify({task:{...task("queued"),notes:[]}}));
+    });
+    setup("/tasks/new",fetcher);
+    await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+    await user.type(await screen.findByLabelText("Workflow progress"),"3");
+    await user.click(screen.getByLabelText("Artifacts"));
+    await user.click(screen.getByRole("button",{name:"Add"}));
+    await waitFor(async()=>expect(await bodyOf(fetcher.mock.calls.find(call=>requestUrl(call[0])==="/api/tasks")![0])).toEqual({workflow_id:"wf-form",input_values:{topic:"smoke",retries:3,verbose:true}}));
   });
   it("labels the list creation action with the generic add key and a leading icon",async()=>{
     setup("/tasks",vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?emptyStream():new Response(JSON.stringify([{...task("queued"),notes:[]}]))));

@@ -30,14 +30,23 @@ function isStoppableState(state: string): boolean {
 function useTasks(taskId?: string) {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState(false);
+  // Only the latest issued load may commit: the SSE stream fires overlapping
+  // loads while a task is active, and a slow older response must never
+  // overwrite fresher state (the detail badge froze on an old state).
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     try {
       const result = taskId
         ? await api.GET("/tasks/{task_id}", { params: { path: { task_id: taskId } } })
         : await api.GET("/tasks");
+      if (seq !== loadSeq.current) return;
       setData(unwrap(result));
       setError(false);
-    } catch { setError(true); }
+    } catch {
+      if (seq !== loadSeq.current) return;
+      setError(true);
+    }
   }, [taskId]);
   useEffect(() => { void load(); }, [load]);
   return { data, load, error, setData };
@@ -273,6 +282,41 @@ function WorkflowSummary({ workflow }: { workflow: Workflow | null }) {
   return <aside className="h-fit border-t border-border pt-5 lg:border-t-0 lg:border-l lg:pl-6"><h2 className="text-sm font-semibold">{t("tasks.workflow")}</h2><p className="mt-2 text-sm">{workflow?.name??workflow?.id??t("tasks.loading")}</p><p className="mt-2 text-sm leading-6 text-muted-foreground">{t("tasks.workflowDescription")}</p></aside>;
 }
 
+type StartField = { name: string; type: "string" | "number" | "boolean"; required: boolean; label_message_key: string };
+
+/**
+ * Reads the Start node's authored input_form from an active version
+ * definition (schema v1, backend/shared/graph/schema.py). Definitions travel
+ * as opaque JSON, so the parse is defensive: anything malformed yields no
+ * fields instead of breaking the launch form.
+ */
+function startInputForm(definition: unknown): StartField[] {
+  const nodes = (definition as { nodes?: unknown } | null | undefined)?.nodes;
+  if (!Array.isArray(nodes)) return [];
+  const start = nodes.find((node) => (node as { type?: unknown } | null)?.type === "start");
+  const form = (start as { input_form?: unknown } | null)?.input_form;
+  if (!Array.isArray(form)) return [];
+  return form.filter((field): field is StartField => {
+    const item = field as Partial<StartField> | null;
+    return item !== null && typeof item === "object"
+      && typeof item.name === "string"
+      && (item.type === "string" || item.type === "number" || item.type === "boolean")
+      && typeof item.required === "boolean"
+      && typeof item.label_message_key === "string";
+  });
+}
+
+/** Builds the typed submission payload the backend validates against the Start input_form. */
+function collectInputValues(fields: StartField[], values: Record<string, string | boolean>): Record<string, unknown> {
+  const input_values: Record<string, unknown> = {};
+  for (const field of fields) {
+    const value = values[field.name];
+    if (field.type === "boolean") input_values[field.name] = value === true;
+    else if (typeof value === "string" && value !== "") input_values[field.name] = field.type === "number" ? Number(value) : value;
+  }
+  return input_values;
+}
+
 export function NewTaskPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -280,7 +324,7 @@ export function NewTaskPage() {
   const requestedWorkflowId = searchParams.get("workflowId");
   const [workflows,setWorkflows]=useState<Workflow[] | null>(null);
   const [workflowId,setWorkflowId]=useState("");
-  const [topic,setTopic]=useState("");
+  const [values,setValues]=useState<Record<string,string|boolean>>({});
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState<KosmoError | null>(null);
   const [loadError,setLoadError]=useState(false);
@@ -288,6 +332,7 @@ export function NewTaskPage() {
   const rows = workflows ?? [];
   const launchable = rows.filter(isLaunchable);
   const selectedWorkflow = launchable.find(item => item.id === workflowId) ?? null;
+  const inputForm = startInputForm(selectedWorkflow?.active_version?.definition);
   useEffect(()=>{
     let cancelled=false;
     void (async()=>{
@@ -306,7 +351,7 @@ export function NewTaskPage() {
     setBusy(true);
     setError(null);
     try{
-      const result=unwrap(await api.POST("/tasks",{body:{workflow_id:selectedWorkflow.id,input_values:{topic}}})) as {id:string};
+      const result=unwrap(await api.POST("/tasks",{body:{workflow_id:selectedWorkflow.id,input_values:collectInputValues(inputForm,values)}})) as {id:string};
       navigate(`/tasks/${result.id}`);
     }catch(cause){ setError(toKosmoError(cause)); } finally { setBusy(false); }
   };
@@ -322,7 +367,7 @@ export function NewTaskPage() {
       <form onSubmit={submit} className="space-y-5">
         <div>
           <label htmlFor="workflow" className="text-sm font-medium">{t("tasks.workflow")}</label>
-          <select id="workflow" value={workflowId} onChange={event=>setWorkflowId(event.target.value)} className={selectClassName}>
+          <select id="workflow" value={workflowId} onChange={event=>{setWorkflowId(event.target.value);setValues({});}} className={selectClassName}>
             {rows.map(workflow=>(
               <option key={workflow.id} value={workflow.id} disabled={!isLaunchable(workflow)}>
                 {workflow.name}{isLaunchable(workflow)?"":` — ${t("workflows.list.noActiveVersion")}`}
@@ -330,12 +375,23 @@ export function NewTaskPage() {
             ))}
           </select>
         </div>
-        <div>
-          <label htmlFor="topic" className="text-sm font-medium">{t("tasks.topic")}</label>
-          <Input id="topic" value={topic} onChange={event=>setTopic(event.target.value)} required className="mt-2" placeholder={t("tasks.topicPlaceholder")}/>
-        </div>
+        {inputForm.map(field=>{
+          const label=t(field.label_message_key as never);
+          if(field.type==="boolean")return (
+            <div key={field.name}>
+              <label htmlFor={`task-input-${field.name}`} className="text-sm font-medium">{label}</label>
+              <input id={`task-input-${field.name}`} type="checkbox" checked={values[field.name]===true} onChange={event=>setValues(current=>({...current,[field.name]:event.target.checked}))} aria-required={field.required||undefined} className="mt-2 block size-4"/>
+            </div>
+          );
+          return (
+            <div key={field.name}>
+              <label htmlFor={`task-input-${field.name}`} className="text-sm font-medium">{label}</label>
+              <Input id={`task-input-${field.name}`} type={field.type==="number"?"number":"text"} required={field.required} value={typeof values[field.name]==="string"?(values[field.name] as string):""} onChange={event=>setValues(current=>({...current,[field.name]:event.target.value}))} className="mt-2"/>
+            </div>
+          );
+        })}
         {error&&<KosmoErrorAlert error={error}/>}
-        <Button type="submit" loading={busy} disabled={!selectedWorkflow||!topic.trim()}><Icon name="add" />{t("common.add")}</Button>
+        <Button type="submit" loading={busy} disabled={!selectedWorkflow}><Icon name="add" />{t("common.add")}</Button>
       </form>
     )}
     <WorkflowSummary workflow={selectedWorkflow}/>
