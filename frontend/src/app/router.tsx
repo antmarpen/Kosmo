@@ -6,6 +6,9 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { RequireAuth } from "@/features/auth/AuthProvider";
 import { TaskListPage, TaskDetailPage } from "@/features/tasks/TaskPages";
+import { EditorPage } from "@/features/workflows/editor/EditorPage";
+import { ProvidersPage } from "@/features/providers/ProvidersPage";
+import { WorkflowListPage } from "@/features/workflows/WorkflowListPage";
 
 export const appRoutes: RouteObject[] = [
   {
@@ -17,6 +20,10 @@ export const appRoutes: RouteObject[] = [
       { path: "/tasks/history", element: <PlaceholderPage /> },
       { path: "/tasks/:id", element: <TaskDetailPage /> },
       { path: "/tasks/new", element: <NewTaskPage /> },
+      { path: "/workflows/:id/edit", element: <EditorPage /> },
+      { path: "/workflows", element: <WorkflowListPage /> },
+      { path: "/applications", element: <PlaceholderPage /> },
+      { path: "/providers", element: <ProvidersPage /> },
       { path: "*", element: <PlaceholderPage /> },
     ],
   },

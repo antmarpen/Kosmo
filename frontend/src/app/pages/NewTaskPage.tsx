@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 
 export function NewTaskPage() {
   const { t } = useTranslation();
@@ -9,7 +10,7 @@ export function NewTaskPage() {
       <div aria-hidden="true" className="mb-4 flex size-11 items-center justify-center rounded-md bg-accent text-xl text-accent-foreground">＋</div>
       <h2 className="text-base font-medium">{t("tasks.new.formTitle")}</h2>
       <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{t("tasks.new.formDescription")}</p>
-      <Button type="button" disabled className="mt-6">{t("tasks.new.submit")}</Button>
+      <Button type="button" disabled className="mt-6"><Icon name="add" />{t("common.add")}</Button>
     </div>
   </section>;
 }
