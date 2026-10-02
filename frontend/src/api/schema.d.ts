@@ -258,7 +258,8 @@ export interface paths {
         delete: operations["delete_opencode_config_providers_opencode_config_delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update Opencode Config */
+        patch: operations["update_opencode_config_providers_opencode_config_patch"];
         trace?: never;
     };
     "/providers/opencode/config/verify": {
@@ -374,8 +375,11 @@ export interface paths {
         /** List Workflows */
         get: operations["list_workflows_workflows_get"];
         put?: never;
-        /** Publish */
-        post: operations["publish_workflows_post"];
+        /**
+         * Create Workflow
+         * @description Create a workflow with an initial empty draft; never publishes a version.
+         */
+        post: operations["create_workflow_workflows_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -425,6 +429,26 @@ export interface paths {
         };
         /** Get Workflow */
         get: operations["get_workflow_workflows__workflow_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workflows/{workflow_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workflow Versions
+         * @description Bounded, offset-paginated listing of published versions (metadata only) for the activation picker.
+         */
+        get: operations["list_workflow_versions_workflows__workflow_id__versions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -513,41 +537,6 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** AgentConfig */
-        AgentConfig: {
-            /**
-             * Runtime
-             * @constant
-             */
-            runtime: "opencode";
-            /** Model */
-            model: string;
-            /** Instructions */
-            instructions: string;
-        };
-        /** AiNode */
-        AiNode: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "ai";
-            /** Id */
-            id: string;
-            agent: components["schemas"]["AgentConfig"];
-            /** Prompt Template */
-            prompt_template: string;
-            /** Inputs */
-            inputs: string[];
-            /** Outputs */
-            outputs: string[];
-            validation: components["schemas"]["ValidationContract"];
-            /**
-             * Max Validation Cycles
-             * @default 3
-             */
-            max_validation_cycles: number;
-        };
         /** Body_replace_opencode_config_providers_opencode_config_put */
         Body_replace_opencode_config_providers_opencode_config_put: {
             /** Opencode Json */
@@ -566,12 +555,34 @@ export interface components {
             /** Verification Id */
             verification_id?: string | null;
         };
+        /** Body_update_opencode_config_providers_opencode_config_patch */
+        Body_update_opencode_config_providers_opencode_config_patch: {
+            /** Config Id */
+            config_id: string;
+            /** Opencode Json */
+            opencode_json?: string | null;
+            /** Auth Json */
+            auth_json?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Visibility
+             * @default personal
+             */
+            visibility: string;
+            /** Group Id */
+            group_id?: string | null;
+            /** Verification Id */
+            verification_id?: string | null;
+        };
         /** CandidateConfig */
         CandidateConfig: {
+            /** Config Id */
+            config_id?: string | null;
             /** Config */
-            config: {
+            config?: {
                 [key: string]: unknown;
-            };
+            } | null;
             /** Auth */
             auth?: {
                 [key: string]: unknown;
@@ -579,16 +590,31 @@ export interface components {
         };
         /** CandidateModelVerification */
         CandidateModelVerification: {
+            /** Config Id */
+            config_id?: string | null;
             /** Config */
-            config: {
+            config?: {
                 [key: string]: unknown;
-            };
+            } | null;
             /** Auth */
             auth?: {
                 [key: string]: unknown;
             } | null;
             /** Model */
             model: string;
+        };
+        /**
+         * ConfigVerifyRequest
+         * @description Metadata-only body naming the stored configuration to probe.
+         */
+        ConfigVerifyRequest: {
+            /** Config Id */
+            config_id?: string | null;
+        };
+        /** CreateWorkflowRequest */
+        CreateWorkflowRequest: {
+            /** Name */
+            name: string;
         };
         /** Credentials */
         Credentials: {
@@ -597,69 +623,10 @@ export interface components {
             /** Password */
             password: string;
         };
-        /** DecisionNode */
-        DecisionNode: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "decision";
-            /** Id */
-            id: string;
-            /** Selected Next Node Id */
-            selected_next_node_id: string;
-        };
-        /** Edge */
-        Edge: {
-            /** From */
-            from: string;
-            /** To */
-            to: string;
-        };
-        /** EndNode */
-        EndNode: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "end";
-            /** Id */
-            id: string;
-        };
-        /** FormField */
-        FormField: {
-            /** Name */
-            name: string;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "string" | "number" | "boolean";
-            /** Required */
-            required: boolean;
-            /** Label Message Key */
-            label_message_key: string;
-        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /** HttpNode */
-        HttpNode: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "http";
-            /** Id */
-            id: string;
-            /** Method */
-            method: string;
-            /** Url */
-            url: string;
-            /** Outputs */
-            outputs: string[];
         };
         /** HumanInput */
         HumanInput: {
@@ -670,25 +637,12 @@ export interface components {
             /** Request Id */
             request_id: string | number;
         };
-        /** LoopPolicy */
-        LoopPolicy: {
-            /** Target Node Id */
-            target_node_id: string;
-            /** Max Iterations */
-            max_iterations: number;
-        };
         /** ModelVerificationRequest */
         ModelVerificationRequest: {
             /** Model */
             model: string;
-        };
-        /** Phase */
-        Phase: {
-            /** Id */
-            id: string;
-            /** Node Ids */
-            node_ids: string[];
-            loop?: components["schemas"]["LoopPolicy"] | null;
+            /** Config Id */
+            config_id?: string | null;
         };
         /** PublishDraftRequest */
         PublishDraftRequest: {
@@ -704,34 +658,6 @@ export interface components {
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
-        };
-        /** ScriptNode */
-        ScriptNode: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "script";
-            /** Id */
-            id: string;
-            /** Code */
-            code: string;
-            /** Inputs */
-            inputs: string[];
-            /** Outputs */
-            outputs: string[];
-        };
-        /** StartNode */
-        StartNode: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "start";
-            /** Id */
-            id: string;
-            /** Input Form */
-            input_form: components["schemas"]["FormField"][];
         };
         /** TaskCreated */
         TaskCreated: {
@@ -775,11 +701,6 @@ export interface components {
             /** Role */
             role: string;
         };
-        /** ValidationContract */
-        ValidationContract: {
-            /** Levels */
-            levels: components["schemas"]["ValidationLevel"][];
-        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -793,32 +714,24 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
-        /** ValidationLevel */
-        ValidationLevel: {
+        /** WorkflowCreatedResponse */
+        WorkflowCreatedResponse: {
+            /** Id */
+            id: string;
             /** Name */
             name: string;
-            /** Message Key */
-            message_key: string;
-            /** Params Schema */
-            params_schema: {
-                [key: string]: unknown;
-            };
-        };
-        /** WorkflowDefinition */
-        WorkflowDefinition: {
+            /** Publication Revision */
+            publication_revision: number;
+            active_version: components["schemas"]["ActiveVersionResponse"] | null;
             /**
-             * Schema Version
-             * @constant
+             * Draft Count
+             * @default 0
              */
-            schema_version: "v1";
-            /** Name */
-            name: string;
-            /** Nodes */
-            nodes: (components["schemas"]["StartNode"] | components["schemas"]["ScriptNode"] | components["schemas"]["HttpNode"] | components["schemas"]["AiNode"] | components["schemas"]["EndNode"] | components["schemas"]["DecisionNode"] | components["schemas"]["WorkflowNode"])[];
-            /** Edges */
-            edges: components["schemas"]["Edge"][];
-            /** Phases */
-            phases?: components["schemas"]["Phase"][] | null;
+            draft_count: number;
+            /** Draft Id */
+            draft_id: string;
+            /** Draft Revision */
+            draft_revision: number;
         };
         /** WorkflowDraftMetadata */
         WorkflowDraftMetadata: {
@@ -860,18 +773,6 @@ export interface components {
             /** Expected Revision */
             expected_revision: number;
         };
-        /** WorkflowNode */
-        WorkflowNode: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "workflow";
-            /** Id */
-            id: string;
-            /** Workflow Id */
-            workflow_id: string;
-        };
         /** WorkflowResponse */
         WorkflowResponse: {
             /** Id */
@@ -881,6 +782,11 @@ export interface components {
             /** Publication Revision */
             publication_revision: number;
             active_version: components["schemas"]["ActiveVersionResponse"] | null;
+            /**
+             * Draft Count
+             * @default 0
+             */
+            draft_count: number;
         };
         /** WorkflowVersionResponse */
         WorkflowVersionResponse: {
@@ -894,6 +800,23 @@ export interface components {
             definition: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * WorkflowVersionSummary
+         * @description Listing metadata for the activation picker; never carries the definition.
+         */
+        WorkflowVersionSummary: {
+            /** Id */
+            id: string;
+            /** Version */
+            version: number;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Is Active */
+            is_active: boolean;
         };
     };
     responses: never;
@@ -1408,14 +1331,18 @@ export interface operations {
             };
         };
     };
-    verify_opencode_config_providers_opencode_config_verify_post: {
+    update_opencode_config_providers_opencode_config_patch: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_update_opencode_config_providers_opencode_config_patch"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -1424,6 +1351,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_opencode_config_providers_opencode_config_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ConfigVerifyRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1631,7 +1600,7 @@ export interface operations {
             };
         };
     };
-    publish_workflows_post: {
+    create_workflow_workflows_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -1640,7 +1609,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WorkflowDefinition"];
+                "application/json": components["schemas"]["CreateWorkflowRequest"];
             };
         };
         responses: {
@@ -1650,7 +1619,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WorkflowVersionResponse"];
+                    "application/json": components["schemas"]["WorkflowCreatedResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1753,6 +1722,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workflow_versions_workflows__workflow_id__versions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionSummary"][];
                 };
             };
             /** @description Validation Error */

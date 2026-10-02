@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, false, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -15,8 +15,13 @@ from app.domain.identity import models as _identity_models  # noqa: F401
 
 class ProviderConfig(Base):
     __tablename__ = "provider_configs"
-    __table_args__ = (UniqueConstraint("user_id", "provider", "visibility", "group_id",
-                                       name="uq_provider_config_owner_provider_visibility_group"),)
+    # Multiple named instances per owner and provider may coexist in the same
+    # scope; the invariant is a case-insensitive display name unique per owner
+    # and provider (functional unique index; see migration 0019).
+    __table_args__ = (
+        Index("uq_provider_config_owner_provider_name_ci", "user_id", "provider",
+              func.lower(text("display_name")), unique=True),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -36,9 +41,16 @@ class ProviderCandidateOperation(Base):
 
     Rows live for the short candidate-discovery window only and are deleted on
     first successful consumption; expired rows are purged by the service.
+    `purpose` records whether the operation hands credentials to a discovery
+    or a verification container run, and `verification_succeeded` records a
+    completed successful verification: only verification-purpose rows with
+    that flag can be redeemed as single-use proof at save time.
     """
 
     __tablename__ = "provider_candidate_operations"
+
+    PURPOSE_DISCOVERY = "discovery"
+    PURPOSE_VERIFICATION = "verification"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -46,3 +58,7 @@ class ProviderCandidateOperation(Base):
     payload_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False,
+                                         default=PURPOSE_DISCOVERY, server_default=PURPOSE_DISCOVERY)
+    verification_succeeded: Mapped[bool] = mapped_column(Boolean, nullable=False,
+                                                         default=False, server_default=false())

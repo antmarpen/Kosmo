@@ -52,8 +52,8 @@ class OpenCodeProviderHandler:
         # MCP and skills are deliberately not validated by provider setup.
         return violations
 
-    async def list_models(self, user_id: str) -> list[str]:
-        return await self.runtime.list_models(user_id)
+    async def list_models(self, user_id: str, config_id: str | None = None) -> list[str]:
+        return await self.runtime.list_models(user_id, config_id)
 
     async def list_candidate_models(self, user_id: str, config: dict, auth: dict | None) -> list[str]:
         return await self.runtime.list_candidate_models(user_id, config, auth)
@@ -68,10 +68,10 @@ class OpenCodeProviderHandler:
             return {"ok": False, "error": {"code": "PROVIDER_VERIFICATION_TIMEOUT",
                     "message_key": "errors.provider.verification_timeout", "params": {"provider": "opencode"}}}
 
-    async def verify_model(self, user_id: str, model: str) -> dict:
+    async def verify_model(self, user_id: str, model: str, config_id: str | None = None) -> dict:
         try:
             result = await asyncio.wait_for(
-                self.runtime.verify_model(user_id, model), timeout=self.verify_timeout_seconds,
+                self.runtime.verify_model(user_id, model, config_id), timeout=self.verify_timeout_seconds,
             )
         except asyncio.TimeoutError:
             return {"ok": False, "error": {"code": "PROVIDER_VERIFICATION_TIMEOUT",
@@ -79,10 +79,12 @@ class OpenCodeProviderHandler:
         except Exception as exc:
             return {"ok": False, "error": {"code": "PROVIDER_VERIFICATION_FAILED",
                     "message_key": "errors.provider.verification_failed", "params": {"reason": type(exc).__name__}}}
-        if result.get("ok"):
-            return {"ok": True, "response_snippet": str(result.get("response_snippet", ""))[:240],
-                    "latency_ms": int(result.get("latency_ms", 0))}
-        return result
+        # The activity result is already a safe DTO (assertion + latency, or a
+        # keyed error); it passes through unchanged.
+        if isinstance(result, dict) and (result.get("ok") or isinstance(result.get("error"), dict)):
+            return result
+        return {"ok": False, "error": {"code": "PROVIDER_VERIFICATION_FAILED",
+                "message_key": "errors.provider.verification_failed", "params": {}}}
 
 
 def _auth_entry_has_credentials(entry) -> bool:

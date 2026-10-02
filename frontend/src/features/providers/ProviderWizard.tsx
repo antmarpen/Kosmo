@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/auth";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { KosmoErrorAlert, type KosmoError } from "@/components/KosmoErrorAlert";
 import { useCurrentUser } from "@/features/auth/useCurrentUser";
+import { toKosmoError } from "./apiError";
 import { canProceedWithProvider, providerCapabilities, type ProviderAuthMethod, type ProviderType } from "./capabilities";
 import { parseConfigObject, readProviderFile, serializeProviderConfig, type Config, type ProviderFileFailure } from "./providerFile";
 import { ProviderIcon } from "./providerIcons";
@@ -24,24 +25,26 @@ type ModelVerification = {
   ok: boolean;
   latency_ms?: number;
   verification_id?: string;
+  /** Seconds of validity left for the returned proof, when one was issued. */
+  proof_expires_in_seconds?: number;
   error?: KosmoError;
 };
 
-/** A successful connection test for the CURRENT config+auth pair. Cleared on any config/auth change. */
-type VerifiedConnection = { model: string; latencyMs: number; verificationId: string | null };
-
 /**
- * Normalizes thrown API failures into a KosmoError. The backend emits flat
- * error bodies (`{ code, message_key, params, details }`), which openapi-fetch
- * exposes as `result.error`; pass those through so localized message keys are
- * never masked by the generic fallback.
+ * A verified connection for the CURRENT config+auth pair: the usable proof
+ * (a redeemable verification id) plus the instant its validity ends. Cleared
+ * on any config/auth change and when the proof window closes.
  */
-function readError(cause: unknown): KosmoError {
-  const raw = cause as { error?: KosmoError; code?: string; message_key?: string; params?: Record<string, unknown> } | undefined;
-  if (raw?.error) return raw.error;
-  if (raw?.message_key) return { code: raw.code ?? "PROVIDER_REQUEST_FAILED", message_key: raw.message_key, params: raw.params };
-  return { code: "PROVIDER_REQUEST_FAILED", message_key: "errors.generic" };
-}
+type VerifiedConnection = { model: string; latencyMs: number; verificationId: string; expiresAt: number };
+
+const PROOF_EXPIRED_ERROR: KosmoError = {
+  code: "PROVIDER_PROOF_EXPIRED",
+  message_key: "providers.wizard.proofExpired",
+};
+const SAVED_UNVERIFIED_ERROR: KosmoError = {
+  code: "PROVIDER_SAVED_UNVERIFIED",
+  message_key: "providers.wizard.savedUnverified",
+};
 
 function fileFailureError(failure: ProviderFileFailure): KosmoError {
   const params = { filename: failure.filename };
@@ -68,13 +71,34 @@ function CheckIcon(props: React.SVGProps<SVGSVGElement>) {
 const CONFIG_DROPZONE_ACCEPT = ".json,.jsonc,application/json";
 const SELECT_CLASS = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
-export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void; onComplete: () => void }) {
+/**
+ * A stored instance being reconfigured: the wizard edits exactly this id
+ * (type locked, name/scope prefilled) and never receives file contents.
+ */
+export type EditableProviderConfig = {
+  id: string;
+  name: string;
+  provider_type: string;
+  visibility: string;
+  group_id: string | null;
+  auth_present: boolean;
+};
+
+export function ProviderWizard({ onCancel, onComplete, editConfig }: {
+  onCancel: () => void;
+  onComplete: () => void;
+  editConfig?: EditableProviderConfig;
+}) {
   const { t } = useTranslation();
   const { capabilities, user } = useCurrentUser();
+  // Edit mode reopens the onboarding flow for one stored instance: the type
+  // step is locked away, and name/scope start from the stored values.
+  const editMode = editConfig !== undefined;
   const [step, setStep] = useState(0);
-  const [provider, setProvider] = useState<ProviderType | null>(null);
+  const [provider, setProvider] = useState<ProviderType | null>(
+    editConfig ? (editConfig.provider_type as ProviderType) : null);
   const [authMethod, setAuthMethod] = useState<ProviderAuthMethod | null>(null);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(editConfig?.name ?? "");
   const [configText, setConfigText] = useState("");
   const [config, setConfig] = useState<Config | null>(null);
   const [fileName, setFileName] = useState("opencode.json");
@@ -86,8 +110,10 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
   const [selectedModel, setSelectedModel] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [verified, setVerified] = useState<VerifiedConnection | null>(null);
-  const [visibility, setVisibility] = useState("personal");
-  const [groupId, setGroupId] = useState("");
+  const [proofExpired, setProofExpired] = useState(false);
+  const [savedUnverified, setSavedUnverified] = useState(false);
+  const [visibility, setVisibility] = useState(editConfig?.visibility ?? "personal");
+  const [groupId, setGroupId] = useState(editConfig?.group_id ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<KosmoError | null>(null);
   // Bumped on every discovery/verification-invalidating change; in-flight
@@ -105,10 +131,33 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
   // The auth-method step only exists for providers offering several methods;
   // single-method providers (OpenCode today) skip it silently.
   const authMethods = provider ? providerCapabilities.find((item) => item.type === provider)?.authMethods ?? [] : [];
-  const stepList: WizardStep[] = provider && authMethods.length > 1
-    ? ["type", "method", "data", "connection", "save"]
-    : ["type", "data", "connection", "save"];
+  const stepList: WizardStep[] = editMode
+    ? ["data", "connection", "save"]
+    : provider && authMethods.length > 1
+      ? ["type", "method", "data", "connection", "save"]
+      : ["type", "data", "connection", "save"];
   const currentStep: WizardStep = stepList[Math.min(step, stepList.length - 1)];
+  // In edit mode the stored encrypted files are kept unless the user uploads
+  // replacements on the data step; replacement is known before continuing.
+  const filesReplaced = editMode && (selectedConfigFile !== null || auth !== null);
+
+  // The proof is time-bound server-side: when the remaining validity the API
+  // reported runs out, the local verified state expires and a retest is
+  // required before anything can be saved.
+  useEffect(() => {
+    if (!verified) return;
+    const remaining = verified.expiresAt - Date.now();
+    if (remaining <= 0) {
+      setVerified(null);
+      setProofExpired(true);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setVerified(null);
+      setProofExpired(true);
+    }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [verified]);
 
   /** Drops discovered models and the connection-test result whenever the config or auth input changes. */
   function invalidateDiscovery() {
@@ -117,6 +166,7 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
     setModels([]);
     setSelectedModel("");
     setVerified(null);
+    setProofExpired(false);
     setViolations([]);
     setFileError(null);
     setError(null);
@@ -159,15 +209,23 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
       setError({ code: "PROVIDER_NAME_INVALID", message_key: "errors.provider.name_invalid" });
       return;
     }
-    const parsed = parseConfigObject(configText);
-    if (!parsed) {
+    // In edit mode the stored configuration may be kept: only a replaced file
+    // is parsed and resent, and the stored one is referenced by id instead.
+    const configReplaced = !editMode || selectedConfigFile !== null;
+    const parsed = configReplaced ? parseConfigObject(configText) : null;
+    if (configReplaced && !parsed) {
       setViolations([{ message_key: "providers.wizard.invalidJson", params: { filename: fileName } }]);
       return;
     }
     const requestId = ++requestSeq.current;
     setBusy(true); setError(null); setViolations([]);
     try {
-      const body: { config: Config; auth?: Config } = auth ? { config: parsed, auth: auth.value } : { config: parsed };
+      // Edit mode names the targeted instance and sends ONLY the replaced
+      // files: the backend overlays them on the stored encrypted pair, so the
+      // verification attests exactly the configuration that will be saved.
+      const body = editConfig
+        ? { config_id: editConfig.id, ...(parsed ? { config: parsed } : {}), ...(auth ? { auth: auth.value } : {}) }
+        : { config: parsed as Config, ...(auth ? { auth: auth.value } : {}) };
       const result = await api.POST("/providers/opencode/config/candidate/validate", { body });
       if (requestId !== requestSeq.current) return;
       if (result.error) throw result.error;
@@ -184,20 +242,22 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
       setStep((current) => current + 1);
     } catch (cause) {
       if (requestId !== requestSeq.current) return;
-      setError(readError(cause));
+      setError(toKosmoError(cause));
     } finally {
       if (requestId === requestSeq.current) setBusy(false);
     }
   }
 
   async function runVerification() {
-    if (!config || !selectedModel) return;
+    if (!selectedModel || (!config && !auth)) return;
     const requestId = ++requestSeq.current;
     setBusy(true); setError(null);
     try {
-      const body: { config: Config; auth?: Config; model: string } = auth
-        ? { config, auth: auth.value, model: selectedModel }
-        : { config, model: selectedModel };
+      // Edit mode attests the effective pair: the targeted instance id plus
+      // only the replaced files; the stored ones are overlaid server-side.
+      const body = editConfig
+        ? { config_id: editConfig.id, ...(config ? { config } : {}), ...(auth ? { auth: auth.value } : {}), model: selectedModel }
+        : { config: config as Config, ...(auth ? { auth: auth.value } : {}), model: selectedModel };
       const result = await api.POST("/providers/opencode/config/candidate/verify-model", { body });
       if (requestId !== requestSeq.current) return;
       if (result.error) throw result.error;
@@ -206,38 +266,81 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
         setError(response.error ?? { code: "PROVIDER_VERIFICATION_FAILED", message_key: "errors.provider.verification_failed" });
         return;
       }
-      setVerified({ model: selectedModel, latencyMs: response.latency_ms ?? 0, verificationId: response.verification_id ?? null });
+      // Only a usable proof counts as verified: a success without a redeemable
+      // verification id or without remaining validity proves nothing and must
+      // be retried.
+      const verificationId = typeof response.verification_id === "string" ? response.verification_id : "";
+      const expiresIn = typeof response.proof_expires_in_seconds === "number"
+        ? Math.floor(response.proof_expires_in_seconds) : 0;
+      if (!verificationId || expiresIn <= 0) {
+        setError({ code: "PROVIDER_PROOF_UNUSABLE", message_key: "providers.wizard.proofMissing" });
+        return;
+      }
+      setProofExpired(false);
+      setSavedUnverified(false);
+      setVerified({
+        model: selectedModel,
+        latencyMs: response.latency_ms ?? 0,
+        verificationId,
+        expiresAt: Date.now() + expiresIn * 1000,
+      });
     } catch (cause) {
       if (requestId !== requestSeq.current) return;
-      setError(readError(cause));
+      setError(toKosmoError(cause));
     } finally {
       if (requestId === requestSeq.current) setBusy(false);
     }
   }
 
   async function commit() {
-    if (!config || !verified || !isNameValid) return;
+    // Creating requires the proof: a configuration tested without a
+    // redeemable verification id would only be stored as unverified. An edit
+    // requires it only when the stored files are being replaced; a rename or
+    // scope move keeps the stored files and their recorded status.
+    if (!isNameValid) return;
+    if (editMode) {
+      if (filesReplaced && !verified?.verificationId) return;
+    } else if (!config || !verified?.verificationId) return;
     const requestId = ++requestSeq.current;
     setBusy(true); setError(null);
     try {
       const form = new FormData();
+      // The update contract targets the edited instance by id: the same id
+      // always comes back, and rows are never matched by scope.
+      if (editConfig) form.append("config_id", editConfig.id);
       // Required friendly name (trimmed); the list shows it instead of the type.
       form.append("name", trimmedName);
-      // Re-serialize the parsed object: JSONC input still uploads as strict JSON.
-      form.append("opencode_json", new File([serializeProviderConfig(config)], "opencode.json", { type: "application/json" }));
+      // Re-serialize the parsed object: JSONC input still uploads as strict
+      // JSON. In edit mode an unreplaced config file is NOT resent: the
+      // backend keeps the stored encrypted one (absent = keep).
+      const configToStore = editMode && selectedConfigFile === null ? null : config;
+      if (configToStore) form.append("opencode_json", new File([serializeProviderConfig(configToStore)], "opencode.json", { type: "application/json" }));
       if (auth) form.append("auth_json", new File([serializeProviderConfig(auth.value)], "auth.json", { type: "application/json" }));
       form.append("visibility", visibility);
       if (visibility === "group" && groupId) form.append("group_id", groupId);
       // Proof that the current config+auth passed the connection test. No
       // model is persisted: the model choice belongs to agents, not providers.
-      if (verified.verificationId) form.append("verification_id", verified.verificationId);
-      const result = await api.PUT("/providers/opencode/config", { body: form as never });
+      if (verified?.verificationId) form.append("verification_id", verified.verificationId);
+      const result = editMode
+        ? await api.PATCH("/providers/opencode/config", { body: form as never })
+        : await api.PUT("/providers/opencode/config", { body: form as never });
       if (requestId !== requestSeq.current) return;
       if (result.error) throw result.error;
-      onComplete();
+      // The save response decides the outcome: only a backend-verified result
+      // closes the wizard. When the proof was rejected (expired, consumed, or
+      // mismatched), the honest unverified outcome is shown instead of plain
+      // success.
+      const saved = result.data as { verification_status?: string };
+      if (saved.verification_status === "verified") {
+        onComplete();
+        return;
+      }
+      setVerified(null);
+      setProofExpired(false);
+      setSavedUnverified(true);
     } catch (cause) {
       if (requestId !== requestSeq.current) return;
-      setError(readError(cause));
+      setError(toKosmoError(cause));
     } finally {
       if (requestId === requestSeq.current) setBusy(false);
     }
@@ -252,6 +355,9 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
         if (authMethod) setStep(step + 1);
         break;
       case "data":
+        // An edit that keeps both stored files needs no discovery or
+        // connection test: go straight to the save step.
+        if (editMode && !filesReplaced) { setStep(stepList.indexOf("save")); return; }
         void continueFromData();
         break;
       case "connection":
@@ -261,19 +367,29 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
         else void runVerification();
         break;
       case "save":
+        // After the honest unverified outcome the save already happened: the
+        // primary action only closes the wizard.
+        if (savedUnverified) { onComplete(); return; }
         void commit();
         break;
     }
   };
   const canNext = currentStep === "type" ? !!provider && canProceedWithProvider(provider)
       : currentStep === "method" ? !!authMethod && !busy
-      : currentStep === "data" ? isNameValid && !!configText.trim() && !busy
+      : currentStep === "data" ? (editMode
+          // Any replacement (either or both files) is allowed: the candidate
+          // flow attests the stored pair overlaid with the replaced files.
+          ? isNameValid && !busy
+          : isNameValid && !!configText.trim() && !busy)
       : currentStep === "connection" ? models.length > 0 && !!selectedModel && !busy
-      : !busy && isNameValid && !!verified && (visibility !== "group" || !!groupId);
-  const primaryLabelKey = currentStep === "save" ? "save"
+      : savedUnverified ? !busy && isNameValid
+      : !busy && isNameValid && (editMode && !filesReplaced
+          ? true
+          : !!verified && (visibility !== "group" || !!groupId));
+  const primaryLabelKey = currentStep === "save" && savedUnverified ? "done"
+      : currentStep === "save" ? "save"
       : currentStep === "connection" && !(verified && verified.model === selectedModel) ? "testAction"
       : "continue";
-  const busyLabelKey = currentStep === "connection" ? "testing" : "working";
 
   const configDropzoneHandlers = {
     onDragOver: (event: React.DragEvent<HTMLLabelElement>) => { event.preventDefault(); setDragOver("config"); },
@@ -314,8 +430,10 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
       {stepList.map((key, index) => <div key={key} className={`h-1.5 flex-1 rounded-full ${index <= step ? "bg-primary" : "bg-muted"}`} />)}
     </div>
     <p className="text-sm font-medium text-primary">{t("providers.wizard.step", { current: step + 1, total: stepList.length })}</p>
-    <h1 id="wizard-title" className="mt-2 text-2xl font-semibold tracking-tight text-balance">{t(`providers.wizard.steps.${currentStep}` as never)}</h1>
-    <p className="mt-2 text-sm leading-6 text-muted-foreground">{t(`providers.wizard.stepDescriptions.${currentStep}` as never)}</p>
+    {/* The edit* keys are pending the coordinator's catalog addition; the
+        English defaults keep the UI honest until the catalogs carry them. */}
+    <h1 id="wizard-title" className="mt-2 text-2xl font-semibold tracking-tight text-balance">{editMode ? t("providers.wizard.editTitle" as never, { defaultValue: "Edit provider configuration" }) : t(`providers.wizard.steps.${currentStep}` as never)}</h1>
+    <p className="mt-2 text-sm leading-6 text-muted-foreground">{editMode ? t("providers.wizard.editDescription" as never, { defaultValue: "Update the name, files, or availability. Saved files are kept unless you upload replacements." }) : t(`providers.wizard.stepDescriptions.${currentStep}` as never)}</p>
 
     <div className="mt-7">
       {currentStep === "type" && <div className="grid gap-3 sm:grid-cols-3">{providerCapabilities.map((item) => <button key={item.type} type="button" disabled={!item.available} aria-pressed={provider === item.type} onClick={() => chooseProvider(item.type)} className={`min-h-36 rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-65 ${provider === item.type ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-muted/50"}`}>
@@ -357,11 +475,13 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
             <span className="text-sm font-medium">{t("providers.wizard.dropzoneLabel")}</span>
           </label>
           <p id="provider-file-hint" className="text-xs text-muted-foreground">{t("providers.wizard.dropzoneHint")}</p>
+          {editMode && <p className="text-xs text-muted-foreground">{t("providers.wizard.configKept")}</p>}
           {selectedConfigFile && <p aria-live="polite" className="text-sm">{t("providers.wizard.fileSelected", { name: selectedConfigFile })}</p>}
         </div>
         <div className="space-y-2">
           <p className="text-sm font-medium">{t("providers.wizard.authLabel")}</p>
           <p className="text-xs text-muted-foreground">{t("providers.wizard.authHint")}</p>
+          {editMode && <p className="text-xs text-muted-foreground">{t("providers.wizard.authKept")}</p>}
           {<label htmlFor="provider-auth-file" {...authDropzoneHandlers} className={dropzoneClassName("auth")}>
             <input
               id="provider-auth-file"
@@ -388,6 +508,7 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
           </select>
         </div> : <p className="rounded-md bg-muted/60 px-3 py-3 text-sm">{t("providers.wizard.noModels")}</p>}
         {verifiedPanel()}
+        {proofExpired && <KosmoErrorAlert error={PROOF_EXPIRED_ERROR} />}
         {error && <KosmoErrorAlert error={error} />}
       </CardContent></Card>}
       {currentStep === "save" && <Card><CardHeader><CardTitle>{t("providers.wizard.scopeTitle")}</CardTitle><CardDescription>{t("providers.wizard.scopeDescription")}</CardDescription></CardHeader><CardContent className="space-y-4">
@@ -400,6 +521,8 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
           <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
           <p className="min-w-0 text-sm">{t("providers.wizard.verifiedScopeNote", { model: verified.model })}</p>
         </div>}
+        {proofExpired && <KosmoErrorAlert error={PROOF_EXPIRED_ERROR} />}
+        {savedUnverified && <KosmoErrorAlert error={SAVED_UNVERIFIED_ERROR} />}
         {error && <KosmoErrorAlert error={error} />}
         <p className="text-sm text-muted-foreground">{t("providers.wizard.commitSummary", { provider: provider ? t(`providers.types.${provider}.label`) : "", owner: user?.username ?? "" })}</p>
       </CardContent></Card>}
@@ -407,7 +530,7 @@ export function ProviderWizard({ onCancel, onComplete }: { onCancel: () => void;
     {error && currentStep !== "connection" && currentStep !== "save" && <div className="mt-5"><KosmoErrorAlert error={error} /></div>}
     <div className="mt-7 flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:justify-between">
       <Button type="button" variant="outline" disabled={step === 0 || busy} onClick={() => { setError(null); setViolations([]); setFileError(null); setStep(step - 1); }}>{t("providers.wizard.back")}</Button>
-      <Button type="button" disabled={!canNext} onClick={next} className="w-full sm:w-auto">{busy ? t(`providers.wizard.${busyLabelKey}`) : t(`providers.wizard.${primaryLabelKey}`)}</Button>
+      <Button type="button" disabled={!canNext} loading={busy} onClick={next} className="w-full sm:w-auto">{t(`providers.wizard.${primaryLabelKey}` as never)}</Button>
     </div>
   </section>;
 }

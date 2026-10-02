@@ -1,12 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import i18next from "i18next";
 import type { ProviderAuthMethod } from "./capabilities";
 
-const { get, post, put } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
-vi.mock("@/api/auth", () => ({ api: { GET: get, POST: post, PUT: put } }));
+const { get, post, put, patch } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn() }));
+vi.mock("@/api/auth", () => ({ api: { GET: get, POST: post, PUT: put, PATCH: patch } }));
 let mockCapabilities: any;
 vi.mock("@/features/auth/useCurrentUser", () => ({ useCurrentUser: () => ({ user: { username: "alex" }, capabilities: mockCapabilities, loading: false, error: null }) }));
+
+/**
+ * The wizard's new honesty keys; the platform catalogs carry them once the
+ * coordinator applies the R5 i18n additions (en/es). Registered here so the
+ * component contract is testable independently of catalog rollout order.
+ */
+i18next.addResourceBundle("en", "translation", {
+  providers: { wizard: {
+    proofMissing: "The connection test succeeded, but no verification proof came back. Run the test again.",
+    proofExpired: "The connection proof has expired. Test the connection again to continue.",
+    savedUnverified: "The provider was saved, but it could not be verified: the proof was missing, expired, or did not match the uploaded files. Test the connection again and save to mark it verified.",
+    done: "Done",
+    // R6 edit-mode keys; the coordinator applies them to the real catalogs.
+    editTitle: "Edit provider configuration",
+    editDescription: "Update the name, files, or availability. Saved files are kept unless you upload replacements.",
+  } },
+}, true, true);
 
 /**
  * Auth methods offered by OpenCode; mutable so a test can exercise the
@@ -33,7 +51,7 @@ const authObject = { opencode: { type: "api", key: "k-1" } };
 const jsoncConfig = `{\n  // primary provider\n  "provider": { /* inline */ "openai": { "options": {}, "models": { "gpt-4.1": {} } }, },\n}`;
 const dropzoneName = "Drag and drop your configuration file here, or browse to choose it";
 const authDropzoneName = "Drag and drop auth.json here, or browse to choose it";
-const verifySuccess = { ok: true, response_snippet: "ok", latency_ms: 420, verification_id: "ver-1" };
+const verifySuccess = { ok: true, latency_ms: 420, verification_id: "ver-1", proof_expires_in_seconds: 120 };
 
 const DEFAULT_POST_ROUTES: Record<string, unknown> = {
   "/candidate/validate": { data: { valid: true, violations: [] } },
@@ -59,7 +77,17 @@ function postedTo(suffix: string) {
 }
 
 function renderWizard() {
-  return render(<ProviderWizard onCancel={() => {}} onComplete={() => {}} />);
+  const onComplete = vi.fn();
+  render(<ProviderWizard onCancel={() => {}} onComplete={onComplete} />);
+  return { onComplete };
+}
+
+const editRow = { id: "p-1", name: "Team gateway", provider_type: "opencode", visibility: "personal", group_id: null, auth_present: true };
+
+function renderEditWizard(row = editRow) {
+  const onComplete = vi.fn();
+  render(<ProviderWizard editConfig={row} onCancel={() => {}} onComplete={onComplete} />);
+  return { onComplete };
 }
 function makeFile(content: string, name: string, type = "application/json") {
   return new File([content], name, { type });
@@ -104,7 +132,7 @@ describe("provider wizard", () => {
     capabilityOverrides.opencodeMethods = ["config"];
     mockCapabilities = { scopes: { personal: true, groups: [], global: false }, groups: [] };
     postRoutes();
-    put.mockResolvedValue({ data: { id: "new-provider" } });
+    put.mockResolvedValue({ data: { id: "new-provider", verification_status: "verified" } });
   });
 
   it("pairs a decorative icon with each provider name on the type step", async () => {
@@ -285,6 +313,27 @@ describe("provider wizard", () => {
     expect(screen.queryByRole("heading", { name: "Choose who can use it" })).not.toBeInTheDocument();
   });
 
+  it("keeps the primary label with aria-busy while a step request is in flight", async () => {
+    let resolveValidate: (value: unknown) => void = () => {};
+    postRoutes({
+      "/candidate/validate": () => new Promise((resolve) => { resolveValidate = resolve; }),
+    });
+    renderWizard();
+    await toUploadStep();
+    await chooseConfig(validConfig);
+    await fillName();
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    const primary = screen.getByRole("button", { name: "Continue" });
+    expect(primary).toHaveAttribute("aria-busy", "true");
+    expect(primary).toBeDisabled();
+    // The label stays put; only the shared spinner and aria-busy signal flight.
+    expect(primary).toHaveTextContent("Continue");
+    expect(primary).not.toHaveTextContent("Working…");
+    resolveValidate({ data: { valid: true, violations: [] } });
+    await screen.findByRole("heading", { name: "Test the connection" });
+    expect(screen.getByRole("button", { name: "Test connection" })).toBeEnabled();
+  });
+
   it("verifies the selected model with the candidate verify-model endpoint", async () => {
     renderWizard();
     await toUploadStep();
@@ -367,19 +416,88 @@ describe("provider wizard", () => {
     expect(JSON.parse(await authPart.text())).toEqual(authObject);
   });
 
-  it("omits verification_id when the backend returns no verification proof", async () => {
-    postRoutes({ "/candidate/verify-model": { data: { ok: true, response_snippet: "ok", latency_ms: 5 } } });
+  it("refuses to treat a connection test without a usable proof as verified", async () => {
+    postRoutes({ "/candidate/verify-model": { data: { ok: true, latency_ms: 5 } } });
     renderWizard();
     await toTestStep();
     await userEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    await screen.findByText("Connection verified with openai/gpt-4.1 (5 ms).");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("no verification proof came back");
+    expect(screen.queryByText(/Connection verified with/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Test connection" })).toBeEnabled();
+  });
+
+  it("expires the local verified state when the proof window closes and prompts a retest", async () => {
+    // The expiry is driven by a short real-timer proof window: the component's
+    // own timeout (scheduled from the remaining validity the API reported)
+    // genuinely fires and expires the local verified state.
+    postRoutes({ "/candidate/verify-model": { data: { ...verifySuccess, proof_expires_in_seconds: 1 } } });
+    renderWizard();
+    await toTestStep();
+    await runSuccessfulTest("openai/gpt-4.1");
+    expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+
+    const alert = await screen.findByRole("alert", {}, { timeout: 4000 });
+    expect(alert).toHaveTextContent("The connection proof has expired. Test the connection again to continue.");
+    expect(screen.queryByText(/Connection verified with/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Test connection" })).toBeEnabled();
+
+    // A fresh test with a live proof restores progress and clears the prompt.
+    postRoutes();
+    await runSuccessfulTest("openai/gpt-4.1");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+  }, 15000);
+
+  it("disables saving once the proof expires on the save step", async () => {
+    postRoutes({ "/candidate/verify-model": { data: { ...verifySuccess, proof_expires_in_seconds: 2 } } });
+    renderWizard();
+    await toTestStep();
+    await runSuccessfulTest("openai/gpt-4.1");
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));
     await screen.findByRole("heading", { name: "Choose who can use it" });
-    await userEvent.click(screen.getByRole("button", { name: "Save provider" }));
+    expect(screen.getByRole("button", { name: "Save provider" })).toBeEnabled();
+
+    const alert = await screen.findByRole("alert", {}, { timeout: 4000 });
+    expect(alert).toHaveTextContent("The connection proof has expired. Test the connection again to continue.");
+    expect(screen.getByRole("button", { name: "Save provider" })).toBeDisabled();
+  }, 15000);
+
+  it("reports an honest unverified outcome when the save is stored without a valid proof", async () => {
+    put.mockResolvedValue({ data: { id: "new-provider", verification_status: "unverified" } });
+    const { onComplete } = renderWizard();
+    await toUploadStep();
+    await chooseConfig(validConfig);
+    await fillName();
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", { name: "Test the connection" });
+    await runSuccessfulTest("openai/gpt-4.1");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save provider" }));
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
-    const submitted = put.mock.calls[0][1].body as FormData;
-    expect(submitted.get("verification_id")).toBeNull();
-    expect(submitted.get("selected_model")).toBeNull();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("saved, but it could not be verified");
+    // Plain success is never reported for an unverified save.
+    expect(onComplete).not.toHaveBeenCalled();
+    // The honest outcome can be closed without pretending it was verified.
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("completes the wizard only when the backend records the configuration as verified", async () => {
+    const { onComplete } = renderWizard();
+    await toUploadStep();
+    await chooseConfig(validConfig);
+    await fillName();
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", { name: "Test the connection" });
+    await runSuccessfulTest("openai/gpt-4.1");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save provider" }));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
   });
 
   it("clears the verification result when the configuration changes", async () => {
@@ -455,5 +573,105 @@ describe("provider wizard", () => {
     expect(alert).toHaveTextContent("Model discovery is temporarily unavailable. Try again later.");
     expect(alert).not.toHaveTextContent("An unexpected error occurred.");
     expect(screen.getByRole("heading", { name: "Add your configuration" })).toBeInTheDocument();
+  });
+});
+
+
+describe("provider wizard edit mode", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capabilityOverrides.opencodeMethods = ["config"];
+    mockCapabilities = { scopes: { personal: true, groups: [], global: false }, groups: [] };
+    postRoutes();
+    patch.mockResolvedValue({ data: { id: "p-1", verification_status: "verified" } });
+  });
+
+  it("starts on the data step with the name prefilled and the type locked", async () => {
+    renderEditWizard();
+    const nameInput = await screen.findByLabelText(/Configuration name/);
+    expect(nameInput).toHaveValue("Team gateway");
+    // The provider type is fixed: the type step never renders.
+    expect(screen.queryByRole("button", { name: /OpenCode/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Edit provider configuration" })).toBeInTheDocument();
+    expect(screen.getByText("Keeping the saved configuration file unless you upload a new one.")).toBeInTheDocument();
+    expect(screen.getByText("Keeping the saved credentials file unless you upload a new one.")).toBeInTheDocument();
+  });
+
+  it("saves a rename-only edit by id without resending the stored files", async () => {
+    const { onComplete } = renderEditWizard();
+    const nameInput = await screen.findByLabelText(/Configuration name/);
+    await userEvent.clear(nameInput);
+    await userEvent.type(nameInput, "Renamed gateway");
+    // No file replaced: the connection test is not required to save.
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", { name: "Edit provider configuration" });
+    expect(screen.queryByLabelText("Discovered models")).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Save provider" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const submitted = patch.mock.calls[0][1].body as FormData;
+    expect(submitted.get("config_id")).toBe("p-1");
+    expect(submitted.get("name")).toBe("Renamed gateway");
+    expect(submitted.get("opencode_json")).toBeNull();
+    expect(submitted.get("auth_json")).toBeNull();
+    expect(submitted.get("verification_id")).toBeNull();
+    expect(submitted.get("visibility")).toBe("personal");
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("reaches the connection step when only the credentials file is replaced and attests the stored configuration", async () => {
+    const { onComplete } = renderEditWizard();
+    await screen.findByLabelText(/Configuration name/);
+    await userEvent.upload(screen.getByLabelText(authDropzoneName), makeFile(JSON.stringify(authObject), "auth.json"));
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByLabelText("Discovered models");
+    // The edit target is named and ONLY the replaced file is sent; the stored
+    // configuration is overlaid server-side and never travels to the client.
+    expect(postedTo("/candidate/validate")).toEqual({ body: { config_id: "p-1", auth: authObject } });
+    expect(postedTo("/candidate/models")).toEqual({ body: { config_id: "p-1", auth: authObject } });
+    await runSuccessfulTest("openai/gpt-4.1");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save provider" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const submitted = patch.mock.calls[0][1].body as FormData;
+    expect(submitted.get("config_id")).toBe("p-1");
+    expect(submitted.get("opencode_json")).toBeNull();
+    expect(JSON.parse(await (submitted.get("auth_json") as File).text())).toEqual(authObject);
+    expect(submitted.get("verification_id")).toBe("ver-1");
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+  });
+
+  it("verifies a config-only replacement against the stored credentials file", async () => {
+    renderEditWizard();
+    await screen.findByLabelText(/Configuration name/);
+    await chooseConfig(validConfig);
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByLabelText("Discovered models");
+    // Only the replaced configuration is sent alongside the edit target id.
+    expect(postedTo("/candidate/validate")).toEqual({ body: { config_id: "p-1", config: validConfigObject } });
+    expect(postedTo("/candidate/models")).toEqual({ body: { config_id: "p-1", config: validConfigObject } });
+    await runSuccessfulTest("openai/gpt-4.1");
+    expect(postedTo("/candidate/verify-model")).toEqual({
+      body: { config_id: "p-1", config: validConfigObject, model: "openai/gpt-4.1" },
+    });
+  });
+
+  it("runs the full verification flow when files are replaced and sends them with the proof", async () => {
+    renderEditWizard();
+    await screen.findByLabelText(/Configuration name/);
+    await chooseConfig(validConfig);
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByLabelText("Discovered models");
+    await userEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    await screen.findByText("Connection verified with openai/gpt-4.1 (420 ms).");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Save provider" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    const submitted = patch.mock.calls[0][1].body as FormData;
+    expect(submitted.get("config_id")).toBe("p-1");
+    expect(submitted.get("verification_id")).toBe("ver-1");
+    const configPart = submitted.get("opencode_json") as File;
+    expect(configPart.name).toBe("opencode.json");
+    expect(JSON.parse(await configPart.text())).toEqual(validConfigObject);
   });
 });

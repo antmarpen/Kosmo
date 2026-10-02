@@ -1,16 +1,32 @@
+"""Safety contract for the provider probe activities (F5/F6).
+
+Everything an activity returns crosses into Temporal history and the API
+response: model names for discovery, a non-empty-response assertion plus
+measured latency for verification, and stable keyed errors. Sentinel tests
+prove that simulated agent output and external exception text never leak.
+"""
+
 import asyncio
 import json
 
 import pytest
 
-from shared.agent_events import AgentText, CompletionProposed
+from shared.agent_events import AgentError, AgentText, CompletionProposed
 from shared.errors import NotFoundError
 from worker.activities import provider_verify
 from worker.activities import agent as agent_module
 
+SENTINEL = "SENTINEL-SECRET-do-not-leak"
+
+
+def _serialized(result) -> str:
+    if isinstance(result, (dict, list)):
+        return json.dumps(result, default=str)
+    return str(result)
+
 
 def test_provider_verification_reports_missing_auth_without_starting_a_container(monkeypatch):
-    async def config_files(user_id):
+    async def config_files(user_id, config_id=None):
         return {"opencode.json": b'{"provider":{"opencode":{"models":{}}}}'}
 
     monkeypatch.setattr(provider_verify, "_config_files", config_files)
@@ -18,6 +34,82 @@ def test_provider_verification_reports_missing_auth_without_starting_a_container
     assert result == {"ok": False, "error": {
         "code": "PROVIDER_AUTH_MISSING", "message_key": "errors.provider.auth_missing",
         "params": {"provider": "opencode"},
+    }}
+
+
+def test_saved_config_activities_resolve_files_for_the_targeted_configuration(monkeypatch, tmp_path):
+    """The saved-config probe decrypts exactly the targeted configuration's
+    files: row A is probed even when other rows exist."""
+    class FakeAdapter:
+        def __init__(self):
+            self.closed = False
+            self._adapter = self
+
+        async def start_session(self, cfg):
+            pass
+
+        async def send_prompt(self, prompt):
+            pass
+
+        async def events(self):
+            yield AgentText(delta="ok")
+            yield CompletionProposed()
+
+        async def deliver_answer(self, answer, request_id):
+            pass
+
+        def list_models(self):
+            return ["a/model-a", "a/model-b"]
+
+        async def close(self):
+            self.closed = True
+
+    files_by_config = {
+        "row-a": {"opencode.json": b'{"provider":{"a":{"options":{"apiKey":"k"}}}}'},
+        "row-b": {"opencode.json": b'{"provider":{"b":{"options":{"apiKey":"k"}}}}'},
+    }
+    resolved_for = []
+    started_files = []
+    adapter = FakeAdapter()
+
+    async def config_files(user_id, config_id=None):
+        resolved_for.append(config_id)
+        return files_by_config[config_id]
+
+    async def start_session(cfg, workspace, **kwargs):
+        started_files.append(kwargs["runtime_config_files"])
+        return adapter
+
+    monkeypatch.setattr(provider_verify, "_config_files", config_files)
+    monkeypatch.setattr(agent_module, "start_agent_session", start_session)
+    monkeypatch.setattr(agent_module, "TASK_STORAGE_ROOT", tmp_path)
+
+    result = asyncio.run(provider_verify.list_opencode_models({"user_id": "owner-1", "config_id": "row-a"}))
+    verify_result = asyncio.run(provider_verify.verify_opencode_model(
+        {"user_id": "owner-1", "model": "a/model-a", "config_id": "row-a"}))
+
+    # Both probes resolved row A's files, never another row's.
+    assert resolved_for == ["row-a", "row-a"]
+    assert started_files == [files_by_config["row-a"], files_by_config["row-a"]]
+    assert b'"b"' not in started_files[0] and b'"b"' not in started_files[1]
+    assert result == {"models": ["a/model-a", "a/model-b"]}
+    assert verify_result["ok"] is True
+    assert adapter.closed is True
+
+
+def test_saved_config_activities_report_a_missing_targeted_configuration(monkeypatch):
+    async def config_files(user_id, config_id=None):
+        return None
+
+    monkeypatch.setattr(provider_verify, "_config_files", config_files)
+
+    assert asyncio.run(provider_verify.list_opencode_models(
+        {"user_id": "owner-1", "config_id": "gone"})) == {"models": []}
+    result = asyncio.run(provider_verify.verify_opencode_model(
+        {"user_id": "owner-1", "model": "m", "config_id": "gone"}))
+    assert result == {"ok": False, "error": {
+        "code": "PROVIDER_CONFIG_MISSING", "message_key": "errors.provider.config_not_found",
+        "params": {},
     }}
 
 
@@ -38,7 +130,7 @@ def test_model_list_activity_uses_acp_session_model_options(monkeypatch, tmp_pat
             self.closed = True
 
     adapter = FakeAdapter()
-    async def config_files(user_id):
+    async def config_files(user_id, config_id=None):
         return {"opencode.json": b'{"provider":{"opencode":{"options":{"apiKey":"test"}}}}'}
     async def start_session(*args, **kwargs):
         return adapter
@@ -49,7 +141,7 @@ def test_model_list_activity_uses_acp_session_model_options(monkeypatch, tmp_pat
 
     result = asyncio.run(provider_verify.list_opencode_models({"user_id": "owner-1"}))
 
-    assert result == ["opencode/big-pickle", "opencode/ling-3.0-flash-fin-free"]
+    assert result == {"models": ["opencode/big-pickle", "opencode/ling-3.0-flash-fin-free"]}
     assert adapter.started_with == [{"model": "default"}]
     assert adapter.closed is True
 
@@ -109,7 +201,7 @@ def test_candidate_model_list_activity_consumes_operation_before_container(monke
     result = asyncio.run(provider_verify.list_opencode_candidate_models(
         {"operation_id": "op-1", "user_id": "owner-1"}))
 
-    assert result == ["candidate/model-a", "candidate/model-b"]
+    assert result == {"models": ["candidate/model-a", "candidate/model-b"]}
     assert calls == [("consume", "op-1", "owner-1"), ("container", {"model": "default"})]
     assert adapter.runtime_files == {
         "opencode.json": json.dumps(CANDIDATE_CONFIG).encode("utf-8"),
@@ -166,8 +258,11 @@ def test_candidate_model_verification_consumes_before_container_and_propagates_r
         {"operation_id": "op-1", "user_id": "owner-1", "model": "candidate/model-a"}))
 
     assert result["ok"] is True
-    assert result["response_snippet"] == "ok"
+    # Only the non-empty-response assertion and latency cross the boundary:
+    # no agent text may enter Temporal history or the API response.
+    assert result["response_non_empty"] is True
     assert result["latency_ms"] >= 0
+    assert "response_snippet" not in result
     assert calls[0] == ("consume", "op-1")
     assert calls[1] == ("container", {"model": "candidate/model-a"})
     assert adapter.runtime_files == {
@@ -229,7 +324,8 @@ def test_candidate_verification_without_consumption_keeps_operation_as_proof(mon
          "consume": False}))
 
     assert result["ok"] is True
-    assert result["response_snippet"] == "ok"
+    assert result["response_non_empty"] is True
+    assert "response_snippet" not in result
     # The non-consuming variant reads the credentials without consuming the
     # operation so the API can redeem it afterwards as single-use proof.
     assert calls == ["load", "container"]
@@ -248,16 +344,22 @@ def test_candidate_container_failure_still_leaves_no_operation_row(monkeypatch, 
 
     async def start_session(cfg, workspace, **kwargs):
         calls.append("container")
-        raise RuntimeError("docker unavailable")
+        raise RuntimeError(f"docker unavailable: {SENTINEL}")
 
     monkeypatch.setattr(provider_verify, "_consume_candidate_operation", consume)
     monkeypatch.setattr(agent_module, "start_agent_session", start_session)
     monkeypatch.setattr(agent_module, "TASK_STORAGE_ROOT", tmp_path)
 
-    with pytest.raises(RuntimeError):
-        asyncio.run(provider_verify.list_opencode_candidate_models(
-            {"operation_id": "op-1", "user_id": "owner-1"}))
+    result = asyncio.run(provider_verify.list_opencode_candidate_models(
+        {"operation_id": "op-1", "user_id": "owner-1"}))
 
+    # Container/ACP failures normalize into the stable keyed error before the
+    # activity boundary: no raw exception text reaches Temporal.
+    assert result == {"ok": False, "error": {
+        "code": "PROVIDER_DISCOVERY_FAILED",
+        "message_key": "errors.provider.verification_failed", "params": {},
+    }}
+    assert SENTINEL not in _serialized(result)
     assert calls == ["consume", "container"]
     assert "op-1" not in store.rows
 
@@ -293,3 +395,129 @@ def test_candidate_verification_without_usable_credentials_reports_auth_missing(
         "code": "PROVIDER_AUTH_MISSING", "message_key": "errors.provider.auth_missing",
         "params": {"provider": "opencode"},
     }}
+
+
+def test_verification_result_never_carries_simulated_agent_text(monkeypatch, tmp_path):
+    """F6: agent output must not enter the activity result (Temporal history
+    and the API response are downstream of it)."""
+
+    class LeakyAdapter:
+        def __init__(self):
+            self.closed = False
+
+        async def start_session(self, cfg):
+            pass
+
+        async def send_prompt(self, prompt):
+            pass
+
+        async def events(self):
+            yield AgentText(delta=f"all ok. credentials: {SENTINEL}")
+            yield CompletionProposed()
+
+        async def deliver_answer(self, answer, request_id):
+            pass
+
+        async def close(self):
+            self.closed = True
+
+    adapter = LeakyAdapter()
+
+    async def config_files(user_id, config_id=None):
+        return {"opencode.json": b'{"provider":{"opencode":{"options":{"apiKey":"k"}}}}'}
+
+    async def start_session(cfg, workspace, **kwargs):
+        return adapter
+
+    monkeypatch.setattr(provider_verify, "_config_files", config_files)
+    monkeypatch.setattr(agent_module, "start_agent_session", start_session)
+    monkeypatch.setattr(agent_module, "TASK_STORAGE_ROOT", tmp_path)
+
+    result = asyncio.run(provider_verify.verify_opencode_model(
+        {"user_id": "owner-1", "model": "candidate/model-a"}))
+
+    assert result["ok"] is True
+    assert result["response_non_empty"] is True
+    assert isinstance(result["latency_ms"], int)
+    assert set(result) == {"ok", "response_non_empty", "latency_ms"}
+    assert SENTINEL not in _serialized(result)
+
+
+def test_external_exception_text_never_reaches_activity_results(monkeypatch, tmp_path):
+    """F6: container/ACP failures normalize into the stable keyed errors."""
+
+    class ExplodingAdapter:
+        async def start_session(self, cfg):
+            pass
+
+        async def send_prompt(self, prompt):
+            raise RuntimeError(f"ACP transport died: {SENTINEL}")
+
+        async def events(self):
+            yield AgentText(delta="ok")
+            yield CompletionProposed()
+
+        async def deliver_answer(self, answer, request_id):
+            pass
+
+        async def close(self):
+            pass
+
+    async def config_files(user_id, config_id=None):
+        return {"opencode.json": b'{"provider":{"opencode":{"options":{"apiKey":"k"}}}}'}
+
+    async def start_session(cfg, workspace, **kwargs):
+        return ExplodingAdapter()
+
+    monkeypatch.setattr(provider_verify, "_config_files", config_files)
+    monkeypatch.setattr(agent_module, "start_agent_session", start_session)
+    monkeypatch.setattr(agent_module, "TASK_STORAGE_ROOT", tmp_path)
+
+    result = asyncio.run(provider_verify.verify_opencode_model(
+        {"user_id": "owner-1", "model": "candidate/model-a"}))
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "PROVIDER_VERIFICATION_FAILED"
+    assert result["error"]["message_key"] == "errors.provider.verification_failed"
+    assert SENTINEL not in _serialized(result)
+
+
+def test_discovery_container_failure_normalizes_into_keyed_error(monkeypatch, tmp_path):
+    """F6: model discovery wraps container/ACP failures in the stable keyed
+    error instead of letting the exception escape into Temporal."""
+
+    async def config_files(user_id, config_id=None):
+        return {"opencode.json": b'{"provider":{"opencode":{"options":{"apiKey":"k"}}}}'}
+
+    async def start_session(cfg, workspace, **kwargs):
+        raise RuntimeError(f"container start failed: {SENTINEL}")
+
+    monkeypatch.setattr(provider_verify, "_config_files", config_files)
+    monkeypatch.setattr(agent_module, "start_agent_session", start_session)
+    monkeypatch.setattr(agent_module, "TASK_STORAGE_ROOT", tmp_path)
+
+    result = asyncio.run(provider_verify.list_opencode_models({"user_id": "owner-1"}))
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "PROVIDER_DISCOVERY_FAILED"
+    assert result["error"]["message_key"] == "errors.provider.verification_failed"
+    assert SENTINEL not in _serialized(result)
+
+
+def test_database_failures_normalize_into_keyed_errors(monkeypatch):
+    """Even storage-layer exceptions (whose text can carry SQL details) are
+    normalized before crossing the activity boundary."""
+
+    async def config_files(user_id, config_id=None):
+        raise RuntimeError(f"asyncpg: constraint violated: {SENTINEL}")
+
+    monkeypatch.setattr(provider_verify, "_config_files", config_files)
+
+    discovered = asyncio.run(provider_verify.list_opencode_models({"user_id": "owner-1"}))
+    verified = asyncio.run(provider_verify.verify_opencode_model(
+        {"user_id": "owner-1", "model": "m"}))
+
+    for result in (discovered, verified):
+        assert result["ok"] is False
+        assert result["error"]["message_key"] == "errors.provider.verification_failed"
+        assert SENTINEL not in _serialized(result)

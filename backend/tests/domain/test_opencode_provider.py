@@ -22,12 +22,12 @@ class FakeRuntime:
         self.verification = verification or {"ok": True, "response_snippet": "ok", "latency_ms": 12}
         self.calls = []
 
-    async def list_models(self, user_id):
-        self.calls.append(("list", user_id))
+    async def list_models(self, user_id, config_id=None):
+        self.calls.append(("list", user_id, config_id))
         return self.models
 
-    async def verify_model(self, user_id, model):
-        self.calls.append(("verify", user_id, model))
+    async def verify_model(self, user_id, model, config_id=None):
+        self.calls.append(("verify", user_id, model, config_id))
         if isinstance(self.verification, Exception):
             raise self.verification
         if asyncio.iscoroutine(self.verification):
@@ -110,7 +110,7 @@ def test_provider_handler_lists_runtime_models_and_verifies_selected_model():
     verification = asyncio.run(handler.verify_model("user-1", "opencode/big-pickle"))
     assert models == runtime.models
     assert verification["ok"] is True
-    assert runtime.calls == [("list", "user-1"), ("verify", "user-1", "opencode/big-pickle")]
+    assert runtime.calls == [("list", "user-1", None), ("verify", "user-1", "opencode/big-pickle", None)]
 
 
 def test_provider_handler_structures_verification_failure_and_timeout():

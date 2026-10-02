@@ -29,6 +29,8 @@ const SELECT_CLASS = "h-9 w-full rounded-md border border-input bg-background px
 
 export type VerifyConnectionDialogProps = {
   open: boolean;
+  /** Id of the stored configuration this dialog's row targets. */
+  configId: string | null;
   onOpenChange: (open: boolean) => void;
   /**
    * Runs after a model verification attempt settles. `verify-model` records
@@ -40,14 +42,14 @@ export type VerifyConnectionDialogProps = {
 
 /**
  * Row action dialog that tests a SAVED provider configuration: it lists the
- * models of the stored config through `/config/verify` (no body), lets the
- * user mark one, and sends a real container request through
- * `/config/verify-model` with `{ model }`. No model is persisted: the choice
- * belongs to the test only, matching the wizard's connection step. Success
- * shows the measured latency; failures render the structured backend error
- * through `KosmoErrorAlert`.
+ * models of the stored config named by `configId` through `/config/verify`,
+ * lets the user mark one, and sends a real container request through
+ * `/config/verify-model` with `{ model, config_id }`. No model is persisted:
+ * the choice belongs to the test only, matching the wizard's connection step.
+ * Success shows the measured latency; failures render the structured backend
+ * error through `KosmoErrorAlert`.
  */
-export function VerifyConnectionDialog({ open, onOpenChange, onSettled }: VerifyConnectionDialogProps) {
+export function VerifyConnectionDialog({ open, configId, onOpenChange, onSettled }: VerifyConnectionDialogProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState<string[]>([]);
@@ -60,9 +62,26 @@ export function VerifyConnectionDialog({ open, onOpenChange, onSettled }: Verify
   // Bumped on close and on each new attempt; in-flight responses compare
   // against it and discard themselves when stale (same pattern as the wizard).
   const requestSeq = useRef(0);
+  // Focus contract (same as ConfirmDialog): this dialog is controlled without
+  // a rendered trigger, so Radix's built-in restore would send focus to the
+  // document body. Capture the opener (the row action) on open and restore it
+  // on close.
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
+
+  const handleOpenAutoFocus = () => {
+    // Record the opener before Radix moves focus into the dialog; the default
+    // content-focus behavior stays untouched.
+    lastFocusedRef.current = document.activeElement as HTMLElement | null;
+  };
+
+  const handleCloseAutoFocus = (event: Event) => {
+    event.preventDefault();
+    lastFocusedRef.current?.focus();
+    lastFocusedRef.current = null;
+  };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !configId) return;
     const seq = ++requestSeq.current;
     setModels([]); setSelectedModel(""); setViolations(null); setLoadError(null);
     setError(null); setVerified(null); setLoading(true);
@@ -71,7 +90,8 @@ export function VerifyConnectionDialog({ open, onOpenChange, onSettled }: Verify
         // The generated schema documents no error status for /verify, but the
         // backend still answers 404/503 with flat KosmoError bodies; unwrap
         // throws them so the structured key survives.
-        const response = unwrap(await api.POST("/providers/opencode/config/verify")) as SavedConfigVerification;
+        const response = unwrap(await api.POST("/providers/opencode/config/verify",
+          { body: { config_id: configId } })) as SavedConfigVerification;
         if (seq !== requestSeq.current) return;
         if (!response.valid) { setViolations(response.violations ?? []); return; }
         setModels(response.models ?? []);
@@ -84,14 +104,15 @@ export function VerifyConnectionDialog({ open, onOpenChange, onSettled }: Verify
       }
     })();
     return () => { requestSeq.current += 1; };
-  }, [open]);
+  }, [open, configId]);
 
   async function verifyModel() {
-    if (!selectedModel || verifying) return;
+    if (!selectedModel || verifying || !configId) return;
     const seq = ++requestSeq.current;
     setVerifying(true); setError(null);
     try {
-      const response = unwrap(await api.POST("/providers/opencode/config/verify-model", { body: { model: selectedModel } })) as ModelVerification;
+      const response = unwrap(await api.POST("/providers/opencode/config/verify-model",
+        { body: { model: selectedModel, config_id: configId } })) as ModelVerification;
       if (seq !== requestSeq.current) return;
       if (!response.ok) {
         setError(response.error ?? { code: "PROVIDER_VERIFICATION_FAILED", message_key: "errors.provider.verification_failed" });
@@ -113,7 +134,12 @@ export function VerifyConnectionDialog({ open, onOpenChange, onSettled }: Verify
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent onEscapeKeyDown={holdOpenWhileVerifying} onInteractOutside={holdOpenWhileVerifying}>
+      <DialogContent
+        onOpenAutoFocus={handleOpenAutoFocus}
+        onCloseAutoFocus={handleCloseAutoFocus}
+        onEscapeKeyDown={holdOpenWhileVerifying}
+        onInteractOutside={holdOpenWhileVerifying}
+      >
         <DialogHeader>
           <DialogTitle>{t("providers.actions.verifyTitle")}</DialogTitle>
           <DialogDescription>{t("providers.actions.verifyDescription")}</DialogDescription>
@@ -155,7 +181,7 @@ export function VerifyConnectionDialog({ open, onOpenChange, onSettled }: Verify
             disabled={loading || violations !== null || loadError !== null || models.length === 0 || !selectedModel}
             onClick={() => void verifyModel()}
           >
-            {verifying ? t("providers.wizard.testing") : t("providers.wizard.testAction")}
+            {t("providers.wizard.testAction")}
           </Button>
         </DialogFooter>
       </DialogContent>
