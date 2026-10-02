@@ -3,6 +3,10 @@
     "appName": "Kosmo",
     "cancel": "Cancel",
     "submit": "Submit",
+    "add": "Add",
+    "edit": "Edit",
+    "delete": "Delete",
+    "confirm": "Confirm",
     "language": "Language",
     "languageEnglish": "English",
     "languageSpanish": "Español"
@@ -16,7 +20,7 @@
       "placeholder": "Task views arrive in a later phase. From here you will launch and monitor workflow runs."
     },
     "workspace": "Workspace",
-    "userMenu": "User menu (not available yet)"
+    "userMenu": "User menu"
   },
   "auth": {
     "login": {
@@ -39,11 +43,15 @@
     "history": "History",
     "workflows": "Workflows",
     "context": "Context",
+    "workspace": "Workspace",
+    "catalog": "Catalog",
     "administration": "Administration",
     "agents": "Agents",
     "mcps": "MCPs",
     "skills": "Skills",
     "extensions": "Extensions",
+    "providers": "Providers",
+    "globalSettings": "Global settings",
     "repositories": "Repositories",
     "applications": "Applications",
     "audit": "Audit",
@@ -58,6 +66,7 @@
       },
       "workflows": "Workflows",
       "context": "Context",
+      "applications": "Applications",
       "admin": {
         "agents": "Agents",
         "mcps": "MCPs",
@@ -89,9 +98,10 @@
     "workflow": "Workflow",
     "workflowDescription": "Analyze a topic and review the resulting findings and artifacts.",
     "submitError": "Could not create the task. Please try again.",
-    "submitting": "Creating?",
+    "noLaunchableWorkflows": "No workflows can be launched yet. Publish a version of a workflow to run it.",
+    "submitting": "Creating…",
     "loadError": "Tasks could not be loaded.",
-    "loading": "Loading?",
+    "loading": "Loading…",
     "back": "Back to tasks",
     "stop": "Stop task",
     "confirmStop": "Stop this task?",
@@ -123,7 +133,136 @@
       "allocating": "Waiting for capacity"
     }
   },
+  "providers": {
+    "title": "Providers",
+    "description": "Connect a provider to make its models available to your workflows. Credentials and configuration stay private.",
+    "add": "Add provider",
+    "addFirst": "Configure your first provider",
+    "loading": "Loading provider configurations…",
+    "emptyTitle": "No providers configured",
+    "emptyDescription": "Add an OpenCode configuration to discover models and use them in your workflows.",
+    "name": "Name",
+    "namePlaceholder": "e.g. My OpenCode account",
+    "delete": {
+      "title": "Delete provider configuration",
+      "description": "This configuration and its stored files will be removed. This action cannot be undone.",
+      "confirm": "Delete"
+    },
+    "actions": {
+      "verifyTitle": "Test the connection",
+      "verifyDescription": "Runs a real request against the saved configuration to check that it can reach a model. The model is only used for this test; it is not saved with the provider.",
+      "close": "Close"
+    },
+    "columns": {
+      "name": "Name",
+      "type": "Type",
+      "visibility": "Scope",
+      "status": "Verification",
+      "owner": "Owner"
+    },
+    "types": {
+      "opencode": {
+        "label": "OpenCode",
+        "description": "Use an OpenCode configuration file to connect provider accounts and models."
+      },
+      "claude_code": {
+        "label": "Claude Code",
+        "description": "Connect Claude Code with a key or configuration file."
+      },
+      "codex": {
+        "label": "Codex",
+        "description": "Connect Codex with a key or configuration file."
+      }
+    },
+    "visibility": {
+      "personal": "Personal",
+      "group": "Group",
+      "global": "Global"
+    },
+    "verification": {
+      "unknown": "Not verified",
+      "verified": "Verified",
+      "failed": "Failed"
+    },
+    "wizard": {
+      "step": "Step {{current}} of {{total}}",
+      "progress": "Step {{current}} of {{total}}",
+      "steps": {
+        "type": "Choose a provider",
+        "name": "Name your configuration",
+        "method": "Choose a configuration method",
+        "data": "Add your configuration",
+        "connection": "Test the connection",
+        "save": "Choose who can use it"
+      },
+      "stepDescriptions": {
+        "type": "Select the provider you want to connect. More providers will be available soon.",
+        "name": "Give this configuration a friendly name so you can tell instances apart.",
+        "method": "Select how you want to connect this provider.",
+        "data": "Upload your opencode.json file. We will check it before saving.",
+        "connection": "Run a real connection test before saving.",
+        "save": "Choose where this provider configuration is available."
+      },
+      "cancel": "Cancel setup",
+      "comingSoon": "Coming soon",
+      "configTitle": "OpenCode configuration",
+      "configDescription": "Only provider configuration is used here. Other sections, such as MCP and skills, are not changed.",
+      "configKept": "Keeping the saved configuration file unless you upload a new one.",
+      "fileLabel": "Configuration file",
+      "dropzoneLabel": "Drag and drop your configuration file here, or browse to choose it",
+      "dropzoneHint": "Accepted formats: .json or .jsonc (up to 1 MB).",
+      "fileSelected": "Selected file: {{name}}",
+      "wrongFileType": "{{filename}} is not a JSON file. Choose a .json or .jsonc file.",
+      "fileTooLarge": "{{filename}} is larger than 1 MB. Choose a smaller file.",
+      "fileReadFailed": "{{filename}} could not be read. Try again.",
+      "authLabel": "Credentials file (optional)",
+      "authHint": "If your credentials live in a separate auth.json file, add it here.",
+      "authKept": "Keeping the saved credentials file unless you upload a new one.",
+      "authDropzone": "Drag and drop auth.json here, or browse to choose it",
+      "authSelected": "Credentials file selected: {{name}}",
+      "authRemove": "Remove credentials file",
+      "authNameRequired": "The credentials file must be named auth.json.",
+      "invalidJson": "{{filename}} must contain a valid JSON object.",
+      "modelsTitle": "Discovered models",
+      "noModels": "No models were found for this configuration.",
+      "connectionTitle": "Test the connection",
+      "connectionDescription": "Choose one of the discovered models and send a real request with your configuration. The model is only used for this test; it is not saved with the provider.",
+      "testAction": "Test connection",
+      "testing": "Testing…",
+      "verifiedWith": "Connection verified with {{model}} ({{latency}} ms).",
+      "verifiedOtherSelected": "Now selected: {{model}}. Run the test again to verify it.",
+      "scopeTitle": "Provider availability",
+      "scopeDescription": "Personal configurations are only visible to you. Group and global configurations are visible to their members.",
+      "visibilityLabel": "Make available to",
+      "personal": "Just me",
+      "group": "A managed group",
+      "global": "Everyone (global)",
+      "groupLabel": "Group",
+      "chooseGroup": "Choose a group",
+      "personalNotice": "This configuration will be personal and visible only to you.",
+      "commitSummary": "{{provider}} · owned by {{owner}}",
+      "back": "Back",
+      "continue": "Continue",
+      "save": "Save provider",
+      "working": "Working…",
+      "methods": {
+        "config": {
+          "label": "Configuration file",
+          "description": "Connect with an opencode.json file and an optional credentials file."
+        },
+        "api_key": {
+          "label": "API key",
+          "description": "Connect with an API key for this provider."
+        }
+      },
+      "nameLabel": "Configuration name",
+      "nameHint": "Required. This name identifies the configuration in the provider list.",
+      "nameRequired": "Required",
+      "verifiedScopeNote": "Connection verified with {{model}}."
+    }
+  },
   "errors": {
+    "generic": "An unexpected error occurred.",
     "node": {
       "validation_exhausted": "Validation failed after {{attempts}} attempts for {{node}}."
     },
@@ -132,16 +271,23 @@
       "artifact_not_declared": "An output artifact was not declared.",
       "cycle": "The workflow contains a cycle.",
       "disconnected": "The workflow contains disconnected nodes.",
+      "draft_not_found": "Draft not found.",
+      "draft_revision_conflict": "This draft was changed elsewhere. Reload before saving.",
       "duplicate_node_id": "The workflow has duplicate node IDs.",
       "edge_node_missing": "A workflow edge references a missing node.",
       "end_count": "The workflow must have one end node.",
       "end_outgoing_edge": "The end node cannot have outgoing edges.",
       "invalid": "The workflow definition is invalid.",
+      "invalid_definition": "The workflow definition is invalid.",
       "name_conflict": "A workflow with this name already exists.",
       "not_found": "Workflow not found.",
       "start_count": "The workflow must have one start node.",
       "start_incoming_edge": "The start node cannot have incoming edges.",
-      "start_input_required": "A required start input is missing."
+      "start_input_required": "A required start input is missing.",
+      "publication_revision_conflict": "The workflow changed while you were publishing. Try again.",
+      "publication_confirmation_required": "Someone published a new version less than five minutes ago. Confirm to publish anyway.",
+      "stale_base_confirmation_required": "This draft is based on an older version than the active one. Confirm to publish anyway.",
+      "active_revision_conflict": "The active version changed. Try activating again."
     },
     "auth": {
       "invalid_credentials": "The username or password is incorrect."
@@ -181,12 +327,93 @@
       "model_invalid": "The model configuration is invalid.",
       "auth_invalid": "Authentication configuration is invalid.",
       "auth_missing": "Add provider credentials before continuing.",
+      "name_required": "A configuration name is required.",
+      "name_duplicate": "You already have a configuration with this name for this provider.",
       "verification_timeout": "Provider verification timed out.",
       "verification_failed": "Provider verification failed.",
       "ambiguous_config": "More than one group provider configuration applies. Ask an administrator to resolve the conflict.",
       "forbidden": "You do not have permission to manage this provider configuration.",
       "global_admin_only": "Only administrators can create global provider configurations.",
-      "group_forbidden": "You can only configure groups you belong to."
+      "group_forbidden": "You can only configure groups you belong to.",
+      "candidate_operation_unavailable": "Model discovery is temporarily unavailable. Try again later.",
+      "upload_too_large": "{{filename}} is too large. The maximum size is 1 MB.",
+      "upload_failed": "The uploaded file could not be read. Try again.",
+      "upload_filename_invalid": "The uploaded file must be named {{filename}}.",
+      "json_invalid": "{{filename}} must contain valid JSON.",
+      "json_object_required": "{{filename}} must contain a JSON object.",
+      "storage_unavailable": "Provider storage is temporarily unavailable. Try again later.",
+      "name_invalid": "Enter a name for this provider configuration.",
+      "name_too_long": "The name is too long. Use 80 characters or fewer."
+    }
+  },
+  "workflowEditor": {
+    "title": "Workflow editor",
+    "nodeCount_one": "{{count}} node",
+    "nodeCount_other": "{{count}} nodes",
+    "connectionCount_one": "{{count}} connection",
+    "connectionCount_other": "{{count}} connections",
+    "addNode": "Add node",
+    "addType": "Add {{type}}",
+    "deleteSelection": "Delete selection",
+    "saveDraft": "Save draft",
+    "loading": "Loading workflow…",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "unsaved": "Unsaved changes",
+    "revision": "Revision {{revision}}",
+    "palette": "Node types",
+    "canvas": "Workflow canvas",
+    "fitView": "Fit view",
+    "selectedPosition": "Selected node position",
+    "publish": "Publish",
+    "activate": "Activate",
+    "publishBlocked": "This draft cannot be published yet. Fix the validation errors first.",
+    "publishSuccess": "Published as version {{version}}.",
+    "publishWorkflowChanged": "The workflow changed while you were editing. Retrying with the latest publication state.",
+    "activateSuccess": "Version {{version}} is now active.",
+    "activateTitle": "Activate a version",
+    "activateDescription": "Choose which published version tasks should use. Activation is separate from publishing and does not change queued or running tasks.",
+    "activateVersionLabel": "Published version",
+    "activateNoVersions": "There is no published version to activate yet.",
+    "confirmRecentPublicationTitle": "Publish over recent changes?",
+    "confirmRecentPublicationDescription": "Someone published a new version less than five minutes ago. Publishing now overwrites the shared publication state. Publish anyway?",
+    "confirmStaleBasePublishTitle": "Publish from an older version?",
+    "confirmStaleBasePublishDescription": "This draft is based on an older version than the currently active one. Publishing may discard changes published in between. Publish anyway?",
+    "confirmStaleBaseActivateTitle": "Activate an older version?",
+    "confirmStaleBaseActivateDescription": "The selected version is based on an older version than the currently active one. Activating it rolls the workflow back. Activate anyway?",
+    "publishAnyway": "Publish anyway",
+    "activateAnyway": "Activate anyway",
+    "types": {
+      "start": "Start",
+      "script": "Script",
+      "ai": "AI",
+      "http": "HTTP",
+      "decision": "Decision",
+      "workflow": "Workflow",
+      "end": "End"
+    }
+  },
+  "workflows": {
+    "list": {
+      "title": "Workflows",
+      "description": "Create and manage the workflows your team uses to run work.",
+      "loading": "Loading workflows…",
+      "emptyTitle": "No workflows yet",
+      "emptyDescription": "Create a workflow to define a repeatable process, then shape it in the editor.",
+      "activeVersion": "Version {{version}}",
+      "noActiveVersion": "No active version",
+      "published": "Published",
+      "publicationUnknown": "Publication status unavailable",
+      "dateUnavailable": "Date unavailable",
+      "edit": "Edit",
+      "run": "Run",
+      "runUnavailable": "No active version. Publish a version to run this workflow."
+    },
+    "new": {
+      "action": "Create workflow",
+      "createFirst": "Create your first workflow",
+      "creating": "Creating…",
+      "defaultName": "Untitled workflow"
     }
   },
   "workflow": {
@@ -195,5 +422,30 @@
       "required_sections": "Required sections are missing: {{sections}}.",
       "content_rule": "The artifact does not satisfy the content rule: {{rule}}."
     }
+  },
+  "editor": {
+    "properties": "Node properties",
+    "selectNode": "Select a node to edit its properties.",
+    "inputForm": "Input form (JSON object)",
+    "code": "Code",
+    "codePlaceholder": "Python code that runs when the workflow reaches this node.",
+    "editScript": "Edit script",
+    "save": "Save",
+    "codeLoading": "Loading editor…",
+    "codeEditorError": "The code editor could not be loaded. You can edit the code as plain text.",
+    "codeLines_one": "{{count}} line",
+    "codeLines_other": "{{count}} lines",
+    "provider": "Provider",
+    "model": "Model",
+    "instructions": "Instructions",
+    "prompt": "Prompt template",
+    "method": "Method",
+    "url": "URL",
+    "headers": "Headers (JSON object)",
+    "body": "Body",
+    "route": "Next node",
+    "workflow": "Workflow",
+    "outputMapping": "Output mapping (JSON object)",
+    "invalidJson": "Enter a valid JSON object."
   }
 }

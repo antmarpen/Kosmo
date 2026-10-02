@@ -3,6 +3,10 @@
     "appName": "Kosmo",
     "cancel": "Cancelar",
     "submit": "Enviar",
+    "add": "Añadir",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "confirm": "Confirmar",
     "language": "Idioma",
     "languageEnglish": "English",
     "languageSpanish": "Español"
@@ -16,7 +20,7 @@
       "placeholder": "Las vistas de tareas llegarán en una fase posterior. Desde aquí podrás lanzar y supervisar tus flujos de trabajo."
     },
     "workspace": "Espacio de trabajo",
-    "userMenu": "Menú de usuario (aún no disponible)"
+    "userMenu": "Menú de usuario"
   },
   "auth": {
     "login": {
@@ -27,9 +31,9 @@
       "password": "Contraseña",
       "passwordPlaceholder": "Tu contraseña",
       "action": "Iniciar sesión",
-      "pending": "Iniciando sesi?n?",
-      "error": "No se pudo iniciar sesi?n. Comprueba el usuario y la contrase?a.",
-      "logout": "Cerrar sesi?n"
+      "pending": "Iniciando sesión…",
+      "error": "No se pudo iniciar sesión. Comprueba el usuario y la contraseña.",
+      "logout": "Cerrar sesión"
     }
   },
   "nav": {
@@ -39,11 +43,15 @@
     "history": "Historial",
     "workflows": "Flujos de trabajo",
     "context": "Contexto",
+    "workspace": "Espacio de trabajo",
+    "catalog": "Catálogo",
     "administration": "Administración",
     "agents": "Agentes",
     "mcps": "MCP",
     "skills": "Habilidades",
     "extensions": "Extensiones",
+    "providers": "Proveedores",
+    "globalSettings": "Configuración global",
     "repositories": "Repositorios",
     "applications": "Aplicaciones",
     "audit": "Auditoría",
@@ -58,6 +66,7 @@
       },
       "workflows": "Flujos de trabajo",
       "context": "Contexto",
+      "applications": "Aplicaciones",
       "admin": {
         "agents": "Agentes",
         "mcps": "MCP",
@@ -75,40 +84,41 @@
       "title": "Crear una tarea",
       "description": "Inicia una tarea desde un flujo de trabajo. Elige sus datos y sigue el progreso desde el historial.",
       "formTitle": "Detalles de la tarea",
-      "formDescription": "Elige el tema que analizar? el flujo seleccionado.",
+      "formDescription": "Elige el tema que analizará el flujo seleccionado.",
       "submit": "Crear tarea"
     },
     "list": {
       "title": "Tareas",
       "description": "Ejecuciones recientes de flujos de trabajo.",
-      "empty": "A?n no hay tareas",
+      "empty": "Aún no hay tareas",
       "emptyDescription": "Crea una tarea para iniciar tu primer flujo."
     },
-    "topic": "Tema de an?lisis",
+    "topic": "Tema de análisis",
     "topicPlaceholder": "p. ej., seguridad de API en el servicio de pagos",
     "workflow": "Flujo de trabajo",
     "workflowDescription": "Analiza un tema y revisa los hallazgos y artefactos generados.",
-    "submitError": "No se pudo crear la tarea. Int?ntalo de nuevo.",
-    "submitting": "Creando?",
+    "submitError": "No se pudo crear la tarea. Inténtalo de nuevo.",
+    "noLaunchableWorkflows": "Todavía no hay flujos de trabajo que se puedan lanzar. Publica una versión de un flujo para ejecutarlo.",
+    "submitting": "Creando…",
     "loadError": "No se pudieron cargar las tareas.",
-    "loading": "Cargando?",
+    "loading": "Cargando…",
     "back": "Volver a tareas",
     "stop": "Detener tarea",
-    "confirmStop": "?Detener esta tarea?",
+    "confirmStop": "¿Detener esta tarea?",
     "nodes": "Progreso del flujo",
-    "noNodes": "A?n no hay pasos registrados.",
+    "noNodes": "Aún no hay pasos registrados.",
     "notes": {
       "validation_failed": "La validación falló en el intento {{attempt}} ({{level}}).",
-      "validation_passed": "La validaci?n se complet? correctamente.",
-      "input_requested": "El flujo solicita informaci?n adicional.",
-      "input_answer": "Se envi? una respuesta.",
+      "validation_passed": "La validación se completó correctamente.",
+      "input_requested": "El flujo solicita información adicional.",
+      "input_answer": "Se envió una respuesta.",
       "agent_auth_missing": "Faltan las credenciales del proveedor."
     },
     "artifacts": "Artefactos",
-    "noArtifacts": "A?n no hay artefactos.",
+    "noArtifacts": "Aún no hay artefactos.",
     "answerLabel": "Tu respuesta",
     "sendAnswer": "Enviar respuesta",
-    "notesTitle": "Notas de ejecuci?n",
+    "notesTitle": "Notas de ejecución",
     "artifactDownloadError": "No se pudo descargar este artefacto."
   },
   "task": {
@@ -123,35 +133,171 @@
       "allocating": "Esperando capacidad"
     }
   },
+  "providers": {
+    "title": "Proveedores",
+    "description": "Conecta un proveedor para que tus flujos de trabajo puedan usar sus modelos. Las credenciales y la configuración son privadas.",
+    "add": "Añadir proveedor",
+    "addFirst": "Configura tu primer proveedor",
+    "loading": "Cargando configuraciones de proveedores…",
+    "emptyTitle": "Aún no hay proveedores configurados",
+    "emptyDescription": "Añade una configuración de OpenCode para descubrir modelos y usarlos en tus flujos de trabajo.",
+    "name": "Nombre",
+    "namePlaceholder": "p. ej., Mi cuenta de OpenCode",
+    "delete": {
+      "title": "Eliminar configuración del proveedor",
+      "description": "Se eliminará esta configuración y sus archivos guardados. Esta acción no se puede deshacer.",
+      "confirm": "Eliminar"
+    },
+    "actions": {
+      "verifyTitle": "Prueba la conexión",
+      "verifyDescription": "Ejecuta una petición real contra la configuración guardada para comprobar que puede alcanzar un modelo. El modelo solo se usa para esta prueba; no se guarda con el proveedor.",
+      "close": "Cerrar"
+    },
+    "columns": {
+      "name": "Nombre",
+      "type": "Tipo",
+      "visibility": "Ámbito",
+      "status": "Verificación",
+      "owner": "Propietario"
+    },
+    "types": {
+      "opencode": {
+        "label": "OpenCode",
+        "description": "Conecta cuentas de proveedores y modelos mediante un archivo de configuración de OpenCode."
+      },
+      "claude_code": {
+        "label": "Claude Code",
+        "description": "Conecta Claude Code con una clave o un archivo de configuración."
+      },
+      "codex": {
+        "label": "Codex",
+        "description": "Conecta Codex con una clave o un archivo de configuración."
+      }
+    },
+    "visibility": {
+      "personal": "Personal",
+      "group": "Grupo",
+      "global": "Global"
+    },
+    "verification": {
+      "unknown": "Sin verificar",
+      "verified": "Verificado",
+      "failed": "Error"
+    },
+    "wizard": {
+      "step": "Paso {{current}} de {{total}}",
+      "progress": "Paso {{current}} de {{total}}",
+      "steps": {
+        "type": "Elige un proveedor",
+        "name": "Nombra tu configuración",
+        "method": "Elige un método de configuración",
+        "data": "Añade tu configuración",
+        "connection": "Prueba la conexión",
+        "save": "Elige quién puede usarlo"
+      },
+      "stepDescriptions": {
+        "type": "Selecciona el proveedor que quieres conectar. Pronto habrá más opciones.",
+        "name": "Dale a esta configuración un nombre descriptivo para distinguir sus instancias.",
+        "method": "Selecciona cómo quieres conectar este proveedor.",
+        "data": "Sube tu archivo opencode.json. Lo revisaremos antes de guardarlo.",
+        "connection": "Realiza una prueba de conexión real antes de guardar.",
+        "save": "Elige dónde estará disponible esta configuración del proveedor."
+      },
+      "cancel": "Cancelar configuración",
+      "comingSoon": "Próximamente",
+      "configTitle": "Configuración de OpenCode",
+      "configDescription": "Aquí solo se usa la configuración del proveedor. Las demás secciones, como MCP y skills, no se modifican.",
+      "configKept": "Se conserva el archivo de configuración guardado a menos que subas uno nuevo.",
+      "fileLabel": "Archivo de configuración",
+      "dropzoneLabel": "Arrastra y suelta aquí tu archivo de configuración, o búscalo para elegirlo",
+      "dropzoneHint": "Formatos aceptados: .json o .jsonc (hasta 1 MB).",
+      "fileSelected": "Archivo seleccionado: {{name}}",
+      "wrongFileType": "{{filename}} no es un archivo JSON. Elige un archivo .json o .jsonc.",
+      "fileTooLarge": "{{filename}} supera 1 MB. Elige un archivo más pequeño.",
+      "fileReadFailed": "No se pudo leer {{filename}}. Inténtalo de nuevo.",
+      "authLabel": "Archivo de credenciales (opcional)",
+      "authHint": "Si tus credenciales están en un archivo auth.json separado, añádelo aquí.",
+      "authKept": "Se conserva el archivo de credenciales guardado a menos que subas uno nuevo.",
+      "authDropzone": "Arrastra y suelta aquí auth.json, o búscalo para elegirlo",
+      "authSelected": "Archivo de credenciales seleccionado: {{name}}",
+      "authRemove": "Quitar archivo de credenciales",
+      "authNameRequired": "El archivo de credenciales debe llamarse auth.json.",
+      "invalidJson": "{{filename}} debe contener un objeto JSON válido.",
+      "modelsTitle": "Modelos detectados",
+      "noModels": "No se encontraron modelos para esta configuración.",
+      "connectionTitle": "Prueba la conexión",
+      "connectionDescription": "Elige uno de los modelos detectados y envía una petición real con tu configuración. El modelo solo se usa para esta prueba; no se guarda con el proveedor.",
+      "testAction": "Probar conexión",
+      "testing": "Probando…",
+      "verifiedWith": "Conexión verificada con {{model}} ({{latency}} ms).",
+      "verifiedOtherSelected": "Ahora seleccionado: {{model}}. Vuelve a ejecutar la prueba para verificarlo.",
+      "scopeTitle": "Disponibilidad del proveedor",
+      "scopeDescription": "Solo tú podrás ver las configuraciones personales. Las de grupo y globales estarán disponibles para sus miembros.",
+      "visibilityLabel": "Disponible para",
+      "personal": "Solo para mí",
+      "group": "Un grupo que gestiono",
+      "global": "Para todos (global)",
+      "groupLabel": "Grupo",
+      "chooseGroup": "Selecciona un grupo",
+      "personalNotice": "Esta configuración será personal y solo tú podrás verla.",
+      "commitSummary": "{{provider}} · propietario: {{owner}}",
+      "back": "Atrás",
+      "continue": "Continuar",
+      "save": "Guardar proveedor",
+      "working": "Procesando…",
+      "methods": {
+        "config": {
+          "label": "Archivo de configuración",
+          "description": "Conecta con un archivo opencode.json y un archivo de credenciales opcional."
+        },
+        "api_key": {
+          "label": "Clave de API",
+          "description": "Conecta con una clave de API para este proveedor."
+        }
+      },
+      "nameLabel": "Nombre de la configuración",
+      "nameHint": "Obligatorio. Este nombre identifica la configuración en la lista de proveedores.",
+      "nameRequired": "Obligatorio",
+      "verifiedScopeNote": "Conexión verificada con {{model}}."
+    }
+  },
   "errors": {
+    "generic": "Se produjo un error inesperado.",
     "node": {
       "validation_exhausted": "La validación agotó {{attempts}} intentos para {{node}}."
     },
     "workflow": {
-      "ai_validation_level_count": "Los niveles de validaci?n de IA no son v?lidos.",
-      "artifact_not_declared": "No se declar? un artefacto de salida.",
+      "ai_validation_level_count": "Los niveles de validación de IA no son válidos.",
+      "artifact_not_declared": "No se declaró un artefacto de salida.",
       "cycle": "El flujo contiene un ciclo.",
       "disconnected": "El flujo contiene nodos desconectados.",
+      "draft_not_found": "No se encontró el borrador.",
+      "draft_revision_conflict": "Este borrador se modificó en otro lugar. Vuelve a cargarlo antes de guardar.",
       "duplicate_node_id": "El flujo contiene IDs de nodo duplicados.",
-      "edge_node_missing": "Una conexi?n referencia un nodo inexistente.",
+      "edge_node_missing": "Una conexión referencia un nodo inexistente.",
       "end_count": "El flujo debe tener un nodo final.",
       "end_outgoing_edge": "El nodo final no puede tener conexiones salientes.",
-      "invalid": "La definici?n del flujo no es v?lida.",
+      "invalid": "La definición del flujo no es válida.",
+      "invalid_definition": "La definición del flujo no es válida.",
       "name_conflict": "Ya existe un flujo con ese nombre.",
-      "not_found": "No se encontr? el flujo.",
+      "not_found": "No se encontró el flujo.",
       "start_count": "El flujo debe tener un nodo inicial.",
       "start_incoming_edge": "El nodo inicial no puede tener conexiones entrantes.",
-      "start_input_required": "Falta un dato inicial obligatorio."
+      "start_input_required": "Falta un dato inicial obligatorio.",
+      "publication_revision_conflict": "El flujo cambió mientras publicabas. Inténtalo de nuevo.",
+      "publication_confirmation_required": "Alguien publicó una nueva versión hace menos de cinco minutos. Confirma para publicar de todos modos.",
+      "stale_base_confirmation_required": "Este borrador se basa en una versión anterior a la activa. Confirma para publicar de todos modos.",
+      "active_revision_conflict": "La versión activa cambió. Intenta activar de nuevo."
     },
     "auth": {
-      "invalid_credentials": "El usuario o la contrase?a no son v?lidos."
+      "invalid_credentials": "El usuario o la contraseña no son válidos."
     },
     "agent": {
       "runtime_failed": "Falló el entorno del agente.",
-      "input_missing": "El agente solicit? datos que no est?n disponibles."
+      "input_missing": "El agente solicitó datos que no están disponibles."
     },
     "artifact": {
-      "not_found": "No se encontr? el artefacto."
+      "not_found": "No se encontró el artefacto."
     },
     "executor": {
       "not_registered": "No hay un ejecutor registrado para este nodo."
@@ -160,16 +306,16 @@
       "denied": "Permiso denegado."
     },
     "script": {
-      "failed": "Fall? la ejecuci?n del script.",
-      "timeout": "Se agot? el tiempo de ejecuci?n del script."
+      "failed": "Falló la ejecución del script.",
+      "timeout": "Se agotó el tiempo de ejecución del script."
     },
     "task": {
       "input_answer_pending": "Ya hay una respuesta pendiente.",
-      "input_not_requested": "La tarea no est? esperando una respuesta.",
-      "invalid_input": "Los datos de la tarea no son v?lidos.",
+      "input_not_requested": "La tarea no está esperando una respuesta.",
+      "invalid_input": "Los datos de la tarea no son válidos.",
       "invalid_transition": "No se permite este cambio de estado.",
-      "node_failed": "Fall? un nodo del flujo.",
-      "not_found": "No se encontr? la tarea."
+      "node_failed": "Falló un nodo del flujo.",
+      "not_found": "No se encontró la tarea."
     },
     "provider": {
       "config_not_found": "No se encontró la configuración del proveedor.",
@@ -181,12 +327,93 @@
       "model_invalid": "La configuración del modelo no es válida.",
       "auth_invalid": "La configuración de autenticación no es válida.",
       "auth_missing": "Añade las credenciales del proveedor para continuar.",
+      "name_required": "El nombre de la configuración es obligatorio.",
+      "name_duplicate": "Ya tienes una configuración con este nombre para este proveedor.",
       "verification_timeout": "Se agotó el tiempo de verificación del proveedor.",
       "verification_failed": "No se pudo verificar el proveedor.",
       "ambiguous_config": "Se aplican varias configuraciones de proveedor de grupo. Pide a un administrador que resuelva el conflicto.",
       "forbidden": "No tienes permiso para administrar esta configuración del proveedor.",
       "global_admin_only": "Solo los administradores pueden crear configuraciones globales de proveedores.",
-      "group_forbidden": "Solo puedes configurar grupos a los que perteneces."
+      "group_forbidden": "Solo puedes configurar grupos a los que perteneces.",
+      "candidate_operation_unavailable": "La detección de modelos no está disponible temporalmente. Inténtalo más tarde.",
+      "upload_too_large": "{{filename}} es demasiado grande. El tamaño máximo es 1 MB.",
+      "upload_failed": "No se pudo leer el archivo subido. Inténtalo de nuevo.",
+      "upload_filename_invalid": "El archivo subido debe llamarse {{filename}}.",
+      "json_invalid": "{{filename}} debe contener JSON válido.",
+      "json_object_required": "{{filename}} debe contener un objeto JSON.",
+      "storage_unavailable": "El almacenamiento de proveedores no está disponible temporalmente. Inténtalo más tarde.",
+      "name_invalid": "Escribe un nombre para esta configuración del proveedor.",
+      "name_too_long": "El nombre es demasiado largo. Usa 80 caracteres o menos."
+    }
+  },
+  "workflowEditor": {
+    "title": "Editor de flujos de trabajo",
+    "nodeCount_one": "{{count}} nodo",
+    "nodeCount_other": "{{count}} nodos",
+    "connectionCount_one": "{{count}} conexión",
+    "connectionCount_other": "{{count}} conexiones",
+    "addNode": "Añadir nodo",
+    "addType": "Añadir {{type}}",
+    "deleteSelection": "Eliminar selección",
+    "saveDraft": "Guardar borrador",
+    "loading": "Cargando flujo de trabajo…",
+    "saving": "Guardando…",
+    "saved": "Guardado",
+    "unsaved": "Cambios sin guardar",
+    "revision": "Revisión {{revision}}",
+    "palette": "Tipos de nodo",
+    "canvas": "Lienzo del flujo de trabajo",
+    "fitView": "Ajustar vista",
+    "selectedPosition": "Posición del nodo seleccionado",
+    "publish": "Publicar",
+    "activate": "Activar",
+    "publishBlocked": "Este borrador aún no se puede publicar. Corrige primero los errores de validación.",
+    "publishSuccess": "Publicado como la versión {{version}}.",
+    "publishWorkflowChanged": "El flujo cambió mientras lo editabas. Reintentando con el estado de publicación más reciente.",
+    "activateSuccess": "La versión {{version}} ahora está activa.",
+    "activateTitle": "Activar una versión",
+    "activateDescription": "Elige qué versión publicada usarán las tareas. La activación es independiente de la publicación y no cambia las tareas en cola ni en ejecución.",
+    "activateVersionLabel": "Versión publicada",
+    "activateNoVersions": "Todavía no hay ninguna versión publicada que activar.",
+    "confirmRecentPublicationTitle": "¿Publicar sobre cambios recientes?",
+    "confirmRecentPublicationDescription": "Alguien publicó una nueva versión hace menos de cinco minutos. Publicar ahora sobrescribe el estado de publicación compartido. ¿Publicar de todos modos?",
+    "confirmStaleBasePublishTitle": "¿Publicar desde una versión anterior?",
+    "confirmStaleBasePublishDescription": "Este borrador se basa en una versión anterior a la activa actual. Publicar puede descartar los cambios publicados mientras tanto. ¿Publicar de todos modos?",
+    "confirmStaleBaseActivateTitle": "¿Activar una versión anterior?",
+    "confirmStaleBaseActivateDescription": "La versión seleccionada se basa en una versión anterior a la activa actual. Activarla revierte el flujo. ¿Activar de todos modos?",
+    "publishAnyway": "Publicar de todos modos",
+    "activateAnyway": "Activar de todos modos",
+    "types": {
+      "start": "Inicio",
+      "script": "Script",
+      "ai": "IA",
+      "http": "HTTP",
+      "decision": "Decisión",
+      "workflow": "Flujo de trabajo",
+      "end": "Fin"
+    }
+  },
+  "workflows": {
+    "list": {
+      "title": "Flujos de trabajo",
+      "description": "Crea y administra los flujos de trabajo que usa tu equipo.",
+      "loading": "Cargando flujos de trabajo…",
+      "emptyTitle": "Aún no hay flujos de trabajo",
+      "emptyDescription": "Crea un flujo de trabajo para definir un proceso repetible y luego configúralo en el editor.",
+      "activeVersion": "Versión {{version}}",
+      "noActiveVersion": "Sin versión activa",
+      "published": "Publicado",
+      "publicationUnknown": "Estado de publicación no disponible",
+      "dateUnavailable": "Fecha no disponible",
+      "edit": "Editar",
+      "run": "Ejecutar",
+      "runUnavailable": "Sin versión activa. Publica una versión para ejecutar este flujo."
+    },
+    "new": {
+      "action": "Crear flujo de trabajo",
+      "createFirst": "Crea tu primer flujo de trabajo",
+      "creating": "Creando…",
+      "defaultName": "Flujo de trabajo sin título"
     }
   },
   "workflow": {
@@ -195,5 +422,30 @@
       "required_sections": "Faltan secciones obligatorias: {{sections}}.",
       "content_rule": "El artefacto no cumple la regla de contenido: {{rule}}."
     }
+  },
+  "editor": {
+    "properties": "Propiedades del nodo",
+    "selectNode": "Selecciona un nodo para editar sus propiedades.",
+    "inputForm": "Formulario de entrada (objeto JSON)",
+    "code": "Código",
+    "codePlaceholder": "Código Python que se ejecuta cuando el flujo llega a este nodo.",
+    "editScript": "Editar script",
+    "save": "Guardar",
+    "codeLoading": "Cargando el editor…",
+    "codeEditorError": "No se pudo cargar el editor de código. Puedes editar el código como texto sin formato.",
+    "codeLines_one": "{{count}} línea",
+    "codeLines_other": "{{count}} líneas",
+    "provider": "Proveedor",
+    "model": "Modelo",
+    "instructions": "Instrucciones",
+    "prompt": "Plantilla de prompt",
+    "method": "Método",
+    "url": "URL",
+    "headers": "Encabezados (objeto JSON)",
+    "body": "Cuerpo",
+    "route": "Nodo siguiente",
+    "workflow": "Flujo de trabajo",
+    "outputMapping": "Mapeo de salida (objeto JSON)",
+    "invalidJson": "Introduce un objeto JSON válido."
   }
 }
