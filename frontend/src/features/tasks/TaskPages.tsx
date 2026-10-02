@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import { api, authenticatedFetch } from "@/api/auth";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { KosmoErrorAlert, type KosmoError } from "@/components/KosmoErrorAlert";
+import { RowActions, RowActionButton } from "@/components/RowActions";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
+import type { components } from "@/api/schema";
 import { useTaskStream } from "./useTaskStream";
 
 type Task = { id: string; state: string; workflow_id: string; workflow_name?: string; created_at: string; updated_at?: string; nodes?: any[]; node_executions?: any[]; notes?: any[]; artifacts?: any[] };
@@ -13,6 +18,13 @@ type TaskEvent = { event: string; data: Record<string, any> };
 function unwrap<T>(result: { data?: T; error?: unknown }): T {
   if (result.error || result.data === undefined) throw result.error ?? new Error("Empty API response");
   return result.data;
+}
+
+/** Task states that accept the stop action (spec AC-08). */
+const STOPPABLE_STATES = new Set(["running", "waiting_for_input"]);
+
+function isStoppableState(state: string): boolean {
+  return STOPPABLE_STATES.has(state);
 }
 
 function useTasks(taskId?: string) {
@@ -31,6 +43,75 @@ function useTasks(taskId?: string) {
   return { data, load, error, setData };
 }
 
+type TaskStopController = {
+  /** Task id waiting for confirmation, if any. */
+  confirmId: string | null;
+  /** Task id with a stop request in flight, if any. */
+  stoppingId: string | null;
+  /** True when the last stop attempt failed. */
+  error: boolean;
+  /** Opens the confirmation dialog for a task. */
+  request: (taskId: string) => void;
+  /** Closes the dialog without sending anything. */
+  cancel: () => void;
+  /** Performs the confirmed stop for the pending task id. */
+  confirm: () => void;
+};
+
+/**
+ * Shared stop flow for the task list rows and the task detail page: one
+ * controller owns the styled confirmation and the typed stop request so the
+ * two surfaces cannot drift (spec AC-08/AC-16). `canStop` re-checks the
+ * current task state right before sending, so a task that moved on (for
+ * example through SSE) while the dialog was open is not stopped.
+ */
+function useTaskStop(onSettled: (taskId: string) => void | Promise<void>, canStop: (taskId: string) => boolean): TaskStopController {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const callbacks = useRef({ onSettled, canStop });
+  callbacks.current = { onSettled, canStop };
+  const request = useCallback((taskId: string) => { setError(false); setConfirmId(taskId); }, []);
+  const cancel = useCallback(() => setConfirmId(null), []);
+  const confirm = useCallback(() => {
+    const taskId = confirmId;
+    if (taskId === null || stoppingId !== null) return;
+    if (!callbacks.current.canStop(taskId)) { setConfirmId(null); return; }
+    setStoppingId(taskId);
+    setError(false);
+    void (async () => {
+      try {
+        unwrap(await api.POST("/tasks/{task_id}/stop", { params: { path: { task_id: taskId } } }));
+        setConfirmId(null);
+        await callbacks.current.onSettled(taskId);
+      } catch {
+        setError(true);
+        setConfirmId(null);
+      } finally {
+        setStoppingId(null);
+      }
+    })();
+  }, [confirmId, stoppingId]);
+  return { confirmId, stoppingId, error, request, cancel, confirm };
+}
+
+/** Shared styled confirmation for stopping a task (spec AC-16). */
+function StopTaskConfirmDialog({ stop }: { stop: TaskStopController }) {
+  const { t } = useTranslation();
+  return (
+    <ConfirmDialog
+      open={stop.confirmId !== null}
+      onOpenChange={open => { if (!open) stop.cancel(); }}
+      title={t("tasks.stop")}
+      description={t("tasks.confirmStop")}
+      confirmLabel={t("tasks.stop")}
+      cancelLabel={t("common.cancel")}
+      loading={stop.stoppingId !== null}
+      onConfirm={stop.confirm}
+    />
+  );
+}
+
 function StateBadge({ state }: { state: string }) {
   const { t } = useTranslation();
   const tones: Record<string, string> = {
@@ -41,10 +122,29 @@ function StateBadge({ state }: { state: string }) {
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tones[state] ?? "bg-secondary text-secondary-foreground"}`}>{t(`task.state.${state}` as any)}</span>;
 }
 
-function TaskList({ rows }: { rows: Task[] }) {
+function TaskList({ rows, stop }: { rows: Task[]; stop: TaskStopController }) {
   const { t } = useTranslation();
   if (!rows.length) return <div className="mt-8 border-y border-border py-10"><h2 className="font-medium">{t("tasks.list.empty")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("tasks.list.emptyDescription")}</p></div>;
-  return <ul className="mt-7 divide-y divide-border border-y border-border">{rows.map(task => <li key={task.id}><Link to={`/tasks/${task.id}`} className="flex flex-wrap items-center justify-between gap-3 py-4 hover:bg-muted/40"><span className="min-w-0"><span className="block truncate text-sm font-medium">{task.workflow_name ?? task.workflow_id}</span><span className="mt-1 block text-xs text-muted-foreground">{new Date(task.created_at).toLocaleString()}</span></span><StateBadge state={task.state}/></Link></li>)}</ul>;
+  return (
+    <ul className="mt-7 divide-y divide-border border-y border-border">
+      {rows.map(task => (
+        <li key={task.id} className="flex items-center justify-between gap-3 py-4">
+          <Link to={`/tasks/${task.id}`} className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-3 hover:bg-muted/40">
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium">{task.workflow_name ?? task.workflow_id}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{new Date(task.created_at).toLocaleString()}</span>
+            </span>
+            <StateBadge state={task.state}/>
+          </Link>
+          {isStoppableState(task.state) && (
+            <RowActions>
+              <RowActionButton icon="stop" label={t("tasks.stop")} onClick={() => stop.request(task.id)} />
+            </RowActions>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function TaskListPage() {
@@ -66,7 +166,14 @@ export function TaskListPage() {
   }, [load, setData]);
   const rows: Task[] = Array.isArray(data) ? data : data?.items ?? [];
   useTaskStream(undefined, onEvent, load);
-  return <section className="mx-auto w-full max-w-5xl flex-1 px-5 py-8 sm:px-8"><div className="flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight">{t("tasks.list.title")}</h1><p className="mt-1 text-sm text-muted-foreground">{t("tasks.list.description")}</p></div><Button asChild><Link to="/tasks/new">{t("tasks.new.submit")}</Link></Button></div>{error&&<p role="alert" className="mt-6 text-sm text-destructive">{t("tasks.loadError")}</p>}{!data&&!error?<p className="mt-8 text-sm text-muted-foreground">{t("tasks.loading")}</p>:<TaskList rows={rows}/>}</section>;
+  const canStopRow = useCallback((taskId: string) => {
+    const current = latestData.current;
+    const currentRows: Task[] = Array.isArray(current) ? current : current?.items ?? [];
+    const row = currentRows.find(item => item.id === taskId);
+    return row !== undefined && isStoppableState(row.state);
+  }, []);
+  const stop = useTaskStop(load, canStopRow);
+  return <section className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 sm:px-8"><div className="flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight">{t("tasks.list.title")}</h1><p className="mt-1 text-sm text-muted-foreground">{t("tasks.list.description")}</p></div><Button asChild><Link to="/tasks/new"><Icon name="add" />{t("common.add")}</Link></Button></div>{error&&<p role="alert" className="mt-6 text-sm text-destructive">{t("tasks.loadError")}</p>}{stop.error&&<p role="alert" className="mt-6 text-sm text-destructive">{t("errors.generic")}</p>}{!data&&!error?<p className="mt-8 text-sm text-muted-foreground">{t("tasks.loading")}</p>:<TaskList rows={rows} stop={stop}/>}<StopTaskConfirmDialog stop={stop}/></section>;
 }
 
 function NodeTimeline({ nodes }: { nodes: any[] }) {
@@ -97,7 +204,7 @@ function TaskInputForm({ task, answer, setAnswer, busy, onAnswer }: { task: Task
   const { t } = useTranslation();
   const request = pendingInput(task);
   if (task.state !== "waiting_for_input") return null;
-  return <form className="space-y-3 border-t border-border pt-5" onSubmit={event=>{event.preventDefault();if(request?.node_execution_id&&request.request_id!==undefined)onAnswer({answer,node_execution_id:request.node_execution_id,request_id:request.request_id});}}><label htmlFor="task-answer" className="text-sm font-medium">{t("tasks.answerLabel")}</label><Input id="task-answer" value={answer} onChange={event=>setAnswer(event.target.value)} required/><Button disabled={busy||!answer.trim()||!request?.node_execution_id||request.request_id===undefined} type="submit" className="w-full">{t("tasks.sendAnswer")}</Button></form>;
+  return <form className="space-y-3 border-t border-border pt-5" onSubmit={event=>{event.preventDefault();if(request?.node_execution_id&&request.request_id!==undefined)onAnswer({answer,node_execution_id:request.node_execution_id,request_id:request.request_id});}}><label htmlFor="task-answer" className="text-sm font-medium">{t("tasks.answerLabel")}</label><Input id="task-answer" value={answer} onChange={event=>setAnswer(event.target.value)} required/><Button type="submit" loading={busy} disabled={!answer.trim()||!request?.node_execution_id||request.request_id===undefined} className="w-full"><Icon name="send" />{t("tasks.sendAnswer")}</Button></form>;
 }
 
 export function TaskDetailPage() {
@@ -106,36 +213,131 @@ export function TaskDetailPage() {
   const { data, load, error } = useTasks(id);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState(false);
   const task: Task | undefined = data?.task ?? data;
+  const latestTask = useRef<Task | undefined>(undefined);
+  latestTask.current = task;
   useTaskStream(id,(event: TaskEvent)=>{if(["task.state","node.state","task.note"].includes(event.event))void load();},load);
-  const action = async (kind: "input" | "stop", body?: object) => {
+  const canStopCurrent = useCallback((taskId: string) => {
+    const current = latestTask.current;
+    return current !== undefined && current.id === taskId && isStoppableState(current.state);
+  }, []);
+  const stop = useTaskStop(load, canStopCurrent);
+  const submitAnswer = async (body: object) => {
     setBusy(true);
+    setActionError(false);
     try {
-      const result = kind === "input"
-        ? await api.POST("/tasks/{task_id}/input",{params:{path:{task_id:id}},body:body as any})
-        : await api.POST("/tasks/{task_id}/stop",{params:{path:{task_id:id}}});
-      unwrap(result); setAnswer(""); await load();
-    } finally { setBusy(false); }
+      unwrap(await api.POST("/tasks/{task_id}/input",{params:{path:{task_id:id}},body:body as any}));
+      setAnswer(""); await load();
+    } catch { setActionError(true); } finally { setBusy(false); }
   };
   if(error&&!task)return <p role="alert" className="p-8">{t("tasks.loadError")}</p>;
   if(!task)return <p className="p-8">{t("tasks.loading")}</p>;
   const nodes=task.node_executions??task.nodes??[];
-  return <section className="mx-auto w-full max-w-5xl flex-1 px-5 py-8 sm:px-8"><Link to="/tasks" className="text-sm text-muted-foreground hover:text-foreground">{t("tasks.back")}</Link><div className="mt-5 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight">{task.workflow_name??task.workflow_id}</h1><p className="mt-1 text-xs text-muted-foreground">{task.id}</p></div><div className="flex items-center gap-2"><StateBadge state={task.state}/>{["running","waiting_for_input"].includes(task.state)&&<Button variant="outline" disabled={busy} onClick={()=>{if(window.confirm(t("tasks.confirmStop")))void action("stop");}}>{t("tasks.stop")}</Button>}</div></div><div className="mt-8 grid gap-9 lg:grid-cols-[minmax(0,1fr)_18rem]"><div className="space-y-9"><section><h2 className="text-base font-semibold">{t("tasks.nodes")}</h2><NodeTimeline nodes={nodes}/></section><TaskNotes task={task}/></div><aside className="space-y-8"><TaskArtifacts taskId={id} artifacts={task.artifacts}/><TaskInputForm task={task} answer={answer} setAnswer={setAnswer} busy={busy} onAnswer={body=>void action("input",body)}/></aside></div></section>;
+  return <section className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 sm:px-8"><Link to="/tasks" className="text-sm text-muted-foreground hover:text-foreground">{t("tasks.back")}</Link><div className="mt-5 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight">{task.workflow_name??task.workflow_id}</h1><p className="mt-1 text-xs text-muted-foreground">{task.id}</p></div><div className="flex items-center gap-2"><StateBadge state={task.state}/>{isStoppableState(task.state)&&<Button variant="outline" loading={stop.stoppingId!==null} disabled={busy} onClick={()=>stop.request(id)}><Icon name="stop" />{t("tasks.stop")}</Button>}</div></div>{(actionError||stop.error)&&<p role="alert" className="mt-2 text-sm text-destructive">{t("errors.generic")}</p>}<div className="mt-8 grid gap-9 lg:grid-cols-[minmax(0,1fr)_18rem]"><div className="space-y-9"><section><h2 className="text-base font-semibold">{t("tasks.nodes")}</h2><NodeTimeline nodes={nodes}/></section><TaskNotes task={task}/></div><aside className="space-y-8"><TaskArtifacts taskId={id} artifacts={task.artifacts}/><TaskInputForm task={task} answer={answer} setAnswer={setAnswer} busy={busy} onAnswer={body=>void submitAnswer(body)}/></aside></div><StopTaskConfirmDialog stop={stop}/></section>;
 }
 
-function WorkflowSummary({ workflow }: { workflow: any }) {
+type Workflow = components["schemas"]["WorkflowResponse"];
+
+function toKosmoError(cause: unknown): KosmoError {
+  // Backend error bodies are flat {code, message_key, params?, details?}.
+  const raw = cause as Partial<KosmoError> | undefined;
+  return raw && typeof raw.code === "string" && typeof raw.message_key === "string"
+    ? { code: raw.code, message_key: raw.message_key, params: raw.params, details: raw.details }
+    : { code: "TASK_CREATE_FAILED", message_key: "errors.generic" };
+}
+
+/** A workflow can only be launched while it has an active (published) version. */
+function isLaunchable(workflow: Workflow): boolean {
+  return workflow.active_version !== null && workflow.active_version !== undefined;
+}
+
+/** Name of the seeded reference workflow, used as the default preselection. */
+const DEFAULT_WORKFLOW_NAME = "reference-security-analysis";
+
+/**
+ * Initial workflow selection for the new-task form: a launchable
+ * `?workflowId=` deep link wins, then the workflow named
+ * `reference-security-analysis`, then the first launchable row. Version-less
+ * workflows are never selected; "" means nothing is launchable and the page
+ * renders an empty state instead of the form.
+ */
+function resolveInitialWorkflowId(rows: Workflow[], requestedId: string | null): string {
+  const launchable = rows.filter(isLaunchable);
+  const requested = requestedId ? launchable.find(item => item.id === requestedId) : undefined;
+  return (requested ?? launchable.find(item => item.name === DEFAULT_WORKFLOW_NAME) ?? launchable[0])?.id ?? "";
+}
+
+function WorkflowSummary({ workflow }: { workflow: Workflow | null }) {
   const { t } = useTranslation();
-  return <aside className="h-fit border-t border-border pt-5 lg:border-t-0 lg:border-l lg:pl-6"><h2 className="text-sm font-semibold">{t("tasks.workflow")}</h2><p className="mt-2 text-sm">{workflow?.name??workflow?.id??t("tasks.loading")}</p><p className="mt-2 text-sm leading-6 text-muted-foreground">{workflow?.description??t("tasks.workflowDescription")}</p></aside>;
+  return <aside className="h-fit border-t border-border pt-5 lg:border-t-0 lg:border-l lg:pl-6"><h2 className="text-sm font-semibold">{t("tasks.workflow")}</h2><p className="mt-2 text-sm">{workflow?.name??workflow?.id??t("tasks.loading")}</p><p className="mt-2 text-sm leading-6 text-muted-foreground">{t("tasks.workflowDescription")}</p></aside>;
 }
 
 export function NewTaskPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [workflow,setWorkflow]=useState<any>(null);
+  const [searchParams] = useSearchParams();
+  const requestedWorkflowId = searchParams.get("workflowId");
+  const [workflows,setWorkflows]=useState<Workflow[] | null>(null);
+  const [workflowId,setWorkflowId]=useState("");
   const [topic,setTopic]=useState("");
   const [busy,setBusy]=useState(false);
-  const [error,setError]=useState(false);
-  useEffect(()=>{void api.GET("/workflows").then(result=>{const data=unwrap(result) as any;const rows=Array.isArray(data)?data:data.items??[];setWorkflow(rows.find((item:any)=>item.id==="reference-security-analysis")??rows[0]);}).catch(()=>setError(true));},[]);
-  const submit=async(event:FormEvent)=>{event.preventDefault();if(!workflow)return;setBusy(true);setError(false);try{const result=unwrap(await api.POST("/tasks",{body:{workflow_id:workflow.id,input_values:{topic}}}) as any) as any;navigate(`/tasks/${result.id}`);}catch{setError(true);}finally{setBusy(false);}};
-  return <section className="mx-auto w-full max-w-5xl flex-1 px-5 py-8 sm:px-8"><Link to="/tasks" className="text-sm text-muted-foreground">{t("tasks.back")}</Link><h1 className="mt-5 text-2xl font-semibold tracking-tight">{t("tasks.new.title")}</h1><p className="mt-1 text-sm text-muted-foreground">{t("tasks.new.description")}</p><div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]"><form onSubmit={submit} className="space-y-5"><div><label htmlFor="topic" className="text-sm font-medium">{t("tasks.topic")}</label><Input id="topic" value={topic} onChange={event=>setTopic(event.target.value)} required className="mt-2" placeholder={t("tasks.topicPlaceholder")}/></div>{error&&<p role="alert" className="text-sm text-destructive">{t("tasks.submitError")}</p>}<Button type="submit" disabled={!workflow||!topic.trim()||busy}>{busy?t("tasks.submitting"):t("tasks.new.submit")}</Button></form><WorkflowSummary workflow={workflow}/></div></section>;
+  const [error,setError]=useState<KosmoError | null>(null);
+  const [loadError,setLoadError]=useState(false);
+  const loaded = workflows !== null;
+  const rows = workflows ?? [];
+  const launchable = rows.filter(isLaunchable);
+  const selectedWorkflow = launchable.find(item => item.id === workflowId) ?? null;
+  useEffect(()=>{
+    let cancelled=false;
+    void (async()=>{
+      try{
+        const rows=unwrap(await api.GET("/workflows"));
+        if(cancelled)return;
+        setWorkflows(rows);
+        setWorkflowId(resolveInitialWorkflowId(rows,requestedWorkflowId));
+      }catch{ if(!cancelled) setLoadError(true); }
+    })();
+    return ()=>{cancelled=true;};
+  },[requestedWorkflowId]);
+  const submit=async(event:FormEvent)=>{
+    event.preventDefault();
+    if(!selectedWorkflow)return;
+    setBusy(true);
+    setError(null);
+    try{
+      const result=unwrap(await api.POST("/tasks",{body:{workflow_id:selectedWorkflow.id,input_values:{topic}}})) as {id:string};
+      navigate(`/tasks/${result.id}`);
+    }catch(cause){ setError(toKosmoError(cause)); } finally { setBusy(false); }
+  };
+  const selectClassName="mt-2 h-9 w-full min-w-0 rounded-lg border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
+  return <section className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 sm:px-8"><Link to="/tasks" className="text-sm text-muted-foreground">{t("tasks.back")}</Link><h1 className="mt-5 text-2xl font-semibold tracking-tight">{t("tasks.new.title")}</h1><p className="mt-1 text-sm text-muted-foreground">{t("tasks.new.description")}</p><div className="mt-7 grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+    {!loaded&&!loadError?<p role="status" className="text-sm text-muted-foreground">{t("tasks.loading")}</p>
+    :loadError?<p role="alert" className="text-sm text-destructive">{t("tasks.loadError")}</p>
+    :launchable.length===0?(
+      <div className="h-fit rounded-lg border border-border bg-card px-5 py-8">
+        <h2 className="font-medium">{t("tasks.new.noLaunchableWorkflows" as never)}</h2>
+      </div>
+    ):(
+      <form onSubmit={submit} className="space-y-5">
+        <div>
+          <label htmlFor="workflow" className="text-sm font-medium">{t("tasks.workflow")}</label>
+          <select id="workflow" value={workflowId} onChange={event=>setWorkflowId(event.target.value)} className={selectClassName}>
+            {rows.map(workflow=>(
+              <option key={workflow.id} value={workflow.id} disabled={!isLaunchable(workflow)}>
+                {workflow.name}{isLaunchable(workflow)?"":` — ${t("workflows.list.noActiveVersion")}`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="topic" className="text-sm font-medium">{t("tasks.topic")}</label>
+          <Input id="topic" value={topic} onChange={event=>setTopic(event.target.value)} required className="mt-2" placeholder={t("tasks.topicPlaceholder")}/>
+        </div>
+        {error&&<KosmoErrorAlert error={error}/>}
+        <Button type="submit" loading={busy} disabled={!selectedWorkflow||!topic.trim()}><Icon name="add" />{t("common.add")}</Button>
+      </form>
+    )}
+    <WorkflowSummary workflow={selectedWorkflow}/>
+  </div></section>;
 }

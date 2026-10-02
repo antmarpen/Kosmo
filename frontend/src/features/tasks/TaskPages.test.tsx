@@ -1,17 +1,35 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import i18next from "i18next";
 import { AuthProvider } from "@/features/auth/AuthProvider";
 import { setTokens } from "@/api/auth";
 import { changeLanguage } from "@/i18n";
 import { TaskDetailPage, TaskListPage, NewTaskPage } from "./TaskPages";
 
+// jsdom does not implement ResizeObserver, which the Radix popper under the
+// row-action tooltips measures with (same no-op stub as RowActions.test.tsx).
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+
 const stream = (event = "task.state", data = { task_id: "t1", state: "running" }) => new Response(new ReadableStream({ async start(controller) { await new Promise(resolve => setTimeout(resolve, 30)); controller.enqueue(new TextEncoder().encode(`id: 1\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`)); controller.close(); } }), { status: 200 });
+const emptyStream = () => new Response(new ReadableStream({ start(){} }));
 function requestUrl(input: any) { return new URL(input instanceof Request ? input.url : String(input), "http://localhost").pathname; }
 async function bodyOf(input: any) { return input instanceof Request ? input.clone().json() : undefined; }
 function setup(path: string, fetcher: typeof fetch) { setTokens("test", "refresh"); globalThis.fetch = vi.fn(fetcher); return render(<AuthProvider><MemoryRouter initialEntries={[path]}><Routes><Route path="/tasks" element={<TaskListPage/>}/><Route path="/tasks/new" element={<NewTaskPage/>}/><Route path="/tasks/:id" element={<TaskDetailPage/>}/></Routes></MemoryRouter></AuthProvider>); }
 const task = (state = "failed", notes: any[] = []) => ({ id:"t1",state,workflow_id:"reference-security-analysis",created_at:"2026-09-30T12:00:00Z",node_executions:[{id:"n1",node_id:"analyze",state,error:{code:"VALIDATION_EXHAUSTED",message_key:"errors.node.validation_exhausted",params:{attempts:3,node:"analyze"}}},{id:"n2",node_id:"runtime",state,error:{code:"AGENT_RUNTIME_FAILED",message_key:"errors.agent.runtime_failed",params:{reason:"RuntimeError"}}}],notes,artifacts:[] });
+const inputRequest = [{ id:"input-request", message_key:"tasks.notes.input_requested", params:{ answer_recorded:false, node_execution_id:"node-exec-7", request_id:"request-9" } }];
+/** WorkflowResponse fixtures: `active_version` is null until a version is published (backend/app/domain/workflows/schemas.py). */
+const activeVersion = { id: "ver-1", version: 1, definition: {} };
+const launchableWorkflow = (id: string, name: string) => ({ id, name, active_version: activeVersion });
+const draftWorkflow = (id: string, name: string) => ({ id, name, active_version: null });
+/** Resolves through i18next so assertions hold both before and after the pending catalog keys land. */
+const catalogText = (key: string) => String(i18next.t(key as never));
 beforeEach(() => { changeLanguage("en"); });
 
 describe("task views",()=>{
@@ -79,29 +97,281 @@ describe("task views",()=>{
   });
   it("submits creation through the typed API and navigates to detail",async()=>{
     const user=userEvent.setup();
-    const fetcher=vi.fn(async(input:any)=>requestUrl(input)==="/api/workflows"?new Response(JSON.stringify([{id:"reference-security-analysis",name:"Security analysis"}])):requestUrl(input)==="/api/tasks"?new Response(JSON.stringify({id:"t1",state:"queued"}),{status:201}):new Response(JSON.stringify({task:{...task("queued"),notes:[]}})));
+    const fetcher=vi.fn(async(input:any)=>requestUrl(input)==="/api/workflows"?new Response(JSON.stringify([{id:"reference-security-analysis",name:"Security analysis",active_version:activeVersion}])):requestUrl(input)==="/api/tasks"?new Response(JSON.stringify({id:"t1",state:"queued"}),{status:201}):new Response(JSON.stringify({task:{...task("queued"),notes:[]}})));
     setup("/tasks/new",fetcher);
     await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
-    await user.click(screen.getByRole("button",{name:"Create task"}));
+    await user.click(screen.getByRole("button",{name:"Add"}));
     await screen.findByText("reference-security-analysis");
     await waitFor(async()=>expect(await bodyOf(fetcher.mock.calls.find(call=>requestUrl(call[0])==="/api/tasks")![0])).toEqual({workflow_id:"reference-security-analysis",input_values:{topic:"smoke"}}));
   });
+  it("labels the list creation action with the generic add key and a leading icon",async()=>{
+    setup("/tasks",vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?emptyStream():new Response(JSON.stringify([{...task("queued"),notes:[]}]))));
+    const add=await screen.findByRole("link",{name:"Add"});
+    expect(add).toHaveAttribute("href","/tasks/new");
+    expect(add.querySelector('[data-slot="icon"]')).toHaveAttribute("aria-hidden","true");
+  });
+  it("labels the new-task submit with the generic add key and a leading icon",async()=>{
+    const user=userEvent.setup();
+    setup("/tasks/new",vi.fn(async(input:any)=>requestUrl(input)==="/api/workflows"?new Response(JSON.stringify([{id:"reference-security-analysis",name:"Security analysis",active_version:activeVersion}])):new Response(JSON.stringify({task:{...task("queued"),notes:[]}}))));
+    const button=await screen.findByRole("button",{name:"Add"});
+    await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+    await waitFor(()=>expect(button).toBeEnabled());
+    expect(button.querySelector('[data-slot="icon"]')).toHaveAttribute("aria-hidden","true");
+  });
+  it("keeps the submit label, disables, and marks aria-busy while the task is being created",async()=>{
+    const user=userEvent.setup();
+    let resolveTask:(value:Response)=>void=()=>undefined;
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      if(path==="/api/workflows")return new Response(JSON.stringify([{id:"reference-security-analysis",name:"Security analysis",active_version:activeVersion}]));
+      if(path==="/api/tasks")return new Promise<Response>(resolve=>{resolveTask=resolve;});
+      return new Response(JSON.stringify({task:{...task("queued"),notes:[]}}));
+    });
+    setup("/tasks/new",fetcher);
+    await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+    const button=await screen.findByRole("button",{name:"Add"});
+    await waitFor(()=>expect(button).toBeEnabled());
+    await user.click(button);
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy","true");
+    expect(button).toHaveTextContent("Add");
+    expect(button.textContent).not.toContain("Creating");
+    resolveTask(new Response(JSON.stringify({id:"t1",state:"queued"}),{status:201}));
+    await screen.findByText("reference-security-analysis");
+  });
   it("answers a waiting task with the event correlation identifiers",async()=>{
     const user=userEvent.setup();
-    const pending=[{id:"input-request",message_key:"tasks.notes.input_requested",params:{answer_recorded:false,node_execution_id:"node-exec-7",request_id:"request-9"}}];
-    const fetcher=vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?new Response(new ReadableStream({start(){}})):new Response(JSON.stringify({task:task("waiting_for_input",pending)})));
+    const fetcher=vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?new Response(new ReadableStream({start(){}})):new Response(JSON.stringify({task:task("waiting_for_input",inputRequest)})));
     setup("/tasks/t1",fetcher);
     await user.type(await screen.findByLabelText("Your answer"),"Proceed");
     await user.click(screen.getByRole("button",{name:"Send answer"}));
     await waitFor(async()=>{const call=fetcher.mock.calls.find(item=>requestUrl(item[0])==="/api/tasks/t1/input");expect(call).toBeDefined();expect(await bodyOf(call![0])).toEqual({answer:"Proceed",node_execution_id:"node-exec-7",request_id:"request-9"});});
   });
-  it("confirms then posts stop through the typed API",async()=>{
-    const confirm=vi.spyOn(window,"confirm").mockReturnValue(true);
-    const fetcher=vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?new Response(new ReadableStream({start(){}})):new Response(JSON.stringify({task:{...task("running"),notes:[]}})));
-    const user=userEvent.setup();setup("/tasks/t1",fetcher);
+  it("keeps the send-answer label, disables, and marks aria-busy while the answer is in flight",async()=>{
+    const user=userEvent.setup();
+    let resolveInput:(value:Response)=>void=()=>undefined;
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      if(path.endsWith("/events"))return emptyStream();
+      if(path==="/api/tasks/t1/input")return new Promise<Response>(resolve=>{resolveInput=resolve;});
+      return new Response(JSON.stringify({task:task("waiting_for_input",inputRequest)}));
+    });
+    setup("/tasks/t1",fetcher);
+    await user.type(await screen.findByLabelText("Your answer"),"Proceed");
+    await user.click(screen.getByRole("button",{name:"Send answer"}));
+    const button=screen.getByRole("button",{name:"Send answer"});
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-busy","true");
+    expect(button).toHaveTextContent("Send answer");
+    resolveInput(new Response("{}",{status:200,headers:{"Content-Type":"application/json"}}));
+    expect(await screen.findByLabelText("Your answer")).toHaveValue("");
+  });
+  it("shows a localized error and re-enables Send answer when the answer fails",async()=>{
+    const user=userEvent.setup();
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      if(path.endsWith("/events"))return emptyStream();
+      if(path==="/api/tasks/t1/input")return new Response(null,{status:500});
+      return new Response(JSON.stringify({task:task("waiting_for_input",inputRequest)}));
+    });
+    setup("/tasks/t1",fetcher);
+    await user.type(await screen.findByLabelText("Your answer"),"Proceed");
+    await user.click(screen.getByRole("button",{name:"Send answer"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("An unexpected error occurred.");
+    expect(screen.getByRole("button",{name:"Send answer"})).toBeEnabled();
+    expect(screen.getByLabelText("Your answer")).toHaveValue("Proceed");
+  });
+  it("offers the row Stop action only while the task is stoppable",async()=>{
+    const queued=setup("/tasks",vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?emptyStream():new Response(JSON.stringify([{...task("queued"),notes:[]}]))));
+    expect(await screen.findByText("Queued")).toBeInTheDocument();
+    expect(screen.queryByRole("button",{name:"Stop task"})).not.toBeInTheDocument();
+    queued.unmount();
+    const running=setup("/tasks",vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?emptyStream():new Response(JSON.stringify([{...task("running"),notes:[]}]))));
+    expect(await screen.findByText("Running")).toBeInTheDocument();
+    expect(screen.getByRole("button",{name:"Stop task"})).toBeInTheDocument();
+    running.unmount();
+  });
+  it("keeps the row navigation link and the row Stop action as siblings",async()=>{
+    const fetcher=vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?emptyStream():new Response(JSON.stringify([{...task("running"),notes:[]}])));
+    const user=userEvent.setup();
+    setup("/tasks",fetcher);
+    const link=await screen.findByRole("link",{name:/reference-security-analysis/});
+    const row=link.closest("li");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getAllByRole("link")).toHaveLength(1);
+    const stop=within(row as HTMLElement).getByRole("button",{name:"Stop task"});
+    expect(within(link).queryByRole("button")).not.toBeInTheDocument();
+    await user.click(stop);
+    // The dialog is owned by the list page: it staying open proves the click
+    // did not navigate through the row link.
+    expect(await screen.findByRole("alertdialog",{name:"Stop task"})).toBeInTheDocument();
+  });
+  it("cancels the row stop without sending a request",async()=>{
+    const confirm=vi.spyOn(window,"confirm");
+    const fetcher=vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?emptyStream():new Response(JSON.stringify([{...task("running"),notes:[]}])));
+    const user=userEvent.setup();
+    setup("/tasks",fetcher);
     await user.click(await screen.findByRole("button",{name:"Stop task"}));
-    expect(confirm).toHaveBeenCalled();
-    await waitFor(()=>expect(fetcher.mock.calls.some(call=>requestUrl(call[0])==="/api/tasks/t1/stop")).toBe(true));
+    await user.click(await screen.findByRole("button",{name:"Cancel"}));
+    await waitFor(()=>expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(fetcher.mock.calls.some(call=>requestUrl(call[0]).endsWith("/stop"))).toBe(false);
+    expect(confirm).not.toHaveBeenCalled();
     confirm.mockRestore();
+  });
+  it("dismisses the row stop with Escape without sending a request",async()=>{
+    const confirm=vi.spyOn(window,"confirm");
+    const fetcher=vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?emptyStream():new Response(JSON.stringify([{...task("running"),notes:[]}])));
+    const user=userEvent.setup();
+    setup("/tasks",fetcher);
+    await user.click(await screen.findByRole("button",{name:"Stop task"}));
+    expect(await screen.findByRole("alertdialog",{name:"Stop task"})).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(()=>expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(fetcher.mock.calls.some(call=>requestUrl(call[0]).endsWith("/stop"))).toBe(false);
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+  it("confirms the row stop for the exact task id",async()=>{
+    const confirm=vi.spyOn(window,"confirm");
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      if(path.endsWith("/events"))return emptyStream();
+      if(path.endsWith("/stop"))return new Response("{}",{status:200,headers:{"Content-Type":"application/json"}});
+      return new Response(JSON.stringify([{...task("running"),notes:[]},{...task("running"),id:"t2",workflow_id:"reference-other",notes:[]}]));
+    });
+    const user=userEvent.setup();
+    setup("/tasks",fetcher);
+    const stops=await screen.findAllByRole("button",{name:"Stop task"});
+    await user.click(stops[1]);
+    const dialog=await screen.findByRole("alertdialog",{name:"Stop task"});
+    await user.click(within(dialog).getByRole("button",{name:"Stop task"}));
+    await waitFor(()=>expect(fetcher.mock.calls.some(call=>requestUrl(call[0])==="/api/tasks/t2/stop")).toBe(true));
+    expect(fetcher.mock.calls.some(call=>requestUrl(call[0])==="/api/tasks/t1/stop")).toBe(false);
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+  it("rechecks the row state and skips the stop when the task finished while confirming",async()=>{
+    // The SSE event is delayed so the dialog is asserted open before the row
+    // updates; the shared stream() helper fires at 30ms, which can unmount
+    // the row button mid-click.
+    const delayedStopEvent=new Response(new ReadableStream({async start(controller){await new Promise(resolve=>setTimeout(resolve,300));controller.enqueue(new TextEncoder().encode(`id: 1\nevent: task.state\ndata: ${JSON.stringify({task_id:"t1",state:"stopped"})}\n\n`));controller.close();}}),{status:200});
+    const fetcher=vi.fn(async(input:any)=>requestUrl(input).endsWith("/events")?delayedStopEvent:new Response(JSON.stringify([{...task("running"),notes:[]}])));
+    const user=userEvent.setup();
+    setup("/tasks",fetcher);
+    await user.click(await screen.findByRole("button",{name:"Stop task"}));
+    expect(await screen.findByRole("alertdialog",{name:"Stop task"})).toBeInTheDocument();
+    // SSE marks the row stopped while the confirmation is open.
+    expect(await screen.findByText("Stopped")).toBeInTheDocument();
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button",{name:"Stop task"}));
+    await waitFor(()=>expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(fetcher.mock.calls.some(call=>requestUrl(call[0]).endsWith("/stop"))).toBe(false);
+  });
+  it("confirms a detail stop through the styled dialog and posts through the typed API",async()=>{
+    const confirm=vi.spyOn(window,"confirm");
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      if(path.endsWith("/events"))return emptyStream();
+      if(path.endsWith("/stop"))return new Response("{}",{status:200,headers:{"Content-Type":"application/json"}});
+      return new Response(JSON.stringify({task:{...task("running"),notes:[]}}));
+    });
+    const user=userEvent.setup();
+    setup("/tasks/t1",fetcher);
+    await user.click(await screen.findByRole("button",{name:"Stop task"}));
+    const dialog=await screen.findByRole("alertdialog",{name:"Stop task"});
+    expect(dialog).toHaveTextContent("Stop this task?");
+    await user.click(within(dialog).getByRole("button",{name:"Stop task"}));
+    await waitFor(()=>expect(fetcher.mock.calls.some(call=>requestUrl(call[0])==="/api/tasks/t1/stop")).toBe(true));
+    await waitFor(()=>expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+  it("shows a localized error and re-enables Stop after a failed stop",async()=>{
+    const fetcher=vi.fn(async(input:any)=>{
+      const path=requestUrl(input);
+      if(path.endsWith("/events"))return emptyStream();
+      if(path.endsWith("/stop"))return new Response(null,{status:500});
+      return new Response(JSON.stringify({task:{...task("running"),notes:[]}}));
+    });
+    const user=userEvent.setup();
+    setup("/tasks/t1",fetcher);
+    await user.click(await screen.findByRole("button",{name:"Stop task"}));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button",{name:"Stop task"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("An unexpected error occurred.");
+    await waitFor(()=>expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button",{name:"Stop task"})).toBeEnabled();
+  });
+  describe("new task workflow selection",()=>{
+    it("preselects the launchable workflow named reference-security-analysis and submits its id",async()=>{
+      const user=userEvent.setup();
+      const fetcher=vi.fn(async(input:any)=>{
+        const path=requestUrl(input);
+        if(path==="/api/workflows")return new Response(JSON.stringify([launchableWorkflow("wf-other","Other flow"),launchableWorkflow("wf-ref","reference-security-analysis")]));
+        if(path==="/api/tasks")return new Response(JSON.stringify({id:"t1",state:"queued"}),{status:201});
+        return new Response(JSON.stringify({task:{...task("queued"),notes:[]}}));
+      });
+      setup("/tasks/new",fetcher);
+      expect(await screen.findByLabelText("Workflow")).toHaveValue("wf-ref");
+      await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+      await user.click(screen.getByRole("button",{name:"Add"}));
+      await waitFor(async()=>expect(await bodyOf(fetcher.mock.calls.find(call=>requestUrl(call[0])==="/api/tasks")![0])).toEqual({workflow_id:"wf-ref",input_values:{topic:"smoke"}}));
+    });
+    it("keeps version-less workflows unselectable and defaults to the first launchable one",async()=>{
+      const fetcher=vi.fn(async(input:any)=>requestUrl(input)==="/api/workflows"?new Response(JSON.stringify([draftWorkflow("wf-draft","Draft flow"),launchableWorkflow("wf-live","Live flow")])):new Response(JSON.stringify({task:{...task("queued"),notes:[]}})));
+      setup("/tasks/new",fetcher);
+      const select=await screen.findByLabelText("Workflow");
+      expect(select).toHaveValue("wf-live");
+      const draft=within(select).getByRole("option",{name:/Draft flow/});
+      expect(draft).toBeDisabled();
+      expect(draft).toHaveTextContent("No active version");
+    });
+    it("honors a valid workflowId preselection from the URL",async()=>{
+      const fetcher=vi.fn(async(input:any)=>requestUrl(input)==="/api/workflows"?new Response(JSON.stringify([launchableWorkflow("wf-a","First flow"),launchableWorkflow("wf-b","Second flow")])):new Response(JSON.stringify({task:{...task("queued"),notes:[]}})));
+      setup("/tasks/new?workflowId=wf-b",fetcher);
+      expect(await screen.findByLabelText("Workflow")).toHaveValue("wf-b");
+    });
+    it("ignores unknown and version-less workflowId preselections",async()=>{
+      const fetcher=vi.fn(async(input:any)=>requestUrl(input)==="/api/workflows"?new Response(JSON.stringify([draftWorkflow("wf-draft","Draft flow"),launchableWorkflow("wf-live","Live flow")])):new Response(JSON.stringify({task:{...task("queued"),notes:[]}})));
+      const unknown=setup("/tasks/new?workflowId=does-not-exist",fetcher);
+      expect(await screen.findByLabelText("Workflow")).toHaveValue("wf-live");
+      unknown.unmount();
+      const versionless=setup("/tasks/new?workflowId=wf-draft",fetcher);
+      expect(await screen.findByLabelText("Workflow")).toHaveValue("wf-live");
+      versionless.unmount();
+    });
+    it("shows an empty state without a submit when no workflow can be launched",async()=>{
+      const fetcher=vi.fn(async(input:any)=>requestUrl(input)==="/api/workflows"?new Response(JSON.stringify([draftWorkflow("wf-draft","Draft flow")])):new Response(JSON.stringify({task:{...task("queued"),notes:[]}})));
+      setup("/tasks/new",fetcher);
+      expect(await screen.findByRole("heading",{name:catalogText("tasks.new.noLaunchableWorkflows")})).toBeInTheDocument();
+      expect(screen.queryByRole("button",{name:"Add"})).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Analysis topic")).not.toBeInTheDocument();
+    });
+    it("renders the backend workflow-not-found error instead of the generic submit failure",async()=>{
+      const user=userEvent.setup();
+      const fetcher=vi.fn(async(input:any)=>{
+        const path=requestUrl(input);
+        if(path==="/api/workflows")return new Response(JSON.stringify([launchableWorkflow("wf-ref","reference-security-analysis")]));
+        if(path==="/api/tasks")return new Response(JSON.stringify({code:"NOT_FOUND",message_key:"errors.workflow.not_found",params:{},details:[]}),{status:404,headers:{"Content-Type":"application/json"}});
+        return new Response(JSON.stringify({task:{...task("queued"),notes:[]}}));
+      });
+      setup("/tasks/new",fetcher);
+      await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+      await user.click(await screen.findByRole("button",{name:"Add"}));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Workflow not found.");
+      expect(screen.queryByText("Could not create the task. Please try again.")).not.toBeInTheDocument();
+      expect(screen.getByRole("button",{name:"Add"})).toBeEnabled();
+    });
+    it("keeps the generic fallback for non-Kosmo submission failures",async()=>{
+      const user=userEvent.setup();
+      const fetcher=vi.fn(async(input:any)=>{
+        const path=requestUrl(input);
+        if(path==="/api/workflows")return new Response(JSON.stringify([launchableWorkflow("wf-ref","reference-security-analysis")]));
+        if(path==="/api/tasks")return new Response(JSON.stringify({unexpected:true}),{status:500,headers:{"Content-Type":"application/json"}});
+        return new Response(JSON.stringify({task:{...task("queued"),notes:[]}}));
+      });
+      setup("/tasks/new",fetcher);
+      await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+      await user.click(await screen.findByRole("button",{name:"Add"}));
+      expect(await screen.findByRole("alert")).toHaveTextContent("An unexpected error occurred.");
+    });
   });
 });
