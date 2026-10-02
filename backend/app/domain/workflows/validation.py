@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from collections.abc import Callable
 
 from shared.errors import ErrorDetail, ValidationFailedError
-from shared.graph.schema import AiNode, EndNode, ScriptNode, StartNode, WorkflowDefinition
+from shared.graph.schema import AiNode, DecisionNode, EndNode, HttpNode, ScriptNode, StartNode, WorkflowDefinition, WorkflowNode
 
 
-def validate_workflow(definition: WorkflowDefinition) -> None:
+def validate_workflow(
+    definition: WorkflowDefinition,
+    workflow_exists: Callable[[str], bool] | None = None,
+) -> None:
     """Validate graph-wide invariants and raise one error containing every violation."""
     issues: list[ErrorDetail] = []
     nodes = definition.nodes
@@ -37,6 +41,18 @@ def validate_workflow(definition: WorkflowDefinition) -> None:
         incoming[edge.to].append(edge.from_node)
         valid_edges.append(edge)
 
+    for node in nodes:
+        if isinstance(node, DecisionNode):
+            if node.selected_next_node_id not in node_ids:
+                issues.append(_detail("decision_target_missing", node_id=node.id, target=node.selected_next_node_id))
+            elif node.selected_next_node_id not in outgoing[node.id]:
+                issues.append(_detail("decision_target_not_outgoing", node_id=node.id, target=node.selected_next_node_id))
+        if isinstance(node, WorkflowNode):
+            if not node.workflow_id.strip():
+                issues.append(_detail("workflow_id_required", node_id=node.id))
+            elif workflow_exists is None or not workflow_exists(node.workflow_id):
+                issues.append(_detail("workflow_not_found", node_id=node.id, workflow_id=node.workflow_id))
+
     if len(starts) == 1:
         if incoming[starts[0].id]:
             issues.append(_detail("start_incoming_edge", node_id=starts[0].id))
@@ -65,7 +81,7 @@ def validate_workflow(definition: WorkflowDefinition) -> None:
 
     artifacts = {field.name for node in starts for field in node.input_form}
     artifacts.update(name for node in nodes if isinstance(node, (ScriptNode, AiNode)) for name in node.outputs)
-    artifacts.update(name for node in nodes if not isinstance(node, (StartNode, EndNode)) for name in node.outputs)
+    artifacts.update(name for node in nodes if isinstance(node, (ScriptNode, HttpNode, AiNode)) for name in node.outputs)
     for node in nodes:
         if isinstance(node, (ScriptNode, AiNode)):
             for name in node.inputs:

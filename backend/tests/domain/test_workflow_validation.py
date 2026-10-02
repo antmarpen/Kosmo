@@ -26,6 +26,46 @@ def test_valid_reference_definition_passes():
     assert validate_workflow(workflow()) is None
 
 
+def decision_definition(target):
+    return workflow(
+        nodes=[
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
+            {"type": "decision", "id": "decision", "selected_next_node_id": target},
+            {"type": "script", "id": "script", "code": "pass", "inputs": [], "outputs": []},
+            {"type": "end", "id": "end"},
+        ],
+        edges=[{"from": "start", "to": "decision"}, {"from": "decision", "to": "script"}, {"from": "decision", "to": "end"}, {"from": "script", "to": "end"}],
+    )
+
+
+def test_decision_selected_outgoing_target_passes():
+    assert validate_workflow(decision_definition("script")) is None
+
+
+@pytest.mark.parametrize("target,rule", [("missing", "decision_target_missing"), ("start", "decision_target_not_outgoing")])
+def test_decision_invalid_target_is_reported(target, rule):
+    assert f"errors.workflow.{rule}" in keys(decision_definition(target))
+
+
+def workflow_node_definition(workflow_id):
+    return workflow(nodes=[
+        {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
+        {"type": "workflow", "id": "invoke", "workflow_id": workflow_id},
+        {"type": "end", "id": "end"},
+    ], edges=[{"from": "start", "to": "invoke"}, {"from": "invoke", "to": "end"}])
+
+
+def test_workflow_node_requires_nonempty_existing_reference():
+    assert "errors.workflow.workflow_id_required" in keys(workflow_node_definition(""))
+    assert validate_workflow(workflow_node_definition("child"), workflow_exists=lambda workflow_id: workflow_id == "child") is None
+
+
+def test_workflow_node_reports_missing_reference():
+    with pytest.raises(ValidationFailedError) as caught:
+        validate_workflow(workflow_node_definition("missing"), workflow_exists=lambda _: False)
+    assert "errors.workflow.workflow_not_found" in [detail.message_key for detail in caught.value.details]
+
+
 def test_duplicate_node_ids_are_reported():
     assert "errors.workflow.duplicate_node_id" in keys(workflow(nodes=[
         {"type": "start", "id": "same", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},

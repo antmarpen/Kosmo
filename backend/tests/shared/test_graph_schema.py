@@ -48,6 +48,26 @@ def test_schema_carries_optional_bounded_loop_phase():
     assert WorkflowDefinition.model_validate(value).phases[0].loop.max_iterations == 2
 
 
+@pytest.mark.parametrize("node", [
+    {"type": "decision", "id": "decision", "selected_next_node_id": "end"},
+    {"type": "workflow", "id": "invoke", "workflow_id": "child-workflow"},
+])
+def test_schema_round_trips_decision_and_workflow_nodes(node):
+    value = valid_definition()
+    value["nodes"].insert(1, node)
+    parsed = WorkflowDefinition.model_validate(value)
+    dumped = parsed.model_dump(mode="json", by_alias=True)
+    assert dumped["nodes"][1] == node
+    assert type(WorkflowDefinition.model_validate(dumped).nodes[1]).__name__ == ("DecisionNode" if node["type"] == "decision" else "WorkflowNode")
+
+
+def test_new_node_variants_reject_extra_fields():
+    value = valid_definition()
+    value["nodes"].insert(1, {"type": "decision", "id": "decision", "selected_next_node_id": "end", "extra": True})
+    with pytest.raises(ValidationError):
+        WorkflowDefinition.model_validate(value)
+
+
 @pytest.mark.parametrize("location,value", [
     ("node", "/etc/passwd"), ("node", "../escape"), ("node", "bad/name"),
     ("node", "x" * 65), ("node", ""), ("field", "../escape"),

@@ -31,8 +31,16 @@ async def seed_reference_workflow(db) -> None:
 
 
 async def ensure_reference_workflow(repository) -> None:
-    if await repository.get_by_name("reference-security-analysis") is None:
-        await WorkflowService(repository).publish(reference_workflow_definition())
+    workflow = await repository.get_by_name("reference-security-analysis")
+    if workflow is None:
+        published = await WorkflowService(repository).publish(reference_workflow_definition())
+        await repository.activate(published["workflow_id"], published["id"])
+        return
+    workflow_id = workflow["id"] if isinstance(workflow, dict) else workflow.id
+    if await repository.get_active_version(workflow_id) is None:
+        version = await repository.get_latest_version(workflow_id)
+        if version is not None:
+            await repository.activate(workflow_id, version["id"] if isinstance(version, dict) else version.id)
 
 
 async def seed() -> None:

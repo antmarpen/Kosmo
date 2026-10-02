@@ -73,7 +73,19 @@ class EndNode(ContractModel):
     id: str = Field(pattern=SAFE_IDENTIFIER)
 
 
-Node = Annotated[StartNode | ScriptNode | HttpNode | AiNode | EndNode, Field(discriminator="type")]
+class DecisionNode(ContractModel):
+    type: Literal["decision"]
+    id: str = Field(pattern=SAFE_IDENTIFIER)
+    selected_next_node_id: str
+
+
+class WorkflowNode(ContractModel):
+    type: Literal["workflow"]
+    id: str = Field(pattern=SAFE_IDENTIFIER)
+    workflow_id: str
+
+
+Node = Annotated[StartNode | ScriptNode | HttpNode | AiNode | EndNode | DecisionNode | WorkflowNode, Field(discriminator="type")]
 
 
 class Edge(ContractModel):

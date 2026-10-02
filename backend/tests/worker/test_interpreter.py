@@ -21,6 +21,15 @@ def test_unregistered_node_type_returns_structured_failure():
     assert result["error"]["code"] == "EXECUTOR_NOT_REGISTERED"
 
 
+def test_decision_and_workflow_nodes_are_not_executable():
+    for kind in ("decision", "workflow"):
+        graph = {"nodes": [{"type": kind, "id": "new-node"}], "edges": [], "phases": None}
+        result = interpret(graph, {}, lambda node, ctx: None)
+        assert result["state"] == "failed"
+        assert result["error"]["code"] == "EXECUTOR_NOT_REGISTERED"
+        assert result["error"]["params"]["type"] == kind
+
+
 def test_node_failure_stops_walk_and_returns_failed_state():
     graph = {"nodes": [{"type": "script", "id": "work"}], "edges": [], "phases": None}
     result = interpret(graph, {}, lambda node, ctx: {"state": "failed", "error": {"code": "SCRIPT_ERROR"}})
