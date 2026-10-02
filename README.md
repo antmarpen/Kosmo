@@ -1,6 +1,6 @@
 # Kosmo
 
-**Implementation Status:** Phase 1 Foundations have been implemented and verified. The system is currently in a local development state (not deployed).
+**Implementation Status:** Phase 1 (Foundations) and Phase 2 (Provider Configuration & Visual Editor) have been implemented and verified. The system is currently in a local development state (not deployed).
 
 Kosmo is a platform for building, validating, and running workflows in a visual
 way. Workflows can be deterministic or AI-assisted: nodes can delegate their
@@ -126,8 +126,8 @@ need appears.
 ## Repository layout
 
 ```
-frontend/   React SPA and visual workflow editor (planned)
-backend/    FastAPI service, workflow engine, and persistence (planned)
+frontend/   React SPA and visual workflow editor
+backend/    FastAPI service, workflow engine, and persistence
 docs/       Official project documentation and persistent agent context
 AGENTS.md   Development workflow and agent responsibilities
 ```

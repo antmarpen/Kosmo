@@ -25,6 +25,24 @@ Kosmo has successfully completed the Phase 1 — Foundations and Execution Proof
 - **Localization:** i18n support for English (`en`) and Spanish (`es`) using nested JSON catalogs.
 - **Continuous Integration:** GitHub Actions pipeline covering backend, frontend, client-regen, and compose-config, using a dedicated PostgreSQL service for boundary testing.
 
+### Implemented and Verified (Phase 2)
+
+- **Provider Configuration UI & Visual Workflow Editor (Blocks A + C)**:
+  - Implemented and verified in the local compose environment.
+  - Key constraints:
+    - Providers store no model (selection is for verification only).
+    - Mandatory user-entered display name.
+    - Mandatory connection verification via real container test.
+    - Per-user workflow drafts with optimistic revisions.
+    - Publication without auto-activation + explicit activation.
+    - 5-minute recent-publication confirmation.
+    - Scoped provider visibility (personal, group, or global).
+    - Credential and configuration contents are hidden from non-owners.
+- **Phase 2 Remediation**:
+  - Successfully resolved RR1–RR8 and AR-01/AR-02 findings, including the SSE reconciliation fix.
+- **Provider Instance Management (P2-09)**:
+  - Provider list actions (verify, delete, edit) are now implemented.
+
 ### UI Refresh Implementation (2026-10-02)
 - Local Material Symbols Rounded for general UI icons; bundle size optimization remains a future consideration.
 - Pill-shaped action buttons, medium-rounded surfaces, and consistent pointers;
@@ -34,17 +52,17 @@ Kosmo has successfully completed the Phase 1 — Foundations and Execution Proof
 - Loading state support for shared Buttons.
 - Styled confirmation dialogs and tooltips.
 - Spanish (`es`) catalog repaired and synchronized.
-- **DEFERRED:** Provider instance management and provider row CRUD/editing remain pending (Phase 2/P2-09).
+- **DONE:** Provider instance management (P2-09) is now implemented.
 
 ### Outstanding Live Proofs & Phase 2 Roadmap
 
 The following items are part of the next development cycle:
-- **Agent Egress:** destination-level agent egress filtering.
-- **Configuration UI:** provider-config management, model list/catalog browsing, and unified UI.
-- **Interaction Depth:** human-input restart/replay, delivery idempotency evidence, and scheduling/start-retry reconciliation.
-- **Frontend Evolution:** TanStack Query migration, workflow editor/draft/publication/activation UX, notes, and audit UI.
-- **Adapter Expansion:** Claude and Codex implementation/adapters.
-- **Operations:** hosted CI observation and full production deployment strategies.
+- **Agent & Provider Evolution:** Claude and Codex implementation/adapters.
+- **Agent Egress Filtering:** Implementing destination-level egress filtering for agent nodes.
+- **Frontend Evolution:** TanStack Query migration.
+- **Interaction Depth:** Human-input restart/replay, delivery idempotency evidence, and scheduling/start-retry reconciliation.
+- **Platform Features:** Notes/audit UI, Applications, and production deployment.
+- **Open Decision #11:** Workflow visibility and ownership model.
 
 ## Confirmed direction
 
@@ -401,14 +419,12 @@ The following items represent the next logical steps for Kosmo implementation, m
 
 ### Agent & Provider Evolution
 - **Adapter Expansion:** Full implementation of Claude and Codex adapters.
-- **Provider Configuration UI:** A central catalog for managing agents, MCPs, skills, and extensions, including model selection and configuration upload.
 - **Agent Egress Filtering:** Implementing destination-level egress filtering for agent nodes to control outbound connectivity more granularly.
 
 ### Workflow & Interaction Depth
 - **Interactive Session UX:** Developing the UI and API for live, bidirectional interaction with a running agent session (chatting with an agent from the task detail page).
 - **Human-Input Refinement:** Improving the reliability and experience of human-input requests, including restart/replay capabilities and delivery idempotency evidence.
 - **Scheduling & Reconciliation:** Advanced scheduling, start-retry reconciliation, and capacity management.
-- **Workflow Authoring UX:** Moving from programmatic/seed-based definitions to a full-featured visual editor including draft management, publication flows, and activation logic.
 
 ### Platform Features
 - **TanStack Query Migration:** Migrating the frontend state management from local state/refetch patterns to a robust TanStack Query implementation.
