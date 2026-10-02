@@ -475,14 +475,14 @@ test("provider row actions: Test connection targets the clicked config; Delete a
     await page.getByRole("button", { name: /^close$|cerrar$/i }).click();
 
     // Delete asks for confirmation (styled dialog, not a native confirm):
-    // cancel keeps the row, confirming removes it and only it.
+    // the top-right close X keeps the row, confirming removes it and only it.
     const deleteButtonA = rowA.getByRole("button", { name: /^delete$|eliminar$/i });
     await deleteButtonA.click();
     const confirmDialog = page.getByRole("alertdialog");
     await expect(confirmDialog.getByText(/delete provider configuration|eliminar configuración del proveedor/i)).toBeVisible({
       timeout: 15_000,
     });
-    await confirmDialog.getByRole("button", { name: /^cancel$|cancelar$/i }).click();
+    await confirmDialog.getByRole("button", { name: /^close$|cerrar$/i }).click();
     await expect(rowA).toBeVisible();
 
     await deleteButtonA.click();

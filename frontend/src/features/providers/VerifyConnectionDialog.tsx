@@ -65,7 +65,7 @@ export function VerifyConnectionDialog({ open, configId, onOpenChange, onSettled
   // Focus contract (same as ConfirmDialog): this dialog is controlled without
   // a rendered trigger, so Radix's built-in restore would send focus to the
   // document body. Capture the opener (the row action) on open and restore it
-  // on close.
+  // on close; initial focus lands on the shared close X by default.
   const lastFocusedRef = useRef<HTMLElement | null>(null);
 
   const handleOpenAutoFocus = () => {
@@ -128,13 +128,15 @@ export function VerifyConnectionDialog({ open, configId, onOpenChange, onSettled
     await onSettled();
   }
 
-  // While a real request is in flight the result cannot be orphaned: Escape
-  // and outside dismissal are held (same contract as `ConfirmDialog`).
+  // While a real request is in flight the result cannot be orphaned: the
+  // shared close X is disabled and Escape/outside dismissal are held (same
+  // contract as `ConfirmDialog`).
   const holdOpenWhileVerifying = (event: Event) => { if (verifying) event.preventDefault(); };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        closeDisabled={verifying}
         onOpenAutoFocus={handleOpenAutoFocus}
         onCloseAutoFocus={handleCloseAutoFocus}
         onEscapeKeyDown={holdOpenWhileVerifying}
@@ -172,9 +174,6 @@ export function VerifyConnectionDialog({ open, configId, onOpenChange, onSettled
             </div>
           )}
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={verifying} onClick={() => onOpenChange(false)}>
-            {t("providers.actions.close")}
-          </Button>
           <Button
             type="button"
             loading={verifying}

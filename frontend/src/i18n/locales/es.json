@@ -2,6 +2,7 @@
   "common": {
     "appName": "Kosmo",
     "cancel": "Cancelar",
+    "close": "Cerrar",
     "submit": "Enviar",
     "add": "Añadir",
     "edit": "Editar",
@@ -150,8 +151,7 @@
     },
     "actions": {
       "verifyTitle": "Prueba la conexión",
-      "verifyDescription": "Ejecuta una petición real contra la configuración guardada para comprobar que puede alcanzar un modelo. El modelo solo se usa para esta prueba; no se guarda con el proveedor.",
-      "close": "Cerrar"
+      "verifyDescription": "Ejecuta una petición real contra la configuración guardada para comprobar que puede alcanzar un modelo. El modelo solo se usa para esta prueba; no se guarda con el proveedor."
     },
     "columns": {
       "name": "Nombre",

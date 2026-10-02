@@ -318,7 +318,7 @@ describe("task views",()=>{
     const user=userEvent.setup();
     setup("/tasks",fetcher);
     await user.click(await screen.findByRole("button",{name:"Stop task"}));
-    await user.click(await screen.findByRole("button",{name:"Cancel"}));
+    await user.click(await screen.findByRole("button",{name:"Close"}));
     await waitFor(()=>expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(fetcher.mock.calls.some(call=>requestUrl(call[0]).endsWith("/stop"))).toBe(false);
     expect(confirm).not.toHaveBeenCalled();

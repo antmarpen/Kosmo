@@ -46,7 +46,6 @@ export type ActivateDialogProps = {
 export function ActivateDialog({ open, onOpenChange, candidates, versionId, loading = false, onConfirm, hasMore = false, loadingMore = false, onLoadMore }: ActivateDialogProps) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(versionId);
-  const cancelRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
 
   // Re-derive the preselection every time the dialog opens (the just-published
@@ -62,12 +61,11 @@ export function ActivateDialog({ open, onOpenChange, candidates, versionId, load
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        onOpenAutoFocus={(event) => {
-          // Initial focus on Cancel (the safe action), same contract as
-          // ConfirmDialog; restore the opener on close.
-          event.preventDefault();
+        closeDisabled={loading}
+        onOpenAutoFocus={() => {
+          // Record the opener before Radix moves focus to the shared close X
+          // (the safe action); restore the opener on close.
           lastFocusedRef.current = document.activeElement as HTMLElement | null;
-          cancelRef.current?.focus();
         }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
@@ -119,9 +117,6 @@ export function ActivateDialog({ open, onOpenChange, candidates, versionId, load
           </Button>
         )}
         <DialogFooter>
-          <Button ref={cancelRef} type="button" variant="outline" disabled={loading} onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
           <Button type="button" loading={loading} disabled={!selected} onClick={() => selected && onConfirm(selected)}>
             {t("common.confirm")}
           </Button>

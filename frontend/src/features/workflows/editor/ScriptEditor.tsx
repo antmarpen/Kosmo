@@ -45,11 +45,12 @@ function CodeSummary({ value, label: fieldLabel }: { value: string; label: strin
 /**
  * Script node code editor for the properties panel. The panel shows a compact
  * read-only summary and one primary action; the Monaco editor lives inside a
- * large modal with explicit Save/Cancel, mirroring the ConfirmDialog
- * interaction contract (initial focus on Cancel, opener focus restored on
- * close, Escape/overlay dismissal held while the chunk loads). `onChange`
- * receives the draft only when the user saves, so cancel/Escape/overlay
- * dismissal always leaves the stored node code untouched.
+ * large modal with an explicit Save action and the shared close X (the X
+ * discards the draft), mirroring the ConfirmDialog interaction contract
+ * (initial focus on the shared close X, opener focus restored on close,
+ * Escape/overlay dismissal held while the chunk loads). `onChange` receives
+ * the draft only when the user saves, so closing the dialog always leaves
+ * the stored node code untouched.
  */
 export function ScriptEditor({ value, onChange, label }: EditorProps) {
   const { t } = useTranslation();
@@ -57,7 +58,6 @@ export function ScriptEditor({ value, onChange, label }: EditorProps) {
   const [draft, setDraft] = useState(value);
   const [monaco, setMonaco] = useState<ComponentType<MonacoProps> | null>(null);
   const [failed, setFailed] = useState(false);
-  const cancelRef = useRef<HTMLButtonElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
 
   // Lazy boundary: the ~2 MB chunk is fetched on first open, never on page
@@ -75,12 +75,11 @@ export function ScriptEditor({ value, onChange, label }: EditorProps) {
   const openEditor = () => { setDraft(value); setFailed(false); setOpen(true); };
   const save = () => { onChange(draft); setOpen(false); };
 
-  // ConfirmDialog focus contract: focus the safe action on open; Radix's
-  // modal default would restore focus to a DialogTrigger we do not render.
-  const handleOpenAutoFocus = (event: Event) => {
-    event.preventDefault();
+  // ConfirmDialog focus contract: Radix's first-tabbable default lands on the
+  // shared close X (the safe action); record the opener so close can restore
+  // it (Radix's modal default would target a DialogTrigger we do not render).
+  const handleOpenAutoFocus = () => {
     lastFocusedRef.current = document.activeElement as HTMLElement | null;
-    cancelRef.current?.focus();
   };
   const handleCloseAutoFocus = (event: Event) => {
     event.preventDefault();
@@ -93,7 +92,7 @@ export function ScriptEditor({ value, onChange, label }: EditorProps) {
     <CodeSummary value={value} label={label} />
     <Button type="button" className="w-full" onClick={openEditor}>{t("editor.editScript")}</Button>
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="flex h-[80vh] flex-col gap-4 sm:max-w-5xl" onOpenAutoFocus={handleOpenAutoFocus} onCloseAutoFocus={handleCloseAutoFocus} onEscapeKeyDown={holdWhileLoading} onInteractOutside={holdWhileLoading}>
+      <DialogContent className="flex h-[80vh] flex-col gap-4 sm:max-w-5xl" closeDisabled={loading} onOpenAutoFocus={handleOpenAutoFocus} onCloseAutoFocus={handleCloseAutoFocus} onEscapeKeyDown={holdWhileLoading} onInteractOutside={holdWhileLoading}>
         <DialogHeader>
           <DialogTitle>{t("workflowEditor.types.script")}</DialogTitle>
           <DialogDescription>{t("editor.codePlaceholder")}</DialogDescription>
@@ -108,7 +107,6 @@ export function ScriptEditor({ value, onChange, label }: EditorProps) {
             : <EditorLoading text={t("editor.codeLoading")} />}
         </div>
         <DialogFooter>
-          <Button ref={cancelRef} type="button" variant="outline" disabled={loading} onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
           <Button type="button" disabled={!dirty || loading} onClick={save}>{t("editor.save")}</Button>
         </DialogFooter>
       </DialogContent>

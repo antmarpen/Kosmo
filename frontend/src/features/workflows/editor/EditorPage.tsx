@@ -619,7 +619,6 @@ export function EditorPage() {
       title={String(t(confirmationText.title))}
       description={String(t(confirmationText.description))}
       confirmLabel={String(t(confirmationText.confirmLabel))}
-      cancelLabel={t("common.cancel")}
       loading={busy}
       onConfirm={() => {
         const kind = confirmation.kind;

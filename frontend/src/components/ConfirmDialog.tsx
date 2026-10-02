@@ -17,13 +17,13 @@ export type ConfirmDialogProps = {
   title: string;
   description: string;
   confirmLabel: string;
-  cancelLabel: string;
   /** Started by the confirm button; the dialog only reports intent. */
   onConfirm: () => void;
   /**
    * While the confirmed action is in flight: the confirm button is disabled
-   * with an inline spinner, and Escape/outside dismissal is prevented so the
-   * result of the action cannot be orphaned mid-mutation.
+   * with an inline spinner, the shared close X is disabled, and
+   * Escape/outside dismissal is prevented so the result of the action
+   * cannot be orphaned mid-mutation.
    */
   loading?: boolean;
   /** Destructive styling for the confirm action. Default true. */
@@ -33,13 +33,15 @@ export type ConfirmDialogProps = {
 /**
  * Styled confirmation dialog for destructive and mutating actions (AC-16),
  * replacing `window.confirm`. All user-facing text arrives through props so
- * consuming features pass localized catalog values.
+ * consuming features pass localized catalog values; the close affordance is
+ * the shared `DialogContent` X (localized `common.close`).
  *
- * Focus contract: initial focus lands on Cancel — the safe action — never on
- * the confirm button; on close, focus returns to the element focused before
- * the dialog opened. Radix's built-in restore only targets a rendered
- * `DialogTrigger`, which this controlled component does not own, so the
- * capture/restore is implemented here.
+ * Focus contract: initial focus lands on the shared close X — the safe
+ * action, rendered first by `DialogContent` — never on the confirm button;
+ * on close, focus returns to the element focused before the dialog opened.
+ * Radix's built-in restore only targets a rendered `DialogTrigger`, which
+ * this controlled component does not own, so the capture/restore is
+ * implemented here.
  */
 function ConfirmDialog({
   open,
@@ -47,20 +49,16 @@ function ConfirmDialog({
   title,
   description,
   confirmLabel,
-  cancelLabel,
   onConfirm,
   loading = false,
   destructive = true,
 }: ConfirmDialogProps) {
-  const cancelRef = React.useRef<HTMLButtonElement>(null);
   const lastFocusedRef = React.useRef<HTMLElement | null>(null);
 
-  const handleOpenAutoFocus = (event: Event) => {
-    // Take over Radix's open-focus behavior (verified against
-    // react-focus-scope: preventing the mount event skips its focus-first).
-    event.preventDefault();
+  const handleOpenAutoFocus = () => {
+    // Record the opener before Radix moves focus into the dialog; the
+    // default first-tabbable behavior (the shared close X) stays untouched.
     lastFocusedRef.current = document.activeElement as HTMLElement | null;
-    cancelRef.current?.focus();
   };
 
   const handleCloseAutoFocus = (event: Event) => {
@@ -79,6 +77,7 @@ function ConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         role="alertdialog"
+        closeDisabled={loading}
         onOpenAutoFocus={handleOpenAutoFocus}
         onCloseAutoFocus={handleCloseAutoFocus}
         onEscapeKeyDown={holdOpenWhileLoading}
@@ -89,15 +88,6 @@ function ConfirmDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button
-            ref={cancelRef}
-            type="button"
-            variant="outline"
-            disabled={loading}
-            onClick={() => onOpenChange(false)}
-          >
-            {cancelLabel}
-          </Button>
           <Button
             type="button"
             variant={destructive ? "destructive" : "default"}

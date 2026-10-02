@@ -97,13 +97,13 @@ describe("ScriptEditor modal", () => {
     expect(onUpdate).toHaveBeenCalledWith("n", expect.objectContaining({ id: "n", type: "script", code: "print('hi')" }));
   });
 
-  it("cancel discards the draft and leaves the stored code untouched", async () => {
+  it("the close X discards the draft and leaves the stored code untouched", async () => {
     const onUpdate = vi.fn();
     render(<PropertiesPanel state={panelWithScript("stored")} onUpdate={onUpdate} />);
     fireEvent.click(screen.getByRole("button", { name: expected("editScript") }));
     const mock = await screen.findByRole("textbox", { name: "monaco editor mock" });
     fireEvent.change(mock, { target: { value: "edited" } });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(onUpdate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: expected("editScript") }));

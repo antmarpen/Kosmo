@@ -114,7 +114,6 @@ function StopTaskConfirmDialog({ stop }: { stop: TaskStopController }) {
       title={t("tasks.stop")}
       description={t("tasks.confirmStop")}
       confirmLabel={t("tasks.stop")}
-      cancelLabel={t("common.cancel")}
       loading={stop.stoppingId !== null}
       onConfirm={stop.confirm}
     />

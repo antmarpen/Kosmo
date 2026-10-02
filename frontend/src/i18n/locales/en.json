@@ -2,6 +2,7 @@
   "common": {
     "appName": "Kosmo",
     "cancel": "Cancel",
+    "close": "Close",
     "submit": "Submit",
     "add": "Add",
     "edit": "Edit",
@@ -150,8 +151,7 @@
     },
     "actions": {
       "verifyTitle": "Test the connection",
-      "verifyDescription": "Runs a real request against the saved configuration to check that it can reach a model. The model is only used for this test; it is not saved with the provider.",
-      "close": "Close"
+      "verifyDescription": "Runs a real request against the saved configuration to check that it can reach a model. The model is only used for this test; it is not saved with the provider."
     },
     "columns": {
       "name": "Name",

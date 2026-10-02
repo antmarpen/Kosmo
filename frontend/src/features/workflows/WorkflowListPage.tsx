@@ -44,8 +44,9 @@ export function WorkflowListPage() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [createError, setCreateError] = useState<KosmoError | null>(null);
-  // Focus contract shared with ConfirmDialog/ActivateDialog: initial focus on
-  // the name field (the form's primary input), restore the opener on close.
+  // Focus contract: this form dialog deliberately moves initial focus to the
+  // name field (the form's primary input) instead of the shared close X, and
+  // restores the opener on close.
   const nameRef = useRef<HTMLInputElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
 
@@ -143,6 +144,7 @@ export function WorkflowListPage() {
 
     <Dialog open={createOpen} onOpenChange={(open) => { if (!creating) setCreateOpen(open); }}>
       <DialogContent
+        closeDisabled={creating}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           lastFocusedRef.current = document.activeElement as HTMLElement | null;
@@ -177,9 +179,6 @@ export function WorkflowListPage() {
           </label>
           {createError && <KosmoErrorAlert error={createError} />}
           <DialogFooter>
-            <Button type="button" variant="outline" disabled={creating} onClick={() => setCreateOpen(false)}>
-              {t("common.cancel")}
-            </Button>
             <Button type="submit" loading={creating} disabled={!name.trim()}>
               {t("workflows.new.action")}
             </Button>

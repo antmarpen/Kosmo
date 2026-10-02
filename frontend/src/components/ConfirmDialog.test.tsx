@@ -7,6 +7,8 @@ import { ConfirmDialog, type ConfirmDialogProps } from "./ConfirmDialog";
 
 // All user-facing strings arrive as props (the consuming feature passes
 // localized catalog values); the test mirrors that contract with literals.
+// The close affordance is the shared `DialogContent` X, named by the
+// localized `common.close` catalog value ("Close").
 function baseProps(overrides: Partial<ConfirmDialogProps> = {}): ConfirmDialogProps {
   return {
     open: true,
@@ -14,7 +16,6 @@ function baseProps(overrides: Partial<ConfirmDialogProps> = {}): ConfirmDialogPr
     title: "Delete provider",
     description: "This permanently removes the stored credentials.",
     confirmLabel: "Delete",
-    cancelLabel: "Cancel",
     onConfirm: () => undefined,
     ...overrides,
   };
@@ -51,7 +52,6 @@ function Host({
         title="Stop task"
         description="The running task will be stopped."
         confirmLabel="Stop"
-        cancelLabel="Cancel"
         onConfirm={onConfirm}
         loading={loading}
       />
@@ -60,13 +60,14 @@ function Host({
 }
 
 describe("ConfirmDialog", () => {
-  it("renders the title, description, and both action labels as an alert dialog", () => {
+  it("renders the title, description, the confirm action, and the shared close X as an alert dialog", () => {
     renderConfirmDialog();
 
     const dialog = screen.getByRole("alertdialog", { name: "Delete provider" });
     expect(dialog).toHaveTextContent("This permanently removes the stored credentials.");
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
   });
 
   it("renders nothing when closed", () => {
@@ -75,11 +76,11 @@ describe("ConfirmDialog", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
-  it("puts initial focus on Cancel", async () => {
+  it("puts initial focus on the shared close X (the safe action)", async () => {
     renderConfirmDialog();
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus(),
+      expect(screen.getByRole("button", { name: "Close" })).toHaveFocus(),
     );
   });
 
@@ -94,11 +95,11 @@ describe("ConfirmDialog", () => {
     expect(screen.getByRole("alertdialog", { name: "Delete provider" })).toBeInTheDocument();
   });
 
-  it("cancel calls onOpenChange(false) and never confirms", async () => {
+  it("the close X dismisses without confirming and reports onOpenChange(false)", async () => {
     const user = userEvent.setup();
     const { onOpenChange, onConfirm } = renderConfirmDialog();
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onConfirm).not.toHaveBeenCalled();
@@ -111,7 +112,7 @@ describe("ConfirmDialog", () => {
     const opener = screen.getByRole("button", { name: "Stop task" });
     await user.click(opener);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus(),
+      expect(screen.getByRole("button", { name: "Close" })).toHaveFocus(),
     );
 
     await user.keyboard("{Escape}");
@@ -141,7 +142,7 @@ describe("ConfirmDialog", () => {
     const confirm = screen.getByRole("button", { name: "Delete" });
     expect(confirm).toBeDisabled();
     expect(confirm).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
 
     await user.click(confirm);
     expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -157,7 +158,7 @@ describe("ConfirmDialog", () => {
     expect(screen.getByRole("alertdialog", { name: "Delete provider" })).toBeInTheDocument();
   });
 
-  it("after loading ends, cancel and retry work again", async () => {
+  it("after loading ends, closing and retry work again", async () => {
     const user = userEvent.setup();
     const { onConfirm, onOpenChange, rerenderWith } = renderConfirmDialog({ loading: true });
 
@@ -168,7 +169,7 @@ describe("ConfirmDialog", () => {
     await user.click(confirm);
     expect(onConfirm).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 

@@ -105,7 +105,8 @@ describe("workflow list", () => {
     await userEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    // The shared close X dismisses the dialog (no footer Cancel button).
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
     await userEvent.click(screen.getByRole("button", { name: "Create your first workflow" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
