@@ -378,6 +378,10 @@ def test_agent_session_injects_config_files_into_container_before_acp_start(monk
         mounts = {mount["Target"]: mount for mount in client.containers.options["mounts"]}
         assert "/home/opencode/.config/opencode" in client.containers.options["tmpfs"]
         assert "/home/opencode/.local/share/opencode" in client.containers.options["tmpfs"]
+        # OpenCode also writes state and cache; without writable mounts it dies
+        # with EROFS on startup and the ACP stream closes immediately.
+        assert "/home/opencode/.local/state" in client.containers.options["tmpfs"]
+        assert "/home/opencode/.cache" in client.containers.options["tmpfs"]
         assert "/home/opencode/.config/opencode" not in mounts
         assert client.api.sockets[0].written == b'{"model":"opencode/big-pickle"}'
         assert client.api.sockets[1].written == b'{"token":"private"}'

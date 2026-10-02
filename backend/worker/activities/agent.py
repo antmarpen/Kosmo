@@ -65,8 +65,13 @@ async def start_agent_session(
             mounts=mounts,
             tmpfs={
                 "/tmp": "rw,noexec,nosuid,nodev,size=16m,mode=1777",
-                "/home/opencode/.config/opencode": "rw,noexec,nosuid,nodev,size=2m,uid=10001,gid=10001,mode=0700",
-                "/home/opencode/.local/share/opencode": "rw,noexec,nosuid,nodev,size=4m,uid=10001,gid=10001,mode=0700",
+                "/home/opencode/.config/opencode": "rw,noexec,nosuid,nodev,size=8m,uid=10001,gid=10001,mode=0700",
+                # OpenCode keeps session history and logs under these paths; a
+                # few message exchanges can exceed a small tmpfs and surface as
+                # "Internal error: OpenCode service failure" mid-session.
+                "/home/opencode/.local/share/opencode": "rw,noexec,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700",
+                "/home/opencode/.local/state": "rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0700",
+                "/home/opencode/.cache": "rw,noexec,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700",
             },
             working_dir="/workspace",
             user="10001:10001",

@@ -13,10 +13,14 @@ class OpenCodeProviderHandler:
     def validate_config(self, config: dict, auth: dict | None) -> list[dict]:
         violations = []
         providers = config.get("provider")
-        if not isinstance(providers, dict) or not providers:
-            violations.append(_violation("providers_missing", "Provider configuration must contain a non-empty 'provider' object."))
+        if providers is not None and not isinstance(providers, dict):
+            violations.append(_violation("providers_missing", "The 'provider' entry must be an object of provider definitions."))
+        if not isinstance(providers, dict):
+            # Native OpenCode configurations may omit custom providers entirely
+            # and rely on built-in providers; their credentials come from
+            # auth.json or provider options, so an absent or empty provider map
+            # is acceptable.
             providers = {}
-
         inline_auth = False
         for provider_id, provider in providers.items():
             if not isinstance(provider_id, str) or not isinstance(provider, dict):
@@ -50,6 +54,19 @@ class OpenCodeProviderHandler:
 
     async def list_models(self, user_id: str) -> list[str]:
         return await self.runtime.list_models(user_id)
+
+    async def list_candidate_models(self, user_id: str, config: dict, auth: dict | None) -> list[str]:
+        return await self.runtime.list_candidate_models(user_id, config, auth)
+
+    async def verify_candidate_model(self, user_id: str, config: dict, auth: dict | None, model: str) -> dict:
+        try:
+            return await asyncio.wait_for(
+                self.runtime.verify_candidate_model(user_id, config, auth, model),
+                timeout=self.verify_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            return {"ok": False, "error": {"code": "PROVIDER_VERIFICATION_TIMEOUT",
+                    "message_key": "errors.provider.verification_timeout", "params": {"provider": "opencode"}}}
 
     async def verify_model(self, user_id: str, model: str) -> dict:
         try:
