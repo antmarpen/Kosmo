@@ -192,14 +192,12 @@ services:
       API_PROXY_TARGET: http://backend:8000
       # pnpm 11 build-script policy lives in frontend/pnpm-workspace.yaml
       # (allowBuilds); no env override needed or honored by pnpm 11.
-      # HMR gate: host-edit-driven dev on Docker Desktop bind mounts may need
-      # file polling (inotify events do not cross the mount). Enable per
-      # developer with CHOKIDAR_USEPOLLING=true (default off — polling across
-      # the bind mount starved the Vite event loop in WP-01 diagnostics).
-      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-false}
-      # No CHOKIDAR_USEPOLLING here: polling across the Docker Desktop bind
-      # mount starves the Vite event loop and slows every response to
-      # seconds (measured); plain inotify events work fine without it.
+      # HMR: file events do not cross the Docker Desktop Windows bind mount
+      # (verified: inotify never fires for host edits), so polling is the
+      # default. With the .pnpm-store and node_modules trees excluded from
+      # the watcher (see vite.config.ts), measured HMR round-trips stay in
+      # the 60-220ms range. Set CHOKIDAR_USEPOLLING=false to opt out.
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
     command: >-
       sh -c "npm install --global pnpm@11.2.2 &&
              pnpm install --frozen-lockfile &&

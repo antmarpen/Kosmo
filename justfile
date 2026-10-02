@@ -32,6 +32,12 @@ down:
 logs *args:
     docker compose logs -f --tail 100 {{args}}
 
+# Rare fallback for cases where the Vite dev server misses a host-side edit
+# (e.g., after OS sleep/resume). Host edits are normally picked up live: the
+# compose stack defaults to bind-mount polling (CHOKIDAR_USEPOLLING=true).
+reload-frontend:
+    docker compose restart frontend
+
 # Apply database migrations inside the running backend container.
 migrate:
     docker compose exec backend uv run alembic upgrade head

@@ -25,9 +25,22 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     watch: {
-      // Docker Desktop bind mounts do not reliably deliver file events;
-      // compose opts into polling via CHOKIDAR_USEPOLLING=true.
+      // File events do not cross the Docker Desktop Windows bind mount, so
+      // the compose stack defaults to CHOKIDAR_USEPOLLING=true (see
+      // docker-compose.yml). Polling uses chokidar's default 100ms
+      // interval; the earlier coarse 10s/15s intervals delayed every host
+      // edit by up to that much. The event-loop starvation reported in
+      // WP-01 came from scanning the pnpm store, which `ignored` below now
+      // excludes (node_modules stays in a Docker volume and is also
+      // ignored).
       usePolling: process.env.CHOKIDAR_USEPOLLING === "true",
+      ignored: [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/dist/**",
+        "**/test-results/**",
+        "**/.pnpm-store/**",
+      ],
     },
     proxy: {
       "/api": {
