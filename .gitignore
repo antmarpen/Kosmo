@@ -237,3 +237,9 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
 frontend/playwright/.cache/
+
+# TypeScript incremental build info
+frontend/tsconfig.tsbuildinfo
+
+# Temporary HMR probe scratch (never part of the feature diff)
+frontend/probe/
