@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, 
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
+from app.domain.identity.models import User  # noqa: F401  (registers the users table for FK resolution in the worker)
 from app.domain.workflows.models import JsonType
 
 
