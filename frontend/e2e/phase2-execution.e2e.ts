@@ -19,7 +19,6 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 
 const adminUsername = process.env.KOSMO_E2E_ADMIN_USERNAME ?? "admin";
 const adminPassword = process.env.KOSMO_E2E_ADMIN_PASSWORD ?? "admin-change-me";
-const model = process.env.KOSMO_E2E_OPENCODE_MODEL ?? "nan/qwen3.6";
 
 function uniqueSuffix(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -134,24 +133,13 @@ async function fitView(page: Page): Promise<void> {
   await page.waitForTimeout(400);
 }
 
-/** Adds one identifier to a node's Inputs/Outputs list in the panel. */
-async function addIdentifier(page: Page, kind: "input" | "output", value: string): Promise<void> {
-  const label = kind === "input" ? /^add input$|^añadir entrada$/i : /^add output$|^añadir salida$/i;
-  await page.getByRole("button", { name: label }).click();
-  const listLabel = kind === "input" ? /^inputs 1$/i : /^outputs 1$/i;
-  await page.getByLabel(listLabel).fill(value);
-}
-
 /**
  * Authors Start→Script→AI→End through the real editor UI.  The AI node runs
- * the configured real model and must produce summary.md; the script produces
- * report.md (the proven minimal shape from the backend seed).
+ * the configured real model and must produce summary; the script produces
+ * report and data from its declared return.
  */
 async function authorExecutableGraph(page: Page): Promise<void> {
-  // A single-line script: Monaco auto-indents typed newlines, which corrupts
-  // multi-line Python, so the proven code is kept on one physical line.
-  const scriptCode =
-    "import os; from pathlib import Path; o=Path('output'); o.mkdir(exist_ok=True); (o/'report.md').write_text('# Security analysis\\n\\nTopic: '+os.environ['KOSMO_INPUT_TOPIC']+'\\n\\nA short report about security.\\n', encoding='utf-8')";
+  const scriptCode = "report = f'# Security analysis\\n\\nTopic: {topic}\\n\\nA short report about security.'\ndata = {'topic': topic, 'findings': []}\nreturn report, data";
 
   // Add Script (selected on add) and commit its code.
   await page.getByRole("button", { name: /^add script$|añadir script$/i }).click();
@@ -163,41 +151,34 @@ async function authorExecutableGraph(page: Page): Promise<void> {
   const aiCard = page.locator(".react-flow__node").filter({ hasText: /\bAI\b|IA/ }).first();
   await dragNodeBy(page, aiCard, 170, 70);
   await fitView(page);
-  await page.getByLabel(/^model$|modelo$/i).fill(model);
+  const modelSelect = page.getByLabel(/^model$|modelo$/i);
+  await expect(modelSelect.locator("option").nth(1)).toBeAttached({ timeout: 30_000 });
+  await modelSelect.selectOption({ index: 1 });
   await page.getByLabel(/instructions|instrucciones/i).fill("Summarize accurately; do not invent findings.");
   await page.getByLabel(/prompt template|plantilla de prompt/i).fill(
-    "Read report.md and write a concise summary to summary.md. Start with a top-level heading exactly \"Summary\" and include the word security.",
+    "Read report and write a concise summary to summary. Start with a top-level heading exactly \"Summary\" and include the word security.",
   );
 
-  // Three validation levels (schema requires exactly three).  The level name
-  // is only a reporting label; the params drive the validator.
-  await page.getByLabel(/^level name 1$/i).fill("exists_and_parseable");
-  await page.getByLabel(/^level message key 1$/i).fill("workflow.validation.exists_parseable");
-  await page.getByLabel(/level params schema.* 1$/i).fill('{"artifact":"summary.md","format":"markdown"}');
-  await page.getByLabel(/^level name 2$/i).fill("required_sections");
-  await page.getByLabel(/^level message key 2$/i).fill("workflow.validation.required_sections");
-  await page.getByLabel(/level params schema.* 2$/i).fill('{"sections":["Summary"],"heading_levels":[1,2]}');
-  await page.getByLabel(/^level name 3$/i).fill("required_terms");
-  await page.getByLabel(/^level message key 3$/i).fill("workflow.validation.required_terms");
-  await page.getByLabel(/level params schema.* 3$/i).fill('{"required_terms":["security"]}');
-
-  // AI declared contracts: input report.md, output summary.md.
-  await addIdentifier(page, "input", "report.md");
-  await addIdentifier(page, "output", "summary.md");
+  // AI output artifacts remain explicitly declared; inputs are derived when
+  // the script edge is connected below.
+  await page.getByRole("button", { name: /^add output$|^añadir salida$/i }).click();
+  await page.getByLabel(/^outputs 1$/i).fill("summary");
+  await page.getByRole("button", { name: /validation.*summary/i }).click();
+  const validationDialog = page.getByRole("dialog");
+  await validationDialog.getByLabel(/format/i).selectOption("markdown");
+  await validationDialog.getByLabel(/required.*sections/i).fill("Summary");
+  await validationDialog.getByRole("textbox", { name: /^required terms/i }).fill("security");
+  await validationDialog.getByRole("button", { name: /save|guardar/i }).click();
+  await expect(validationDialog).not.toBeVisible();
 
   // Start: one required string input named topic.
   await page.locator(".react-flow__node[data-id='start']").click();
   await page.getByRole("button", { name: /^add field$|añadir campo$/i }).click();
   await page.getByLabel(/^(name|nombre) 1$/i).fill("topic");
-  await page.getByLabel(/^label key 1$/i).fill("e2e.topic.label");
 
-  // Script declared contracts: input topic, output report.md.
+  // Script input and outputs are derived from Start edge and return names.
   await fitView(page);
   const scriptNode = page.locator(".react-flow__node").filter({ hasText: "Script" }).first();
-  await scriptNode.click();
-  await addIdentifier(page, "input", "topic");
-  await addIdentifier(page, "output", "report.md");
-
   // Connect Start→Script→AI→End.
   const scriptId = await scriptNode.getAttribute("data-id");
   const aiId = await aiCard.getAttribute("data-id");
@@ -206,6 +187,10 @@ async function authorExecutableGraph(page: Page): Promise<void> {
   await connectNodes(page, scriptId, aiId);
   await connectNodes(page, aiId, "end");
   await expect(page.getByTestId("connection-count")).toHaveText(/3/, { timeout: 10_000 });
+  await scriptNode.click();
+  await expect(page.getByText("topic", { exact: true })).toBeVisible();
+  await expect(page.getByText("report", { exact: true })).toBeVisible();
+  await expect(page.getByText("data", { exact: true })).toBeVisible();
 }
 
 test("executes a visually authored Start→Script→AI→End graph to success", async ({ page, request }) => {
@@ -254,10 +239,10 @@ test("executes a visually authored Start→Script→AI→End graph to success", 
 
   // Follow to a terminal state; AC-P2-08 requires success.
   const result = await waitTerminalTask(request, token, taskId!);
-  expect(result.state, `Authored graph must reach success (model ${model})`).toBe("success");
+  expect(result.state, "Authored graph must reach success").toBe("success");
 
   await expect(page.getByText(/succeeded|completada/i).first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(/summary\.md/).first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(/report\.md/).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/summary/).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/report/).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("body")).not.toContainText("Traceback (most recent call last)");
 });

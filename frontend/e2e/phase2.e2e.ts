@@ -247,12 +247,26 @@ async function authorReferenceGraph(page: Page, workflowName: string): Promise<v
 
   // Add Script (palette button, selected on add) and commit its code.
   await page.getByRole("button", { name: /^add script$|añadir script$/i }).click();
-  await fillScriptCode(page, "pass");
+  await fillScriptCode(page, "report = f'Security analysis for {topic}'\ndata = {'topic': topic}\nreturn report, data");
 
   // Add AI and configure the minimal required fields (model + prompt).
   await page.getByRole("button", { name: /^add ai$|añadir ia$/i }).click();
-  await page.getByLabel(/^model$|modelo$/i).fill("e2e-test-model");
+  const modelSelect = page.getByLabel(/^model$|modelo$/i);
+  await expect(modelSelect).toBeVisible();
+  await expect(modelSelect.locator("option").nth(1)).toBeAttached({ timeout: 30_000 });
+  await modelSelect.selectOption({ index: 1 });
   await page.getByLabel(/prompt template|plantilla de prompt/i).fill("Summarize the topic.");
+
+  // AI output validation belongs to each declared output, not a node-level
+  // inline validation list.
+  await page.getByRole("button", { name: /^add output$|^añadir salida$/i }).click();
+  await page.getByLabel(/^outputs 1$/i).fill("summary");
+  await page.getByRole("button", { name: /validation.*summary/i }).click();
+  const validationDialog = page.getByRole("dialog");
+  await validationDialog.getByLabel(/format/i).selectOption("markdown");
+  // Markdown is parse-only in the round-2 contract: no schema and no rules.
+  await validationDialog.getByRole("button", { name: /save|guardar/i }).click();
+  await expect(validationDialog).not.toBeVisible();
 
   // The blank editor seeds Start+End apart but stacks AI over Script: refit
   // the view, then drag the AI card clear of the Script card (node text
@@ -264,12 +278,10 @@ async function authorReferenceGraph(page: Page, workflowName: string): Promise<v
 
   // Start requires a non-empty input form before the server accepts a publish.
   await page.locator(".react-flow__node[data-id='start']").click();
-  // The form-field builder labels have landed in the catalogs ("Add field",
-  // "Name 1", "Label key 1"); keep the dotted-key spellings as a fallback in
-  // case the catalogs briefly regress.
+  // Start fields use their name as the rendered label; no label-key field.
   await page.getByRole("button", { name: /^(add field|editor\.addField)$/i }).click();
   await page.getByLabel(/^(name|editor\.fieldName) 1$/i).fill("topic");
-  await page.getByLabel(/^(label key|editor\.fieldLabelKey) 1$/i).fill("workflow.topic.label");
+  await expect(page.getByLabel(/label key/i)).toHaveCount(0);
 
   // Connect Start→Script→AI→End on the canvas.
   const scriptId = await page
@@ -297,9 +309,7 @@ test("launch a task from /tasks/new and reach a terminal state", async ({ page, 
   await expect(workflowSelect).toBeVisible({ timeout: 15_000 });
   await expect(page.locator("#workflow option:checked")).toHaveText(/reference-security-analysis/);
 
-  // The start input's label key (workflow.topic.label) is pending in the
-  // catalogs (reported defect) and renders as its dotted key; /topic/i still
-  // matches either rendering.
+  // Start form fields are labelled by their declared name.
   const topicInput = page.getByLabel(/topic|tema/i);
   await expect(topicInput).toBeVisible();
   await topicInput.fill(`e2e-launch-${Date.now()}`);
@@ -322,7 +332,7 @@ test("launch a task from /tasks/new and reach a terminal state", async ({ page, 
 
   if (task.state === "success") {
     // Artifacts the reference workflow declares.
-    await expect(page.getByText(/report\.md/).first()).toBeVisible();
+    await expect(page.getByText(/report(?:\.json)?/).first()).toBeVisible();
     await expect(page.getByText(/data\.json/).first()).toBeVisible();
   } else if (task.state === "failed") {
     // Structured, localized failure without any raw stack trace.
@@ -347,7 +357,12 @@ test("author a workflow (Start→Script→AI→End), save draft, publish, and ac
   await saveDraft(page);
 
   // Publish: a version notice appears and names the created version.
+  const publishResponsePromise = page.waitForResponse((response) =>
+    response.url().includes("/publish") && response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: /^publish$|publicar$/i }).click();
+  const publishResponse = await publishResponsePromise;
+  expect(publishResponse.ok(), `Publish rejected: ${await publishResponse.text()}`).toBeTruthy();
   await expect(
     page.locator("[data-testid='editor-notice'][data-key='workflowEditor.publishSuccess']"),
   ).toHaveAttribute("data-version", "1", { timeout: 30_000 });

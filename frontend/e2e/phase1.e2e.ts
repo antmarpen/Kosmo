@@ -204,10 +204,10 @@ test('submit workflow displays live task progress and produced artifacts', async
     await expect(page.locator('body')).not.toContainText(/Traceback \(most recent call last\)/);
     // Produced artifacts: the script node runs before the AI node, so its
     // outputs exist for every outcome the reference workflow can reach here.
-    await expectWithReload(page, page.getByText(/report\.md/).first());
-    await expect(page.getByText(/data\.json/).first()).toBeVisible();
+    await expectWithReload(page, page.getByText(/report(?:\.json)?/).first());
+    await expect(page.getByText(/data(?:\.json)?/).first()).toBeVisible();
     if (state === 'success') {
-      await expectWithReload(page, page.getByText(/summary\.md/).first());
+      await expectWithReload(page, page.getByText(/summary(?:\.json)?/).first());
       await expectWithReload(page, page.getByText(/succeeded/i).first());
     } else if (state === 'failed') {
       // Localized cause (the AI failure surfaces either as a missing runtime
@@ -225,7 +225,7 @@ test('submit workflow displays live task progress and produced artifacts', async
       // With a real key configured for this journey the AI is expected to
       // succeed end to end.
       expect(state, 'OPENCODE_API_KEY was exported but the task did not succeed').toBe('success');
-      await expect(page.getByText(/summary\.md/).first()).toBeVisible();
+      await expect(page.getByText(/summary(?:\.json)?/).first()).toBeVisible();
     }
   } finally {
     // Hygiene: a task parked on an agent question would hold a capacity
