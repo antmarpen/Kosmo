@@ -55,4 +55,11 @@ describe("output validation format editor", () => {
     fireEvent.click(screen.getByRole("button", { name: label("saveValidation") }));
     expect(onSave).toHaveBeenCalledWith({ format: "json", json_schema: { type: "object" } });
   });
+
+  it.each([false, true])("round-trips boolean JSON Schema %s", (json_schema) => {
+    const onSave = renderDialog({ format: "json", json_schema });
+    expect((screen.getByLabelText(label("jsonSchema")) as HTMLTextAreaElement).value).toBe(String(json_schema));
+    fireEvent.click(screen.getByRole("button", { name: label("saveValidation") }));
+    expect(onSave).toHaveBeenCalledWith({ format: "json", json_schema });
+  });
 });

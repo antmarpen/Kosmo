@@ -56,7 +56,7 @@ def evaluate_content(content: bytes, contract: dict, level: int) -> list[dict]:
             return failure("format_invalid")
     except (ValueError, yaml.YAMLError, RecursionError):
         return failure("unparseable")
-    if level == 1 or fmt == "yaml" or not contract.get("json_schema") or level == 3:
+    if level == 1 or fmt == "yaml" or "json_schema" not in contract or level == 3:
         return []
     schema = contract["json_schema"]
     if len(json.dumps(schema, ensure_ascii=False).encode("utf-8")) > MAX_SCHEMA_BYTES:

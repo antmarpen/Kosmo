@@ -18,6 +18,16 @@ def test_json_schema_supports_local_fragment_refs():
     assert evaluate_content(b'"ok"', contract, 2) == []
 
 
+@pytest.mark.parametrize("payload", [b"{}", b'"value"'])
+def test_false_json_schema_rejects_every_json_value(payload):
+    errors = evaluate_content(payload, {"format": "json", "json_schema": False}, 2)
+    assert errors and errors[0]["params"]["reason"] == "schema_invalid"
+
+
+def test_true_json_schema_accepts_any_valid_json_value():
+    assert evaluate_content(b'"value"', {"format": "json", "json_schema": True}, 2) == []
+
+
 @pytest.mark.parametrize("payload", [b'\xff', b'{"x": NaN}', b'{"x":1e999}', b'{bad'])
 def test_json_rejects_invalid_encoding_nonfinite_and_malformed(payload):
     assert evaluate_content(payload, {"format": "json"}, 1)[0]["params"]["reason"] == "unparseable"

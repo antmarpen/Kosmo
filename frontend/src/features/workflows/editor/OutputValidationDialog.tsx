@@ -7,7 +7,7 @@ import type { ValidationContract } from "./model";
 type Format = ValidationContract["format"];
 type MonacoProps = { value: string; onChange: (value: string | undefined) => void; height: string; language: string; loading?: ReactNode; options?: Record<string, unknown> };
 const formats: Format[] = ["text", "json", "yaml", "markdown"];
-const schemaText = (schema: boolean | Record<string, unknown> | null | undefined) => schema === undefined || schema === null || schema === false ? "" : schema === true ? "true" : JSON.stringify(schema, null, 2);
+const schemaText = (schema: boolean | Record<string, unknown> | null | undefined) => schema === undefined || schema === null ? "" : typeof schema === "boolean" ? String(schema) : JSON.stringify(schema, null, 2);
 const parseSchema = (text: string): Record<string, unknown> | boolean | undefined => {
   if (!text.trim()) return undefined;
   const parsed: unknown = JSON.parse(text);
@@ -15,7 +15,7 @@ const parseSchema = (text: string): Record<string, unknown> | boolean | undefine
   return parsed as Record<string, unknown> | boolean;
 };
 const hasSettings = (contract: ValidationContract) => contract.format === "json"
-  ? Boolean(contract.json_schema) || Boolean(contract.rules_code?.trim())
+  ? (contract.json_schema !== undefined && contract.json_schema !== null) || Boolean(contract.rules_code?.trim())
   : contract.format === "yaml" && Boolean(contract.rules_code?.trim());
 
 export function OutputValidationDialog({ open, output, value, onOpenChange, onSave, onRemove }: { open: boolean; output: string; inputs: string[]; value?: ValidationContract; onOpenChange: (open: boolean) => void; onSave: (contract: ValidationContract) => void; onRemove: () => void }) {
