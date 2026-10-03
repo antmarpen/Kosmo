@@ -56,6 +56,71 @@ context loss does not lose the wave sequencing.
 | WP-12 | Dev | Destructive dev-data cleanup migration + reference reseed (irreversible; isolated, last). | WP-01…WP-11 |
 | WP-13 | Test | Integrated behavioral + browser verification (AC-01…AC-10). | WP-12 |
 
+## Status log
+
+- **WP-01 — DONE (2026-10-03).** `backend/shared/graph/script_contract.py` +
+  tests; `analyze_script_body(code, input_names)`. Commit `c8335fe`.
+- **WP-02 — DONE (2026-10-03), completed as WP-02b.** Schema (remove
+  `label_message_key`; HTTP `outputs: ["response"]`; `inputs` snapshots on
+  HTTP/End/Workflow; keep `agent.runtime/instructions`), graph-derived
+  input/output validation, reference contracts from the referenced **active**
+  version (existence vs contract distinguished), reference seed migrated.
+  Focused suite 75 passed; full backend 305 passed / 39 skipped with only the
+  intentionally-red WP-04 file failing. Commit `...`.
+- **WP-04 — DONE (tests written, intentionally RED).**
+  `backend/tests/worker/test_script_runtime.py` staged; 11 red for the missing
+  script-execution contract, to be made green by WP-05/WP-06. Not committed
+  until green.
+- **WP-03 — DONE (2026-10-03).** `POST /workflows/script-analysis`
+  (admin/builder) over WP-01's analyzer; typed schemas + API tests (5 passed);
+  typed client regenerated. Commit `b00f70f`.
+- **WP-05 — DONE (2026-10-03).** `backend/worker/script_runner.py` (container
+  harness, descriptor + manifest), sandbox image/Compose build-context updated,
+  runner unit tests 7 passed / 1 skipped (Windows symlink), real container smoke
+  test OK. Commit `3db5946`.
+- **WP-06 — DONE (2026-10-03).** `run_script` stages declared inputs, invokes
+  the runner, validates the manifest and persists outputs with explicit media
+  types, preserving recovery/timeout/isolation. WP-04's tests green (21 passed);
+  full backend 328 passed / 40 skipped (Docker-gated storage test still skipped
+  on this host). Commit `6708f4f`.
+- **WP-07 — DONE (2026-10-03).** Direct-predecessor input resolution, provider
+  **type** resolution, keyed missing/ambiguous-input and unsupported-runtime
+  failures. Full backend 332 passed / 40 skipped. Commit `6a62b2f`.
+- **WP-08/WP-08b — DONE with gaps (2026-10-03).** Editor model derives inputs,
+  protects Start/End, blocks structural add/delete, and requests script analysis
+  (stale-safe, publish gate). Owned tests green (78). Open follow-ups for
+  WP-08c: duplicate producer-name reporting (AC-04), normalizing derived inputs
+  on load, behavioural tests for the analysis lifecycle and localized analysis
+  issues, and **preserving `phases`** (WP-08b dropped them from the frontend
+  contract — verify no data loss).
+- **WP-09 — DONE (2026-10-03).** Panel sections, visual Start builder,
+  name-based labels, required switch (new shared `components/ui/switch.tsx`),
+  script code only behind Edit script, fixed HTTP `response`, Decision marked
+  non-functional. Frontend green (317). Commit `8e59b6e` (with WP-08b).
+- **WP-08c — DONE with a small follow-up (2026-10-03).** Derived inputs
+  normalized on load, duplicate producer names reported, `phases` preserved.
+  Follow-up deferred: behavioural tests for the script-analysis lifecycle and
+  catalog keys for the new validation issues. Commit `91d84fa`.
+- **WP-10 — DONE (2026-10-03).** AI provider/model cascade selector storing only
+  provider type + model; multiple instances show an empty select. Commit
+  `7299dc9`.
+- **WP-11 — DONE (2026-10-03, finished by the coordinator).** Responsive
+  referenced-workflow detail and `/tasks/new` labels by field name; fixed the
+  duplicated referenced outputs and the obsolete label-key condition. Frontend
+  green (325). Commit `f11e071`.
+- **WP-12 — DONE (2026-10-03), applied.** Migration
+  `0021_editor_contract_cleanup` + disposable-PostgreSQL test (both real bugs —
+  the `tasks.definition` column and a 36-char revision id — were caught and
+  fixed by running it in-container; 10 migration tests pass against PostgreSQL).
+  Applied to the dev database after a fresh `pg_dump`
+  (taken outside the repository): 185
+  tasks, 110 versions and 89 empty (never-published) E2E workflows removed; the
+  reference workflow was reseeded and is active. Final state: 1 workflow, 0
+  tasks. Commit `38e3139`.
+- **WP-13 — PENDING.** Integrated E2E: update the journeys to the new script
+  contract (function body + `return`), the fixed Start/End nodes, the
+  name-based task labels and the AI provider selector, then run the suite.
+
 ## Wave sequencing
 
 1. WP-01.
