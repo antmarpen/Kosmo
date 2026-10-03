@@ -5,7 +5,7 @@ const nodes: WorkflowNode[] = [
   { type: "start", id: "start", input_form: [] },
   { type: "script", id: "script", code: "", inputs: [], outputs: [] },
   { type: "http", id: "http", method: "GET", url: "", inputs: [], outputs: ["response"] },
-  { type: "ai", id: "ai", agent: { runtime: "opencode", model: "", instructions: "" }, prompt_template: "", inputs: [], outputs: [], validation: { levels: [{ name: "one", message_key: "one", params_schema: {} }, { name: "two", message_key: "two", params_schema: {} }, { name: "three", message_key: "three", params_schema: {} }] }, max_validation_cycles: 3 },
+  { type: "ai", id: "ai", agent: { runtime: "opencode", model: "", instructions: "" }, prompt_template: "", inputs: [], outputs: ["artifact"], output_validation: { artifact: { levels: [{ name: "one", message_key: "one", params_schema: {} }, { name: "two", message_key: "two", params_schema: {} }, { name: "three", message_key: "three", params_schema: {} }] } }, max_validation_cycles: 3 },
   { type: "decision", id: "decision", selected_next_node_id: "" },
   { type: "workflow", id: "workflow", workflow_id: "", inputs: [] },
   { type: "end", id: "end", inputs: [] },
@@ -112,17 +112,19 @@ describe("safe JSON paste parsing", () => {
     const params = parseJsonObject('{"artifact":"summary.md","custom_flag":true}');
     expect(form.ok && params.ok).toBe(true);
     if (!form.ok || !params.ok) return;
-    const editor = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [createNode("start", "start"), createNode("ai", "ai"), createNode("end", "end")], edges: [{ from: "start", to: "ai" }, { from: "ai", to: "end" }] });
+    const aiNode = createNode("ai", "ai");
+    if (aiNode.type === "ai") { aiNode.outputs = ["artifact"]; aiNode.output_validation = { artifact: { levels: [{ name: "one", message_key: "one", params_schema: {} }, { name: "two", message_key: "two", params_schema: {} }, { name: "three", message_key: "three", params_schema: {} }] } }; }
+    const editor = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [createNode("start", "start"), aiNode, createNode("end", "end")], edges: [{ from: "start", to: "ai" }, { from: "ai", to: "end" }] });
     editor.selection.nodeIds = ["start"];
     const saved = serializeWorkflow({
       ...editor,
-      definition: { ...editor.definition, nodes: editor.definition.nodes.map((node) => (node.type === "start" ? { ...node, input_form: form.value } : node.type === "ai" ? { ...node, validation: { levels: node.validation.levels.map((level, index) => (index === 0 ? { ...level, params_schema: params.value } : level)) } } : node)) },
+      definition: { ...editor.definition, nodes: editor.definition.nodes.map((node) => (node.type === "start" ? { ...node, input_form: form.value } : node.type === "ai" ? { ...node, output_validation: { artifact: { levels: node.output_validation!.artifact.levels.map((level, index) => (index === 0 ? { ...level, params_schema: params.value } : level)) } } } : node)) },
     });
     const reloaded = deserializeWorkflow(saved);
     const start = reloaded.definition.nodes.find((node) => node.id === "start") as Extract<WorkflowNode, { type: "start" }>;
     const ai = reloaded.definition.nodes.find((node) => node.id === "ai") as Extract<WorkflowNode, { type: "ai" }>;
     expect(start.input_form).toEqual([validField]);
-    expect(ai.validation.levels[0].params_schema).toEqual({ artifact: "summary.md", custom_flag: true });
+    expect(ai.output_validation?.artifact.levels[0].params_schema).toEqual({ artifact: "summary.md", custom_flag: true });
     expect(validateWorkflow(reloaded).nodeErrors["start"]).toBeUndefined();
   });
 });

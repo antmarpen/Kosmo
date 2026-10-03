@@ -3,9 +3,13 @@ import { useTranslation } from "react-i18next";
 import { api } from "@/api/auth";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { parseJsonObject, type FormField, type WorkflowEditorState, type WorkflowNode } from "./model";
+import { type FormField, type WorkflowEditorState, type WorkflowNode } from "./model";
 import { ScriptEditor } from "./ScriptEditor";
 import { ProviderModelSelect } from "./ProviderModelSelect";
+import { OutputValidationDialog } from "./OutputValidationDialog";
+import { resolveOutputDescriptor } from "./outputContracts";
+import type { ValidationContract } from "./model";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type Props = { state: WorkflowEditorState; onUpdate: (id: string, update: Partial<WorkflowNode>) => void; errors?: Record<string, unknown[]>; sheetOpen?: boolean };
 const inputClasses = "w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring";
@@ -17,13 +21,6 @@ function Field({ label, value, onChange, multiline }: { label: string; value: st
 }
 function SelectField({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: React.ReactNode }) {
   return <label className="grid min-w-0 gap-1.5 text-sm font-medium">{label}<select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className={selectClasses}>{children}</select></label>;
-}
-function JsonObjectField({ label, value, onChange }: { label: string; value: Record<string, unknown>; onChange: (value: Record<string, unknown>) => void }) {
-  const { t } = useTranslation();
-  const [text, setText] = useState(() => JSON.stringify(value, null, 2));
-  const [invalid, setInvalid] = useState(false);
-  useEffect(() => { setText(JSON.stringify(value, null, 2)); setInvalid(false); }, [value]);
-  return <label className="grid gap-1.5 text-sm font-medium">{label}<textarea aria-label={label} className={`${inputClasses} font-mono text-xs`} rows={4} value={text} onChange={(event) => { setText(event.target.value); const result = parseJsonObject(event.target.value); setInvalid(!result.ok); if (result.ok) onChange(result.value); }} />{invalid && <span role="alert" className="text-sm text-destructive">{t("editor.invalidJson" as never)}</span>}</label>;
 }
 
 function FormFieldBuilder({ fields, onChange }: { fields: FormField[]; onChange: (fields: FormField[]) => void }) {
@@ -55,6 +52,7 @@ export function PropertiesPanel({ state, onUpdate, errors = {}, sheetOpen = true
   const node = state.definition.nodes.find((item) => item.id === id);
   const [workflows, setWorkflows] = useState<{ id: string; name: string; inputs: string[]; outputs: string[] }[] | null>(null);
   const [workflowsError, setWorkflowsError] = useState(false);
+  const [editingOutput, setEditingOutput] = useState<string | null>(null);
   useEffect(() => {
     if (node?.type !== "workflow") return;
     let active = true;
@@ -69,6 +67,7 @@ export function PropertiesPanel({ state, onUpdate, errors = {}, sheetOpen = true
   }, [node?.type]);
   if (!node) return null;
   const update = (patch: Record<string, unknown>) => onUpdate(node.id, { ...node, ...patch } as WorkflowNode);
+  const contracts = "output_validation" in node ? node.output_validation ?? {} : {};
   const form = node.type === "start" ? node.input_form : [];
   const referencedWorkflow = node.type === "workflow" ? workflows?.find((workflow) => workflow.id === node.workflow_id) : undefined;
   const outputs = node.type === "http" ? ["response"] : node.type === "script" || node.type === "ai" ? node.outputs : node.type === "workflow" ? workflows?.find((workflow) => workflow.id === node.workflow_id)?.outputs ?? [] : [];
@@ -81,13 +80,13 @@ export function PropertiesPanel({ state, onUpdate, errors = {}, sheetOpen = true
         <ProviderModelSelect runtime={node.agent.runtime} model={node.agent.model} onChange={(runtime, model) => update({ agent: { ...node.agent, runtime, model } })} />
         <Field label={t("editor.instructions")} value={node.agent.instructions} onChange={(instructions) => update({ agent: { ...node.agent, instructions } })} multiline />
         <Field label={t("editor.prompt")} value={node.prompt_template} onChange={(prompt_template) => update({ prompt_template })} multiline />
-        <fieldset className="grid gap-1.5"><legend className="text-sm font-medium">{t("editor.validationContract" as never)}</legend>{node.validation.levels.map((level, index) => <div key={index} className="grid min-w-0 gap-1.5 rounded-md border border-border p-2"><Field label={t("editor.levelName" as never)} value={level.name} onChange={(name) => update({ validation: { ...node.validation, levels: node.validation.levels.map((item, i) => i === index ? { ...item, name } : item) } })} /><Field label={t("editor.levelMessageKey" as never)} value={level.message_key} onChange={(message_key) => update({ validation: { ...node.validation, levels: node.validation.levels.map((item, i) => i === index ? { ...item, message_key } : item) } })} /><JsonObjectField label={`${t("editor.levelParams" as never)} ${index + 1}`} value={level.params_schema} onChange={(params_schema) => update({ validation: { ...node.validation, levels: node.validation.levels.map((item, i) => i === index ? { ...item, params_schema } : item) } })} /></div>)}</fieldset>
       </>}
       {node.type === "http" && <><SelectField label={t("editor.method")} value={node.method} onChange={(method) => update({ method })}>{["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => <option key={method}>{method}</option>)}</SelectField><Field label={t("editor.url")} value={node.url} onChange={(url) => update({ url })} /></>}
       {node.type === "decision" && <p className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">{t("editor.decisionNotFunctional" as never)}</p>}
       {node.type === "workflow" && <><SelectField label={t("editor.workflow" as never)} value={node.workflow_id} onChange={(workflow_id) => update({ workflow_id })}><option value="" />{workflows?.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</SelectField>{workflowsError ? <p role="alert" className="break-words text-sm text-destructive">{t("editor.workflowsLoadError" as never)}</p> : !workflows ? <p role="status" className="text-sm text-muted-foreground">{t("editor.loadingWorkflows" as never)}</p> : node.workflow_id && !referencedWorkflow ? <p className="text-sm text-muted-foreground">{t("editor.workflowUnavailable" as never)}</p> : referencedWorkflow && <div className="grid min-w-0 gap-3 rounded-md border border-border p-3"><IdentifierList label={t("editor.referencedInputs" as never)} values={referencedWorkflow.inputs} addLabel="" removeLabel=""/></div>}</>}
       {node.type !== "start" && <IdentifierList label={t("editor.inputs" as never)} values={node.type === "decision" ? [] : node.inputs} addLabel={t("editor.addInput" as never)} removeLabel={t("editor.removeIdentifier" as never)} />}
-      {node.type !== "start" && node.type !== "end" && <IdentifierList label={t("editor.outputs" as never)} values={outputs} editable={node.type === "ai"} onChange={(outputs) => update({ outputs })} addLabel={t("editor.addOutput" as never)} removeLabel={t("editor.removeIdentifier" as never)} />}
+      {node.type !== "start" && node.type !== "end" && <fieldset className="grid min-w-0 gap-1.5"><legend className="text-sm font-medium">{t("editor.outputs" as never)}</legend>{outputs.map((output) => { const descriptor = resolveOutputDescriptor(state, node.id, output); return <div key={output} className="flex min-w-0 flex-wrap items-center gap-1">{node.type === "ai" ? <input aria-label={`${t("editor.outputs" as never)} ${outputs.indexOf(output) + 1}`} value={output} onChange={(e) => { const next = outputs.map((item) => item === output ? e.target.value : item); const nextContracts = { ...contracts } as Record<string, ValidationContract>; if (nextContracts[output]) { nextContracts[e.target.value] = nextContracts[output]; delete nextContracts[output]; } update({ outputs: next, output_validation: nextContracts }); }} className={`${inputClasses} w-28`} /> : <span className="max-w-full break-all rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs">{output}</span>}<Button type="button" size="sm" variant="outline" aria-label={`${t("editor.validationButton" as never)} ${output}`} onClick={() => setEditingOutput(output)}>✓</Button><Popover><PopoverTrigger asChild><Button type="button" variant="ghost" size="sm" aria-label={`${t("editor.outputInfo" as never)} ${output}`}>ⓘ</Button></PopoverTrigger><PopoverContent role="note"><p className="font-medium">{output}</p><dl className="mt-2 grid gap-1 text-sm"><dt>{t("editor.sourceNode" as never)}</dt><dd>{descriptor?.sourceNodeId ?? node.id}</dd><dt>{t("editor.outputKind" as never)}</dt><dd>{descriptor?.kind ?? "artifact"} · {descriptor?.valueType ?? "unknown/runtime"}</dd><dt>{t("editor.validationSummary" as never)}</dt><dd>{descriptor?.validation ? t("editor.validationConfigured" as never) : t("editor.validationNotConfigured" as never)}</dd></dl>{descriptor?.orphaned && <p role="alert">{t("editor.orphanedContract" as never)}</p>}{descriptor?.referenceUnavailable && <p role="alert">{t("editor.workflowUnavailable" as never)}</p>}{descriptor?.referenceCycle && <p role="alert">{t("workflowEditor.validation.unreachable" as never)}</p>}</PopoverContent></Popover>{descriptor?.orphaned && <span role="status" className="text-xs text-destructive">{t("editor.orphanedContract" as never)}</span>}</div>; })}{node.type === "ai" && <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => update({ outputs: [...outputs, ""] })}>{t("editor.addOutput" as never)}</Button>}</fieldset>}
+      {editingOutput !== null && <OutputValidationDialog open output={editingOutput} inputs={"inputs" in node ? node.inputs : []} value={contracts[editingOutput]} onOpenChange={(open) => { if (!open) setEditingOutput(null); }} onSave={(contract) => update({ output_validation: { ...contracts, [editingOutput]: contract } })} onRemove={() => { const next = { ...contracts }; delete next[editingOutput]; update({ output_validation: next }); setEditingOutput(null); }} />}
       {node.type === "start" && <IdentifierList label={t("editor.inputs" as never)} values={node.input_form.map((field) => field.name)} addLabel="" removeLabel="" />}
     </div>
     {(errors[node.id] ?? []).map((error, index) => <p role="alert" className="mt-3 text-sm text-destructive" key={index}>{typeof error === "string" ? error : t(((error as { message_key?: string }).message_key ?? "") as never)}</p>)}

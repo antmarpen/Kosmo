@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createNode, deserializeWorkflow, type WorkflowNode } from "./model";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -50,6 +50,18 @@ describe("properties panel node contracts", () => {
     renderType("http");
     expect(screen.getByText("response")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: expected("addOutput") })).not.toBeInTheDocument();
+  });
+  it("opens a per-output validation modal for AI outputs", () => {
+    const ai = createNode("ai", "n") as Extract<WorkflowNode, { type: "ai" }>;
+    ai.outputs = ["answer"];
+    const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [ai], edges: [] });
+    state.selection.nodeIds = ["n"];
+    render(<PropertiesPanel state={state} onUpdate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /validation.*answer/i }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(expected("syntaxParse"))).toBeInTheDocument();
+    expect(screen.getByText(expected("formatStructure"))).toBeInTheDocument();
+    expect(screen.getByText(expected("rules"))).toBeInTheDocument();
   });
   it("shows inputs but no outputs for End", () => {
     renderType("end", true);

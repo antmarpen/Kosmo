@@ -7,13 +7,21 @@ export function serializeWorkflow(state: WorkflowEditorState): WorkflowDefinitio
     if (ids.has(node.id)) throw new Error(`Duplicate node ID: ${node.id}`);
     ids.add(node.id);
   }
-  return structuredClone(state.definition);
+  const definition = structuredClone(state.definition);
+  for (const node of definition.nodes) if (node.type === "ai") delete (node as unknown as { validation?: unknown }).validation;
+  return definition;
 }
 
 export function deserializeWorkflow(definition: WorkflowDefinition, layout?: WorkflowEditorState["layout"]): WorkflowEditorState {
-  const sourceNodes = structuredClone(definition.nodes).map((node) => node.type === "start"
-    ? { ...node, input_form: node.input_form.map(({ name, type, required }) => ({ name, type, required })) }
-    : node);
+  const sourceNodes = structuredClone(definition.nodes).map((node) => {
+    if (node.type === "start") return { ...node, input_form: node.input_form.map(({ name, type, required }) => ({ name, type, required })) };
+    if (node.type === "ai") {
+      const legacy = (node as unknown as { validation?: import("./model").ValidationContract }).validation;
+      if (legacy && !node.output_validation) return { ...node, output_validation: Object.fromEntries(node.outputs.map((name) => [name, structuredClone(legacy)])) };
+      delete (node as unknown as { validation?: unknown }).validation;
+    }
+    return node;
+  });
   const retained = new Map<string, string>();
   const structural = new Map<string, string>();
   const unique = sourceNodes.filter((node) => {

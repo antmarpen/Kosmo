@@ -91,27 +91,26 @@ function validateNode(node: WorkflowNode, add: (id: string, issue: ValidationIss
       if (!str(node.code).trim()) add(node.id, { message_key: "workflowEditor.validation.codeRequired" });
       validateIdentifiers(node, strings(node.inputs), "input", add);
       validateIdentifiers(node, strings(node.outputs), "output", add);
+      validateOutputContracts(node, node.outputs, add);
       break;
     case "http":
       if (!str(node.method).trim()) add(node.id, { message_key: "workflowEditor.validation.methodRequired" });
       if (!str(node.url).trim()) add(node.id, { message_key: "workflowEditor.validation.urlRequired" });
       if (JSON.stringify(node.outputs) !== '["response"]') add(node.id, { message_key: "workflowEditor.validation.httpOutputFixed" });
+      validateOutputContracts(node, node.outputs, add);
       break;
     case "ai": {
       if (!str(record(node.agent).model).trim()) add(node.id, { message_key: "workflowEditor.validation.modelRequired" });
       if (!str(node.prompt_template).trim()) add(node.id, { message_key: "workflowEditor.validation.promptRequired" });
       validateIdentifiers(node, strings(node.inputs), "input", add);
       validateIdentifiers(node, strings(node.outputs), "output", add);
-      const levels: unknown[] = Array.isArray(node.validation?.levels) ? node.validation.levels : [];
-      if (levels.length !== 3) add(node.id, { message_key: "workflowEditor.validation.aiValidationLevels", params: { count: levels.length } });
-      levels.forEach((raw, index) => {
-        const level = record(raw);
-        if (!str(level.name).trim()) add(node.id, { message_key: "workflowEditor.validation.levelNameRequired", params: { index: index + 1 } });
-        if (!str(level.message_key).trim()) add(node.id, { message_key: "workflowEditor.validation.levelMessageKeyRequired", params: { index: index + 1 } });
-      });
+      validateOutputContracts(node, node.outputs, add);
       break;
     }
-    case "workflow": if (!str(node.workflow_id).trim()) add(node.id, { message_key: "workflowEditor.validation.workflowRefRequired" }); break;
+    case "workflow":
+      if (!str(node.workflow_id).trim()) add(node.id, { message_key: "workflowEditor.validation.workflowRefRequired" });
+      validateOutputContracts(node, [], add);
+      break;
     case "decision": if (!str(node.selected_next_node_id).trim()) add(node.id, { message_key: "workflowEditor.validation.routeRequired" }); break;
   }
 }
@@ -138,4 +137,9 @@ export function locateServerIssues(details: KosmoErrorDetail[] | undefined, node
     else globalErrors.push(issue);
   }
   return { nodeErrors, globalErrors };
+}
+
+function validateOutputContracts(node: WorkflowNode, outputs: string[], add: (id: string, issue: ValidationIssue) => void) {
+  if (!("output_validation" in node) || !node.output_validation) return;
+  for (const name of Object.keys(node.output_validation)) if (!outputs.includes(name)) add(node.id, { message_key: "workflowEditor.validation.orphanedOutputValidation", params: { output: name } });
 }

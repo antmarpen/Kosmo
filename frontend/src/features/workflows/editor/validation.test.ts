@@ -89,14 +89,14 @@ describe("client-side validation never throws on structurally broken state", () 
     expect(result.nodeErrors["start-0"].every((issue) => issue.message_key.startsWith("workflowEditor.validation."))).toBe(true);
   });
 
-  it("survives a non-array input_form and broken ai validation levels", () => {
+  it("survives a non-array input_form and obsolete AI node-wide validation", () => {
     const broken = stateWith(["start", "ai"]);
     broken.definition.nodes[0] = withRaw(broken.definition.nodes[0], { input_form: {} });
     broken.definition.nodes[1] = withRaw(broken.definition.nodes[1], { validation: {} });
     let result!: ReturnType<typeof validateWorkflow>;
     expect(() => { result = validateWorkflow(broken); }).not.toThrow();
     expect(result.nodeErrors["ai-1"]).toEqual(expect.arrayContaining([
-      expect.objectContaining({ message_key: "workflowEditor.validation.aiValidationLevels" }),
+      expect.objectContaining({ message_key: "workflowEditor.validation.modelRequired" }),
     ]));
   });
 });
