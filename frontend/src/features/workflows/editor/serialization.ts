@@ -14,7 +14,7 @@ export function serializeWorkflow(state: WorkflowEditorState): WorkflowDefinitio
 
 export function deserializeWorkflow(definition: WorkflowDefinition, layout?: WorkflowEditorState["layout"]): WorkflowEditorState {
   const sourceNodes = structuredClone(definition.nodes).map((node) => {
-    if (node.type === "start") return { ...node, input_form: node.input_form.map(({ name, type, required }) => ({ name, type, required })) };
+    if (node.type === "start") return node;
     if (node.type === "ai") {
       const legacy = (node as unknown as { validation?: import("./model").ValidationContract }).validation;
       if (legacy && !node.output_validation) return { ...node, output_validation: Object.fromEntries(node.outputs.map((name) => [name, structuredClone(legacy)])) };

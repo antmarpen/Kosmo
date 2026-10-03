@@ -84,6 +84,7 @@ function validateNode(node: WorkflowNode, add: (id: string, issue: ValidationIss
         const name = str(field.name);
         if (!name.trim()) add(node.id, { message_key: "workflowEditor.validation.startFieldNameRequired", params: { index: index + 1 } });
         else if (!SAFE_IDENTIFIER.test(name)) add(node.id, { message_key: "workflowEditor.validation.startFieldNameInvalid", params: { index: index + 1 } });
+        if (field.validation && typeof field.validation === "object" && "levels" in field.validation) add(node.id, { message_key: "workflowEditor.validation.legacyValidationRepairRequired", params: { field: name, index: index + 1 } });
       });
       break;
     }

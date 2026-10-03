@@ -11,6 +11,8 @@ export type OutputDescriptor = {
   orphaned?: boolean;
   referenceUnavailable?: boolean;
   referenceCycle?: boolean;
+  repairRequired?: boolean;
+  unresolvedLegacyValidation?: unknown;
 };
 
 export type ActiveWorkflowDefinitions = Record<string, WorkflowEditorState["definition"] | undefined>;
@@ -29,7 +31,10 @@ export function resolveOutputDescriptor(
   const orphaned = "output_validation" in node && Boolean(node.output_validation && !("outputs" in node ? node.outputs : []).includes(name));
   if (node.type === "start") {
     const field = node.input_form.find((item) => item.name === name);
-    return field ? descriptor(node, name, "form-value", field.type, configured) : undefined;
+      if (!field) return undefined;
+      const validation = field.validation;
+      const legacy = validation && "levels" in validation ? validation : undefined;
+      return { ...descriptor(node, name, "form-value", field.type, legacy ? undefined : validation as ValidationContract | undefined), ...(legacy ? { repairRequired: true, unresolvedLegacyValidation: legacy } : {}) };
   }
   if (node.type === "http") return name === "response" ? descriptor(node, name, "http-response", "unknown/runtime", configured) : undefined;
   if (node.type === "script" || node.type === "ai") return (orphaned || node.outputs.includes(name))

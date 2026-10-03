@@ -9,13 +9,14 @@ import { validateWorkflow } from "./validation";
  * transport type (creation takes only a name and drafts carry opaque JSON),
  * so the editor owns its authoring types locally.
  */
-export type FormField = { name: string; type: "string" | "number" | "boolean"; required: boolean };
+export type FormField = { name: string; type: "string" | "number" | "boolean"; required: boolean; validation?: ValidationContract | LegacyValidationContract };
 export type StartNode = { type: "start"; id: string; input_form: FormField[] };
 export type ScriptNode = { type: "script"; id: string; code: string; inputs: string[]; outputs: string[]; output_validation?: Record<string, ValidationContract> };
 export type HttpNode = { type: "http"; id: string; method: string; url: string; inputs: string[]; outputs: ["response"]; output_validation?: Record<string, ValidationContract> };
 export type AgentConfig = { runtime: "opencode"; model: string; instructions: string };
+export type ValidationContract = { format: "text" | "markdown" } | { format: "json"; json_schema?: boolean | Record<string, unknown> | null; rules_code?: string | null } | { format: "yaml"; rules_code?: string | null };
 export type ValidationLevel = { name: string; message_key: string; params_schema: Record<string, unknown> };
-export type ValidationContract = { levels: ValidationLevel[] };
+export type LegacyValidationContract = { levels: ValidationLevel[] };
 export type AiNode = { type: "ai"; id: string; agent: AgentConfig; prompt_template: string; inputs: string[]; outputs: string[]; output_validation?: Record<string, ValidationContract>; max_validation_cycles: number };
 export type EndNode = { type: "end"; id: string; inputs: string[] };
 export type DecisionNode = { type: "decision"; id: string; selected_next_node_id: string };

@@ -39,6 +39,18 @@ describe("properties panel node contracts", () => {
     expect(screen.getAllByText(expected("inputs"))).toHaveLength(1);
     expect(screen.queryByText(expected("outputs"))).not.toBeInTheDocument();
   });
+  it("edits validation on only the selected Start field", () => {
+    const start = createNode("start", "n") as Extract<WorkflowNode, { type: "start" }>;
+    start.input_form = [{ name: "topic", type: "string", required: true }, { name: "notes", type: "string", required: false }];
+    const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [start], edges: [] });
+    state.selection.nodeIds = ["n"];
+    const onUpdate = vi.fn();
+    render(<PropertiesPanel state={state} onUpdate={onUpdate} />);
+    fireEvent.click(screen.getAllByRole("button", { name: expected("fieldValidation") })[1]);
+    fireEvent.change(screen.getByLabelText(expected("validationFormat")), { target: { value: "yaml" } });
+    fireEvent.click(screen.getByRole("button", { name: expected("saveValidation") }));
+    expect(onUpdate).toHaveBeenCalledWith("n", expect.objectContaining({ input_form: [start.input_form[0], { ...start.input_form[1], validation: { format: "yaml" } }] }));
+  });
   it("shows graph inputs read-only, and script code only behind Edit script", () => {
     renderType("script", true);
     expect(screen.getByText(expected("inputs"))).toBeInTheDocument();
@@ -59,9 +71,10 @@ describe("properties panel node contracts", () => {
     render(<PropertiesPanel state={state} onUpdate={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /validation.*answer/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText(expected("syntaxParse"))).toBeInTheDocument();
-    expect(screen.getByText(expected("formatStructure"))).toBeInTheDocument();
-    expect(screen.getByText(expected("rules"))).toBeInTheDocument();
+    expect(screen.getByLabelText(expected("validationFormat"))).toHaveValue("text");
+    expect(screen.getByText(expected("parseOnlyExplanation"))).toBeInTheDocument();
+    expect(screen.queryByLabelText(expected("jsonSchema"))).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(expected("pythonRules"))).not.toBeInTheDocument();
   });
   it("exposes provenance for input chips", () => {
     const source = createNode("script", "source") as Extract<WorkflowNode, { type: "script" }>;
@@ -80,7 +93,7 @@ describe("properties panel node contracts", () => {
   it("lists contracts orphaned by output removal and preserves them until explicit removal", () => {
     const ai = createNode("ai", "n") as Extract<WorkflowNode, { type: "ai" }>;
     ai.outputs = [];
-    ai.output_validation = { removed: { levels: [] } };
+    ai.output_validation = { removed: { format: "text" } };
     const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [ai], edges: [] });
     state.selection.nodeIds = ["n"];
     const onUpdate = vi.fn();
