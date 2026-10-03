@@ -2,6 +2,8 @@ import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { LoadingControl } from "@/components/ui/loading-control";
 import type { ValidationContract } from "./model";
 
 type Format = ValidationContract["format"];
@@ -26,6 +28,7 @@ export function OutputValidationDialog({ open, output, value, onOpenChange, onSa
   const [schemaError, setSchemaError] = useState(false);
   const [monaco, setMonaco] = useState<ComponentType<MonacoProps> | null>(null);
   const [editorFailed, setEditorFailed] = useState(false);
+  const [pendingFormat, setPendingFormat] = useState<Format | null>(null);
   const needsCodeEditor = open && (format === "json" || format === "yaml");
   useEffect(() => {
     if (!needsCodeEditor || monaco || editorFailed) return;
@@ -44,11 +47,15 @@ export function OutputValidationDialog({ open, output, value, onOpenChange, onSa
   const changeFormat = (next: Format) => {
     if (next === format) return;
     const losingSettings = (format === "json" || format === "yaml") && hasSettings(format === "json" ? { format, json_schema: schemaTextToValue(schema), rules_code: rules } : { format, rules_code: rules });
-    if (losingSettings && !window.confirm(t("editor.confirmFormatChange"))) return;
+    if (losingSettings) { setPendingFormat(next); return; }
+    applyFormat(next);
+  };
+  const applyFormat = (next: Format) => {
     setFormat(next);
     setSchema("");
     setRules("");
     setSchemaError(false);
+    setPendingFormat(null);
   };
   const save = () => {
     try {
@@ -66,8 +73,16 @@ export function OutputValidationDialog({ open, output, value, onOpenChange, onSa
     {(format === "text" || format === "markdown") && <p className="text-sm text-muted-foreground">{t("editor.parseOnlyExplanation")}</p>}
     {format === "yaml" && <p className="text-sm text-muted-foreground">{t("editor.standardYamlExplanation")}</p>}
     {format === "json" && <fieldset className="grid gap-2"><legend className="font-medium">{t("editor.jsonSchema")}</legend><p className="text-sm text-muted-foreground">{t("editor.jsonSchemaDraft")}</p><textarea aria-label={t("editor.jsonSchema")} value={schema} onChange={(event) => { setSchema(event.target.value); setSchemaError(false); }} rows={8} spellCheck={false} className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm focus-visible:outline-2 focus-visible:outline-ring" />{schemaError && <p role="alert" className="text-sm text-destructive">{t("editor.invalidJsonSchema")}</p>}</fieldset>}
-    {(format === "json" || format === "yaml") && <fieldset className="grid gap-2"><legend className="font-medium">{t("editor.rules")}</legend><label htmlFor="validation-python-rules" className="text-sm font-medium">{t("editor.pythonRules")}</label>{monaco && !editorFailed ? <div className="h-48 overflow-hidden rounded-md border border-input"><MonacoEditorComposed editor={monaco} value={rules} onChange={setRules} label={t("editor.pythonRules")} /></div> : <>{!editorFailed ? <p role="status" className="text-xs text-muted-foreground">{t("editor.codeLoading")}</p> : <p role="alert" className="text-xs text-destructive">{t("editor.codeEditorError")}</p>}<textarea id="validation-python-rules" aria-label={t("editor.pythonRules")} value={rules} onChange={(event) => setRules(event.target.value)} rows={8} spellCheck={false} className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm focus-visible:outline-2 focus-visible:outline-ring" /></>}</fieldset>}
-    <DialogFooter className="flex-wrap sm:flex-row sm:justify-between"><Button type="button" variant="outline" onClick={onRemove}>{t("editor.removeValidation")}</Button><Button type="button" onClick={save}>{t("editor.saveValidation")}</Button></DialogFooter></DialogContent></Dialog>;
+    {(format === "json" || format === "yaml") && <fieldset className="grid gap-2">
+      <legend className="font-medium">{t("editor.rules")}</legend>
+      <label htmlFor="validation-python-rules" className="text-sm font-medium">{t("editor.pythonRules")}</label>
+      {monaco && !editorFailed ? <div className="h-48 overflow-hidden rounded-md border border-input"><MonacoEditorComposed editor={monaco} value={rules} onChange={setRules} label={t("editor.pythonRules")} /></div> : <>
+        {editorFailed ? <><p role="alert" className="text-xs text-destructive">{t("editor.codeEditorError")}</p><textarea id="validation-python-rules" aria-label={t("editor.pythonRules")} value={rules} onChange={(event) => setRules(event.target.value)} rows={8} spellCheck={false} className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm focus-visible:outline-2 focus-visible:outline-ring" /></> : <LoadingControl loading label={t("editor.codeLoading")}><textarea id="validation-python-rules" aria-label={t("editor.pythonRules")} value={rules} onChange={(event) => setRules(event.target.value)} rows={8} spellCheck={false} className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm focus-visible:outline-2 focus-visible:outline-ring" /></LoadingControl>}
+      </>}
+    </fieldset>}
+    <DialogFooter className="flex-wrap sm:flex-row sm:justify-between"><Button type="button" variant="outline" onClick={onRemove}>{t("editor.removeValidation")}</Button><Button type="button" onClick={save}>{t("editor.saveValidation")}</Button></DialogFooter></DialogContent>
+    <ConfirmDialog open={pendingFormat !== null} onOpenChange={(isOpen) => { if (!isOpen) setPendingFormat(null); }} title={t("editor.validationFormat")} description={t("editor.confirmFormatChange")} confirmLabel={t("common.confirm")} destructive={false} onConfirm={() => { if (pendingFormat) applyFormat(pendingFormat); }} />
+  </Dialog>;
 }
 
 function schemaTextToValue(text: string): Record<string, unknown> | boolean | undefined {

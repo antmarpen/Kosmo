@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import en from "@/i18n/locales/en.json";
 import { OutputValidationDialog } from "./OutputValidationDialog";
@@ -39,21 +39,41 @@ describe("output validation format editor", () => {
     expect(screen.queryByLabelText(label("jsonSchema"))).not.toBeInTheDocument();
   });
 
-  it("confirms destructive format changes and saves only the selected format contract", () => {
+  it("confirms destructive format changes in the shared dialog and saves only the selected format contract", async () => {
     const onSave = renderDialog({ format: "json", json_schema: { type: "object" }, rules_code: "return True" });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     fireEvent.change(screen.getByLabelText(label("validationFormat")), { target: { value: "text" } });
-    expect(window.confirm).toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByText(label("confirmFormatChange"))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: label("saveValidation") }));
     expect(onSave).toHaveBeenCalledWith({ format: "text" });
   });
 
-  it("does not persist an uncommitted format change", () => {
+  it("keeps the original format when the styled format confirmation is dismissed", async () => {
     const onSave = renderDialog({ format: "json", json_schema: { type: "object" } });
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     fireEvent.change(screen.getByLabelText(label("validationFormat")), { target: { value: "yaml" } });
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
     fireEvent.click(screen.getByRole("button", { name: label("saveValidation") }));
     expect(onSave).toHaveBeenCalledWith({ format: "json", json_schema: { type: "object" } });
+  });
+
+  it("switches formats without confirmation when the current schema and rules are empty", () => {
+    renderDialog({ format: "json" });
+    const format = screen.getByLabelText(label("validationFormat"));
+    fireEvent.change(format, { target: { value: "text" } });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(format).toHaveValue("text");
+  });
+
+  it("shows shared lively feedback while the code editor is loading", () => {
+    renderDialog();
+    fireEvent.change(screen.getByLabelText(label("validationFormat")), { target: { value: "yaml" } });
+    expect(screen.getByRole("status", { name: label("codeLoading") })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: label("codeLoading") }).querySelector("[data-slot='icon']")).toBeTruthy();
   });
 
   it.each([false, true])("round-trips boolean JSON Schema %s", (json_schema) => {
