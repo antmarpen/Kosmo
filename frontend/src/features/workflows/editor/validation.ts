@@ -69,7 +69,6 @@ function validateNode(node: WorkflowNode, add: (id: string, issue: ValidationIss
         const name = str(field.name);
         if (!name.trim()) add(node.id, { message_key: "workflowEditor.validation.startFieldNameRequired", params: { index: index + 1 } });
         else if (!SAFE_IDENTIFIER.test(name)) add(node.id, { message_key: "workflowEditor.validation.startFieldNameInvalid", params: { index: index + 1 } });
-        if (!str(field.label_message_key).trim()) add(node.id, { message_key: "workflowEditor.validation.startFieldLabelKeyRequired", params: { index: index + 1 } });
       });
       break;
     }
@@ -81,7 +80,7 @@ function validateNode(node: WorkflowNode, add: (id: string, issue: ValidationIss
     case "http":
       if (!str(node.method).trim()) add(node.id, { message_key: "workflowEditor.validation.methodRequired" });
       if (!str(node.url).trim()) add(node.id, { message_key: "workflowEditor.validation.urlRequired" });
-      validateIdentifiers(node, strings(node.outputs), "output", add);
+      if (JSON.stringify(node.outputs) !== '["response"]') add(node.id, { message_key: "workflowEditor.validation.httpOutputFixed" });
       break;
     case "ai": {
       if (!str(record(node.agent).model).trim()) add(node.id, { message_key: "workflowEditor.validation.modelRequired" });

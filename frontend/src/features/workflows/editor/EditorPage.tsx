@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { KosmoErrorAlert, type KosmoError } from "@/components/KosmoErrorAlert";
 import { Canvas, NODE_DRAG_MIME, nodeVisuals } from "./Canvas";
 import { ActivateDialog, type PublishedVersionChoice } from "./ActivateDialog";
-import { createNode, deleteEdge, deleteNode, deserializeWorkflow, serializeWorkflow, updateNode, type WorkflowDefinition, type WorkflowEdge, type WorkflowEditorState, type WorkflowNode } from "./model";
+import { createNode, deleteEdge, deleteNode, deriveInputs, deserializeWorkflow, serializeWorkflow, updateNode, type WorkflowDefinition, type WorkflowEdge, type WorkflowEditorState, type WorkflowNode } from "./model";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { locateServerIssues, validateWorkflow, type ValidationIssue } from "./validation";
 import type { components } from "@/api/schema";
@@ -32,7 +32,7 @@ type EditorNoticeKey = "workflowEditor.publishSuccess" | "workflowEditor.publish
 type EditorNotice = { key: EditorNoticeKey; version?: number };
 type PendingConfirmation = { kind: "publish-recent" | "publish-stale-base" | "activate-stale-base"; versionId?: string };
 
-const types: WorkflowNode["type"][] = ["start", "script", "ai", "http", "decision", "workflow", "end"];
+const types: WorkflowNode["type"][] = ["script", "ai", "http", "decision", "workflow"];
 
 /** Page size the activation picker requests from the versions listing (backend default, 1..100). */
 const VERSIONS_PAGE_SIZE = 50;
@@ -154,6 +154,28 @@ export function EditorPage() {
   // Caches the in-flight resolution so React StrictMode's double effect run
   // loads (and never creates) the draft exactly once.
   const loadRef = useRef<{ key: string; promise: Promise<{ draft: DraftResponse; workflowName: string }> } | null>(null);
+  const scriptAnalysis = useRef(new Map<string, string>());
+
+  // Analyze scripts against their exact source and derived inputs. A settled
+  // response is accepted only while that same key is still current.
+  useEffect(() => {
+    if (!state) return;
+    for (const node of state.definition.nodes) {
+      if (node.type !== "script") continue;
+      const key = JSON.stringify([node.code, node.inputs]);
+      if (scriptAnalysis.current.get(node.id) === key || scriptAnalysis.current.get(node.id) === `${key}:pending` || scriptAnalysis.current.get(node.id) === `${key}:failed`) continue;
+      scriptAnalysis.current.set(node.id, `${key}:pending`);
+      void api.POST("/workflows/script-analysis", { body: { code: node.code, inputs: node.inputs } }).then((response) => {
+        const result = unwrap(response) as { outputs: string[]; issues: unknown[] };
+        if (!result || !Array.isArray(result.outputs) || !Array.isArray(result.issues)) throw new Error("Invalid script analysis response");
+        if (scriptAnalysis.current.get(node.id) !== key) return;
+        setState((current) => current ? { ...current, definition: { ...current.definition, nodes: current.definition.nodes.map((candidate) => candidate.id === node.id && candidate.type === "script" && JSON.stringify([candidate.code, candidate.inputs]) === key ? { ...candidate, outputs: result.issues.length ? [] : result.outputs } : candidate) } } : current);
+      }).catch(() => {
+        if (scriptAnalysis.current.get(node.id) === key) scriptAnalysis.current.set(node.id, `${key}:failed`);
+      });
+    }
+    for (const id of scriptAnalysis.current.keys()) if (!state.definition.nodes.some((node) => node.id === id)) scriptAnalysis.current.delete(id);
+  }, [state]);
 
   useEffect(() => {
     if (!id) {
@@ -201,11 +223,12 @@ export function EditorPage() {
   }, []);
   const connect = useCallback((edge: WorkflowEdge) => {
     setState((current) => current && !current.definition.edges.some((item) => item.from === edge.from && item.to === edge.to)
-      ? { ...current, definition: { ...current.definition, edges: [...current.definition.edges, edge] } }
+      ? deriveInputs({ ...current, definition: { ...current.definition, edges: [...current.definition.edges, edge] } })
       : current);
     setDirty(true);
   }, []);
   const addNode = (type: WorkflowNode["type"], position?: { x: number; y: number }) => {
+    if (type === "start" || type === "end") return;
     const newId = nodeId();
     setCounter((number) => number + 1);
     setState((current) => current ? { ...current, definition: { ...current.definition, nodes: [...current.definition.nodes, createNode(type, newId)] }, layout: { ...current.layout, positions: { ...current.layout.positions, [newId]: position ?? { x: 100 + current.definition.nodes.length * 28, y: 90 + counter * 20 } } }, selection: { nodeIds: [newId] } } : current);
@@ -333,6 +356,10 @@ export function EditorPage() {
   const runPublish = useCallback(async (confirmOverwrite: boolean) => {
     const current = stateRef.current;
     if (!id || !draftId || !current || publishing) return;
+    if (current.definition.nodes.some((node) => node.type === "script" && scriptAnalysis.current.get(node.id) !== JSON.stringify([node.code, node.inputs]))) {
+      setPublishBlocked(true);
+      return;
+    }
     if (validateWorkflow(current).level === "error") {
       setPublishBlocked(true);
       return;
@@ -569,6 +596,7 @@ export function EditorPage() {
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{t(`workflowEditor.types.${type}`)}</span>
                   <span className="block text-xs font-normal leading-4 text-muted-foreground">{paletteDescription(type)}</span>
+                  {type === "decision" && <span className="block text-xs font-medium text-amber-700 dark:text-amber-400">{t("editor.decisionNotFunctional" as never)}</span>}
                 </span>
               </button>
             ))}</div>

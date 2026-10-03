@@ -237,7 +237,7 @@ export function Canvas({ state, onPositionChange, onSelectionChange, onConnect, 
     const type = event.dataTransfer.getData(NODE_DRAG_MIME) as WorkflowNode["type"];
     dragDepth.current = 0;
     setDragOver(false);
-    if (!NODE_KINDS.has(type)) return;
+    if (!NODE_KINDS.has(type) || type === "start" || type === "end") return;
     event.preventDefault();
     // React Flow's own conversion when the instance is ready (every real
     // browser); the same math over the persisted viewport otherwise (jsdom,

@@ -4,22 +4,27 @@ import { createNode, deleteEdge, deleteNode, deserializeWorkflow, parseFormField
 const nodes: WorkflowNode[] = [
   { type: "start", id: "start", input_form: [] },
   { type: "script", id: "script", code: "", inputs: [], outputs: [] },
-  { type: "http", id: "http", method: "GET", url: "", outputs: [] },
+  { type: "http", id: "http", method: "GET", url: "", inputs: [], outputs: ["response"] },
   { type: "ai", id: "ai", agent: { runtime: "opencode", model: "", instructions: "" }, prompt_template: "", inputs: [], outputs: [], validation: { levels: [{ name: "one", message_key: "one", params_schema: {} }, { name: "two", message_key: "two", params_schema: {} }, { name: "three", message_key: "three", params_schema: {} }] }, max_validation_cycles: 3 },
   { type: "decision", id: "decision", selected_next_node_id: "" },
-  { type: "workflow", id: "workflow", workflow_id: "" },
-  { type: "end", id: "end" },
+  { type: "workflow", id: "workflow", workflow_id: "", inputs: [] },
+  { type: "end", id: "end", inputs: [] },
 ];
 
 function state(definitionNodes: WorkflowEditorState["definition"]["nodes"] = [nodes[0], nodes[6]], edges: WorkflowEditorState["definition"]["edges"] = [{ from: "start", to: "end" }]): WorkflowEditorState {
-  return { definition: { schema_version: "v1", name: "Test", nodes: [...definitionNodes], edges, phases: [{ id: "phase", node_ids: ["start", "end"], loop: { target_node_id: "start", max_iterations: 2 } }] }, layout: { positions: { start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, viewport: { x: 0, y: 0, zoom: 1 } }, selection: { nodeIds: ["start"] } };
+  return { definition: { schema_version: "v1", name: "Test", nodes: [...definitionNodes], edges }, layout: { positions: { start: { x: 1, y: 2 }, end: { x: 3, y: 4 } }, viewport: { x: 0, y: 0, zoom: 1 } }, selection: { nodeIds: ["start"] } };
 }
 
 describe("workflow editor model", () => {
-  it("round-trips all seven schema node variants and schema-only phase data", () => {
+  it("repairs fixed structural nodes and derives contracts from connected producers", () => {
+    const loaded = deserializeWorkflow({ schema_version: "v1", name: "x", nodes: [{ type: "script", id: "s", code: "", inputs: [], outputs: ["result"] }], edges: [] });
+    expect(loaded.definition.nodes.filter((node) => node.type === "start")).toHaveLength(1);
+    expect(loaded.definition.nodes.filter((node) => node.type === "end")).toHaveLength(1);
+    expect(deleteNode(loaded, loaded.definition.nodes.find((node) => node.type === "start")!.id).definition.nodes.some((node) => node.type === "start")).toBe(true);
+  });
+  it("round-trips all seven schema node variants", () => {
     const original = state([...nodes]);
     expect(serializeWorkflow(deserializeWorkflow(original.definition, original.layout))).toEqual(original.definition);
-    expect(serializeWorkflow(deserializeWorkflow(original.definition, original.layout)).phases).toEqual(original.definition.phases);
   });
   it("keeps canvas layout and selection separate from serialized definitions", () => {
     const original = state();
@@ -30,7 +35,9 @@ describe("workflow editor model", () => {
   it("deletes a node and its incident edges, or a selected edge", () => {
     const initial = state([nodes[0], nodes[1], nodes[6]], [{ from: "start", to: "script" }, { from: "script", to: "end" }]);
     expect(deleteNode(initial, "script").definition.edges).toEqual([]);
-    expect(deleteEdge(initial, { from: "start", to: "script" }).definition.edges).toEqual([{ from: "script", to: "end" }]);
+    const disconnected = deleteEdge(initial, { from: "start", to: "script" });
+    expect(disconnected.definition.edges).toEqual([{ from: "script", to: "end" }]);
+    expect(disconnected.definition.nodes.find((node) => node.id === "script")).toMatchObject({ inputs: [] });
   });
   it("rejects duplicate node IDs", () => {
     expect(() => serializeWorkflow(state([nodes[0], { ...nodes[6], id: "start" }]))).toThrow(/duplicate/i);
@@ -46,12 +53,12 @@ describe("workflow editor model", () => {
   });
   it("provides defaults for Decision and Workflow nodes", () => {
     expect(createNode("decision", "d")).toEqual({ type: "decision", id: "d", selected_next_node_id: "" });
-    expect(createNode("workflow", "w")).toEqual({ type: "workflow", id: "w", workflow_id: "" });
+    expect(createNode("workflow", "w")).toEqual({ type: "workflow", id: "w", workflow_id: "", inputs: [] });
   });
 });
 
 describe("safe JSON paste parsing", () => {
-  const validField = { name: "topic", type: "string", required: true, label_message_key: "workflow.topic.label" };
+  const validField = { name: "topic", type: "string", required: true };
 
   it("accepts a structurally valid FormField array, including the empty array", () => {
     expect(parseFormFieldArray(JSON.stringify([validField]))).toEqual({ ok: true, value: [validField] });
@@ -64,10 +71,10 @@ describe("safe JSON paste parsing", () => {
 
   it.each([
     ["[{}]"],
-    ['[{"name":3,"type":"string","required":true,"label_message_key":"k"}]'],
-    ['[{"name":"topic","type":"string","required":true}]'],
-    ['[{"name":"topic","type":"integer","required":true,"label_message_key":"k"}]'],
-    ['[{"name":"topic","type":"string","required":"yes","label_message_key":"k"}]'],
+    ['[{"name":3,"type":"string","required":true}]'],
+    ['[{"name":"topic","type":"string"}]'],
+    ['[{"name":"topic","type":"integer","required":true}]'],
+    ['[{"name":"topic","type":"string","required":"yes"}]'],
     ['["topic"]'],
     ["[null]"],
     ["[[]]"],

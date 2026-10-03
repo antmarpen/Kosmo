@@ -522,6 +522,7 @@
     "route": "Nodo siguiente",
     "workflow": "Flujo de trabajo",
     "outputMapping": "Mapeo de salida (objeto JSON)",
-    "invalidJson": "Introduce un objeto JSON válido."
+    "invalidJson": "Introduce un objeto JSON válido.",
+    "decisionNotFunctional": "El enrutamiento de decisiones aún no está disponible."
   }
 }

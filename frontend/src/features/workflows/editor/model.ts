@@ -9,22 +9,21 @@ import { validateWorkflow } from "./validation";
  * transport type (creation takes only a name and drafts carry opaque JSON),
  * so the editor owns its authoring types locally.
  */
-export type FormField = { name: string; type: "string" | "number" | "boolean"; required: boolean; label_message_key: string };
+export type FormField = { name: string; type: "string" | "number" | "boolean"; required: boolean };
 export type StartNode = { type: "start"; id: string; input_form: FormField[] };
 export type ScriptNode = { type: "script"; id: string; code: string; inputs: string[]; outputs: string[] };
-export type HttpNode = { type: "http"; id: string; method: string; url: string; outputs: string[] };
+export type HttpNode = { type: "http"; id: string; method: string; url: string; inputs: string[]; outputs: ["response"] };
 export type AgentConfig = { runtime: "opencode"; model: string; instructions: string };
 export type ValidationLevel = { name: string; message_key: string; params_schema: Record<string, unknown> };
 export type ValidationContract = { levels: ValidationLevel[] };
 export type AiNode = { type: "ai"; id: string; agent: AgentConfig; prompt_template: string; inputs: string[]; outputs: string[]; validation: ValidationContract; max_validation_cycles: number };
-export type EndNode = { type: "end"; id: string };
+export type EndNode = { type: "end"; id: string; inputs: string[] };
 export type DecisionNode = { type: "decision"; id: string; selected_next_node_id: string };
-export type WorkflowNodeRef = { type: "workflow"; id: string; workflow_id: string };
+export type WorkflowNodeRef = { type: "workflow"; id: string; workflow_id: string; inputs: string[] };
 export type WorkflowNode = StartNode | ScriptNode | HttpNode | AiNode | EndNode | DecisionNode | WorkflowNodeRef;
 export type WorkflowEdge = { from: string; to: string };
 export type LoopPolicy = { target_node_id: string; max_iterations: number };
-export type WorkflowPhase = { id: string; node_ids: string[]; loop?: LoopPolicy | null };
-export type WorkflowDefinition = { schema_version: "v1"; name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[]; phases?: WorkflowPhase[] | null };
+export type WorkflowDefinition = { schema_version: "v1"; name: string; nodes: WorkflowNode[]; edges: WorkflowEdge[] };
 export type Position = { x: number; y: number };
 export type Viewport = { x: number; y: number; zoom: number };
 export type WorkflowEditorState = { definition: WorkflowDefinition; layout: { positions: Record<string, Position>; viewport: Viewport }; selection: { nodeIds: string[]; edge?: WorkflowEdge } };
@@ -47,7 +46,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /** Structural FormField contract (backend FormField types only; pattern/semantic issues stay reportable). */
 function isFormField(value: unknown): value is FormField {
-  return isPlainObject(value) && typeof value.name === "string" && typeof value.label_message_key === "string" && typeof value.required === "boolean" && (FORM_FIELD_TYPES as readonly unknown[]).includes(value.type);
+  return isPlainObject(value) && typeof value.name === "string" && typeof value.required === "boolean" && (FORM_FIELD_TYPES as readonly unknown[]).includes(value.type);
 }
 
 function parseJsonText<T>(text: string, kind: (value: unknown) => boolean, check: (value: unknown) => value is T): JsonParseResult<T> {
@@ -74,14 +73,30 @@ export function selectNode(state: WorkflowEditorState, nodeId?: string): Workflo
 }
 
 export function updateNode(state: WorkflowEditorState, nodeId: string, update: Partial<WorkflowNode>): WorkflowEditorState {
-  return { ...state, definition: { ...state.definition, nodes: state.definition.nodes.map((node) => node.id === nodeId ? { ...node, ...update, id: node.id } as WorkflowNode : node) } };
+  return deriveInputs({ ...state, definition: { ...state.definition, nodes: state.definition.nodes.map((node) => node.id === nodeId ? { ...node, ...update, id: node.id } as WorkflowNode : node) } });
+}
+
+export function deriveInputs(state: WorkflowEditorState): WorkflowEditorState {
+  const byId = new Map(state.definition.nodes.map((node) => [node.id, node]));
+  const nodes = state.definition.nodes.map((node) => {
+    if (node.type === "start" || node.type === "decision") return node;
+    const values: string[] = [];
+    for (const edge of state.definition.edges) if (edge.to === node.id) {
+      const source = byId.get(edge.from);
+      const outputs = source?.type === "start" ? source.input_form.map((field) => field.name) : source && "outputs" in source ? source.outputs : [];
+      for (const value of outputs) if (!values.includes(value)) values.push(value);
+    }
+    return { ...node, inputs: values } as WorkflowNode;
+  });
+  return { ...state, definition: { ...state.definition, nodes } };
 }
 
 export function deleteNode(state: WorkflowEditorState, nodeId: string): WorkflowEditorState {
+  if (state.definition.nodes.find((node) => node.id === nodeId)?.type === "start" || state.definition.nodes.find((node) => node.id === nodeId)?.type === "end") return state;
   const positions = { ...state.layout.positions }; delete positions[nodeId];
-  return { ...state, definition: { ...state.definition, nodes: state.definition.nodes.filter((node) => node.id !== nodeId), edges: state.definition.edges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId), phases: state.definition.phases?.map((phase) => ({ ...phase, node_ids: phase.node_ids.filter((id) => id !== nodeId) })) }, layout: { ...state.layout, positions }, selection: { nodeIds: state.selection.nodeIds.filter((id) => id !== nodeId) } };
+  return deriveInputs({ ...state, definition: { ...state.definition, nodes: state.definition.nodes.filter((node) => node.id !== nodeId), edges: state.definition.edges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId) }, layout: { ...state.layout, positions }, selection: { nodeIds: state.selection.nodeIds.filter((id) => id !== nodeId) } });
 }
 
 export function deleteEdge(state: WorkflowEditorState, edge: WorkflowEdge): WorkflowEditorState {
-  return { ...state, definition: { ...state.definition, edges: state.definition.edges.filter((item) => item.from !== edge.from || item.to !== edge.to) }, selection: { nodeIds: state.selection.nodeIds } };
+  return deriveInputs({ ...state, definition: { ...state.definition, edges: state.definition.edges.filter((item) => item.from !== edge.from || item.to !== edge.to) }, selection: { nodeIds: state.selection.nodeIds } });
 }

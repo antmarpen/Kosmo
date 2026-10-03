@@ -31,20 +31,9 @@ class MonacoErrorBoundary extends Component<{ failed: ReactNode; ready: ReactNod
   render() { return this.state.failed ? this.props.failed : this.props.ready; }
 }
 
-/** Read-only summary shown in the properties panel: first lines plus a line count. */
-function CodeSummary({ value, label: fieldLabel }: { value: string; label: string }) {
-  const { t } = useTranslation();
-  const count = value === "" ? 0 : value.split("\n").length;
-  return <div className="grid gap-1.5 text-sm font-medium">
-    <span>{fieldLabel}</span>
-    <pre aria-label={fieldLabel} className="max-h-24 min-h-10 overflow-hidden rounded-md border border-input bg-muted/30 px-3 py-2 font-mono text-xs break-all whitespace-pre-wrap">{value.split("\n").slice(0, 3).join("\n")}</pre>
-    <span className="text-xs font-normal text-muted-foreground">{t("editor.codeLines", { count })}</span>
-  </div>;
-}
-
 /**
  * Script node code editor for the properties panel. The panel shows a compact
- * read-only summary and one primary action; the Monaco editor lives inside a
+ * one code action; the Monaco editor lives inside a
  * large modal with an explicit Save action and the shared close X (the X
  * discards the draft), mirroring the ConfirmDialog interaction contract
  * (initial focus on the shared close X, opener focus restored on close,
@@ -88,8 +77,7 @@ export function ScriptEditor({ value, onChange, label }: EditorProps) {
   };
   const holdWhileLoading = (event: Event) => { if (loading) event.preventDefault(); };
 
-  return <div className="grid gap-1.5 text-sm font-medium">
-    <CodeSummary value={value} label={label} />
+  return <div className="grid gap-1.5">
     <Button type="button" className="w-full" onClick={openEditor}>{t("editor.editScript")}</Button>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="flex h-[80vh] flex-col gap-4 sm:max-w-5xl" closeDisabled={loading} onOpenAutoFocus={handleOpenAutoFocus} onCloseAutoFocus={handleCloseAutoFocus} onEscapeKeyDown={holdWhileLoading} onInteractOutside={holdWhileLoading}>

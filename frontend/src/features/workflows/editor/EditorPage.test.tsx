@@ -147,14 +147,14 @@ describe("workflow editor page", () => {
     expect(screen.getByTestId("connection-count")).toHaveTextContent("1 connection");
   });
 
-  it("removes incident edges when deleting a selected node", async () => {
+  it("preserves fixed structural nodes and their incident edges when deletion is requested", async () => {
     renderPage();
     await screen.findByTestId("flow");
     fireEvent.click(screen.getByRole("button", { name: "connect valid" }));
     fireEvent.click(screen.getByRole("button", { name: "select end" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete selection" }));
-    expect(screen.getByText("1 node")).toBeInTheDocument();
-    expect(screen.getByTestId("connection-count")).toHaveTextContent("0 connections");
+    expect(screen.getByText("2 nodes")).toBeInTheDocument();
+    expect(screen.getByTestId("connection-count")).toHaveTextContent("1 connection");
   });
 
   it("syncs node positions to editor layout state", async () => {
@@ -307,7 +307,8 @@ describe("workflow editor page", () => {
     expect(within(palette).getByText(/No node types match/)).toBeInTheDocument();
     // Clearing the query restores the full catalog.
     await userEvent.clear(search);
-    expect(within(palette).getByRole("button", { name: "Add Start" })).toBeInTheDocument();
+    expect(within(palette).queryByRole("button", { name: "Add Start" })).not.toBeInTheDocument();
+    expect(within(palette).queryByRole("button", { name: "Add End" })).not.toBeInTheDocument();
   });
 
   it("describes each catalog entry under its type name", async () => {

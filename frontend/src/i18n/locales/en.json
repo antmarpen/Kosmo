@@ -522,6 +522,7 @@
     "route": "Next node",
     "workflow": "Workflow",
     "outputMapping": "Output mapping (JSON object)",
-    "invalidJson": "Enter a valid JSON object."
+    "invalidJson": "Enter a valid JSON object.",
+    "decisionNotFunctional": "Decision routing is not functional yet."
   }
 }

@@ -43,7 +43,7 @@ describe("client-side workflow validation", () => {
   it("reports localized issues for a semantically invalid but structurally valid form, and the draft stays saveable", () => {
     const state = stateWith(["start"]);
     (state.definition.nodes[0] as WorkflowNode & { input_form: unknown }).input_form = [
-      { name: "my field", type: "string", required: true, label_message_key: "" },
+      { name: "my field", type: "string", required: true },
     ];
     const result = validateWorkflow(state);
 
@@ -51,7 +51,6 @@ describe("client-side workflow validation", () => {
     expect(result.level).toBe("error");
     expect(result.nodeErrors["start-0"]).toEqual(expect.arrayContaining([
       { message_key: "workflowEditor.validation.startFieldNameInvalid", params: { index: 1 } },
-      { message_key: "workflowEditor.validation.startFieldLabelKeyRequired", params: { index: 1 } },
     ]));
     expect(() => serializeWorkflow(state)).not.toThrow();
   });
@@ -68,13 +67,12 @@ describe("client-side validation never throws on structurally broken state", () 
     expect(() => { result = validateWorkflow(state); }).not.toThrow();
     expect(result.nodeErrors["start-0"]).toEqual(expect.arrayContaining([
       { message_key: "workflowEditor.validation.startFieldNameRequired", params: { index: 1 } },
-      { message_key: "workflowEditor.validation.startFieldLabelKeyRequired", params: { index: 1 } },
     ]));
   });
 
   it("survives mistyped field values (name: 3) and reports localized issues", () => {
     const state = stateWith(["start"]);
-    state.definition.nodes[0] = withRaw(state.definition.nodes[0], { input_form: [{ name: 3, type: "string", required: true, label_message_key: "k" }] });
+    state.definition.nodes[0] = withRaw(state.definition.nodes[0], { input_form: [{ name: 3, type: "string", required: true }] });
     let result!: ReturnType<typeof validateWorkflow>;
     expect(() => { result = validateWorkflow(state); }).not.toThrow();
     expect(Object.keys(result.nodeErrors)).toContain("start-0");
