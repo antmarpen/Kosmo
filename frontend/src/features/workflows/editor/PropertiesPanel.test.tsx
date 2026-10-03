@@ -70,7 +70,12 @@ describe("properties panel node contracts", () => {
     const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [source, target], edges: [{ from: "source", to: "target" }] });
     state.selection.nodeIds = ["target"];
     render(<PropertiesPanel state={state} onUpdate={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /input information.*artifact/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /input information.*artifact/i }));
+    expect(screen.getByText(expected("sourceNode"))).toBeInTheDocument();
+    expect(screen.getByText(expected("outputKind"))).toBeInTheDocument();
+    expect(screen.getByText(expected("validationSummary"))).toBeInTheDocument();
+    expect(screen.getByRole("note").querySelector("dl")).toHaveClass("mt-3");
+    expect(screen.getByRole("note").querySelector("dl")).toHaveClass("[&>dt]:font-medium");
   });
   it("lists contracts orphaned by output removal and preserves them until explicit removal", () => {
     const ai = createNode("ai", "n") as Extract<WorkflowNode, { type: "ai" }>;

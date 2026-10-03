@@ -68,6 +68,8 @@ describe("ProviderModelSelect", () => {
     const status = await screen.findByRole("status");
     expect(status).toHaveAttribute("aria-label", expect.stringMatching(/Loading models/i));
     expect(status.querySelector('[data-slot="icon"]')).toHaveClass("animate-spin");
+    expect(status).toHaveClass("inset-0", "justify-center");
+    expect(status).not.toHaveClass("absolute", "right-3");
     expect(screen.getByLabelText("Model")).toHaveTextContent(/Loading models/i);
     resolve({ data: { valid: true, models: ["new-model"] } });
     await screen.findByRole("option", { name: "new-model" });
