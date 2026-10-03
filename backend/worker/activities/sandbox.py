@@ -8,6 +8,7 @@ from temporalio import activity
 from shared.paths import safe_path
 
 from worker.activities.artifacts import artifact_digest, validate_output
+from app.domain.workflows.validation_logic import validate_outputs
 
 TASK_STORAGE_ROOT = Path(os.getenv("KOSMO_TASK_STORAGE_ROOT", "/var/lib/kosmo/tasks"))
 SANDBOX_IMAGE = os.getenv("KOSMO_SANDBOX_IMAGE", "kosmo-sandbox:local")
@@ -99,6 +100,17 @@ async def run_script(payload):
             if media_type not in {"text/plain", "application/json"}:
                 raise ValueError("Invalid script output media type")
             validate_output(safe_path(output, name), media_type)
+        contracts = node.get("output_validation") or {}
+        if contracts:
+            declared = {name: {"media_type": manifest[name]} for name in node["outputs"]}
+            staged_input_names = [f"input-{index}" for index in range(len(input_names))]
+            errors = validate_outputs(declared, output, contracts, inputs=staged_input_names)
+            if errors:
+                return {"state": "failed", "outputs": {}, "error": {
+                    "code": "OUTPUT_VALIDATION_FAILED",
+                    "message_key": "errors.output.validation_failed",
+                    "params": {}, "details": errors,
+                }}
         from app.core.db import AsyncSessionLocal
         from app.domain.artifacts.repository import ArtifactRepository
         artifact_dir = safe_path(base, f'artifacts/{node["id"]}') / f'{payload.get("iteration", 0)}-{payload.get("attempt", 1)}'

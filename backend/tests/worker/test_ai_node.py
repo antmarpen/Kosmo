@@ -260,3 +260,74 @@ def test_validation_failures_are_flat_attempt_details_and_feedback_is_structured
     assert all(set(d) == {"attempt", "level", "artifact", "message_key", "params"} for d in result["error"]["details"])
     assert all("errors" not in entry for entry in adapter.feedback[0])
     assert all("details" in params for _, params in notes)
+
+
+def test_ai_node_prompts_and_validates_contract_per_output(tmp_path):
+    (tmp_path / "one.md").write_text("present", encoding="utf-8")
+    (tmp_path / "two.md").write_text("present", encoding="utf-8")
+    adapter = FakeAdapter([{
+        "one.md": {"path": str(tmp_path / "one.md"), "media_type": "text/markdown"},
+        "two.md": {"path": str(tmp_path / "two.md"), "media_type": "text/markdown"},
+    }])
+    contracts = {
+        "one.md": {"levels": [{"name": f"one-{i}", "message_key": f"one.{i}", "params_schema": {}} for i in range(3)]},
+        "two.md": {"levels": [{"name": f"two-{i}", "message_key": f"two.{i}", "params_schema": {}} for i in range(3)]},
+    }
+    async def noop(*args): return None
+    async def persist(*args): return {"sha256": "abc"}
+    result = asyncio.run(orchestrate_ai_node(
+        {"id": "ai", "agent": {}, "outputs": ["one.md", "two.md"], "output_validation": contracts},
+        adapter, tmp_path, "task", persist, noop, noop,
+    ))
+    assert result["state"] == "success"
+    assert json.dumps(contracts, sort_keys=True) in adapter.prompts[0]
+
+
+def test_ai_missing_outputs_fail_even_without_validation_contract(tmp_path):
+    adapter = FakeAdapter([{}, {}, {}])
+    writes = []
+    async def persist(*args): writes.append("persist")
+    async def checkpoint(*args): writes.append("checkpoint")
+    async def noop(*args): return None
+    result = asyncio.run(orchestrate_ai_node(
+        {"id": "ai", "agent": {}, "outputs": ["required.md"]}, adapter,
+        tmp_path, "task", persist, noop, checkpoint,
+    ))
+    assert result["state"] == "failed"
+    assert result["error"]["code"] == "VALIDATION_EXHAUSTED"
+    assert result["error"]["details"][0]["artifact"] == "required.md"
+    assert result["error"]["details"][0]["params"]["reason"] == "missing"
+    assert writes == []
+
+
+def test_ai_feedback_only_contains_failing_output_errors(tmp_path):
+    (tmp_path / "one.md").write_text("present", encoding="utf-8")
+    proposal = {
+        "one.md": {"path": str(tmp_path / "one.md"), "media_type": "text/markdown"},
+        "two.md": {"path": str(tmp_path / "two.md"), "media_type": "text/markdown"},
+    }
+    adapter = FakeAdapter([proposal, proposal, proposal])
+    contracts = {name: {"levels": [{"name": name, "message_key": name, "params_schema": {}} for _ in range(3)]}
+                 for name in ("one.md", "two.md")}
+    async def noop(*args): return None
+    async def persist(*args): return {"sha256": "abc"}
+    result = asyncio.run(orchestrate_ai_node(
+        {"id": "ai", "agent": {}, "outputs": ["one.md", "two.md"], "output_validation": contracts},
+        adapter, tmp_path, "task", persist, noop, noop,
+    ))
+    assert result["state"] == "failed"
+    assert {error["artifact"] for error in adapter.feedback[0]} == {"two.md"}
+
+
+def test_ai_legacy_snapshot_normalizes_node_validation_without_mutating_node(tmp_path):
+    (tmp_path / "legacy.md").write_text("valid", encoding="utf-8")
+    contract = {"levels": [{"name": str(i), "message_key": f"v.{i}", "params_schema": {}} for i in range(3)]}
+    node = {"id": "ai", "agent": {}, "outputs": ["legacy.md"], "validation": contract}
+    original = json.loads(json.dumps(node))
+    adapter = FakeAdapter([{"legacy.md": {"path": str(tmp_path / "legacy.md"), "media_type": "text/markdown"}}])
+    async def noop(*args): return None
+    async def persist(*args): return {"sha256": "abc"}
+    result = asyncio.run(orchestrate_ai_node(node, adapter, tmp_path, "task", persist, noop, noop))
+    assert result["state"] == "success"
+    assert json.dumps(contract, sort_keys=True) in adapter.prompts[0]
+    assert node == original

@@ -18,7 +18,17 @@ logger = logging.getLogger(__name__)
 async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str,
                               persist_artifact, write_note, publish_checkpoint, request_input=None) -> dict:
     """Run bounded completion/validation cycles; side effects are injected for tests."""
-    levels = node["validation"]["levels"]
+    contracts = node.get("output_validation")
+    if contracts is None:
+        # Task snapshots created before per-output validation retain their node-wide contract.
+        legacy_contract = node.get("validation")
+        contracts = ({name: legacy_contract for name in node.get("outputs", [])}
+                     if legacy_contract else {})
+    contracts = {name: contracts[name] for name in node.get("outputs", []) if name in contracts}
+    first_contract = next(iter(contracts.values()), None)
+    fallback_level = ((first_contract or {}).get("levels") or [
+        {"name": "completion", "message_key": "errors.node.completion_missing"}
+    ])[0]
     expected = [ArtifactContract(logical_name=name) for name in node["outputs"]]
     attempts = min(int(node.get("max_validation_cycles", 3)), 3)
     aggregate = []
@@ -31,7 +41,7 @@ async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str
         "Expected artifacts: " + ", ".join(
             f"{name} ({output_media_type(name)})" for name in node["outputs"]
         ),
-        "Validation contract: " + json.dumps(node["validation"], sort_keys=True),
+        "Output validation contracts: " + json.dumps(contracts, sort_keys=True),
         node.get("prompt_template", ""),
         node.get("task_prompt", ""),
     ) if part)
@@ -56,8 +66,8 @@ async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str
                 proposed = True
                 break
         if not proposed:
-            errors = [{"artifact": "", "level": levels[0]["name"],
-                       "message_key": levels[0]["message_key"], "params": {"reason": "completion_not_proposed"}}]
+            errors = [{"artifact": "", "level": fallback_level["name"],
+                       "message_key": fallback_level["message_key"], "params": {"reason": "completion_not_proposed"}}]
         else:
             completion = await adapter.request_completion(expected)
             candidates = completion if isinstance(completion, dict) else getattr(completion, "artifacts", {})
@@ -67,13 +77,23 @@ async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str
             if not isinstance(candidates, dict):
                 candidates = {}
             declared = {}
+            missing_candidates = []
             for name in node["outputs"]:
                 ref = candidates.get(name)
                 declared[name] = {"media_type": (ref or {}).get("media_type", "application/octet-stream")}
-            contracts = node.get("output_validation")
-            if contracts is None and node.get("validation"):
-                contracts = {name: node["validation"] for name in node.get("outputs", [])}
-            errors = validate_outputs(declared, workspace, contracts or {}, inputs=node.get("inputs", []))
+                if not ref:
+                    contract = contracts.get(name)
+                    level_data = ((contract or {}).get("levels") or [
+                        {"name": "syntax", "message_key": "validation.syntax"}
+                    ])[0]
+                    missing_candidates.append({"artifact": name, "level": level_data["name"],
+                                               "message_key": level_data["message_key"],
+                                               "params": {"reason": "missing"}})
+            errors = validate_outputs(declared, workspace, contracts, inputs=node.get("inputs", []))
+            missing_names = {error["artifact"] for error in missing_candidates}
+            errors = [error for error in errors if not (
+                error["artifact"] in missing_names and error["params"].get("reason") == "missing"
+            )] + missing_candidates
         if errors:
             details = [{**error, "attempt": attempt} for error in errors]
             aggregate.extend(details)
@@ -123,7 +143,7 @@ async def run_ai_node(payload: dict) -> dict:
     workspace = payload.get("workspace") or str(Path("/var/lib/kosmo/tasks") / task_id / "agent" / node["id"])
     Path(workspace).mkdir(parents=True, exist_ok=True)
     # The lifecycle activity maintains the ACP session and yields cycle results.
-    node["task_prompt"] = task_prompt
+    node = {**node, "task_prompt": task_prompt}
     runtime_environment = {}
     runtime_config_files = {}
     async def persist(name, candidate, attempt):

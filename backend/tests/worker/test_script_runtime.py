@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -112,6 +113,83 @@ def _run(sandbox, code, inputs, outputs):
         "iteration": 0,
         "attempt": 1,
     }))
+
+
+def _contract(*, required_terms=None):
+    return {"result": {"levels": [
+        {"name": "syntax", "message_key": "validation.syntax", "params_schema": {"format": "text"}},
+        {"name": "format", "message_key": "validation.format", "params_schema": {}},
+        {"name": "rules", "message_key": "validation.rules", "params_schema": {"required_terms": required_terms or []}},
+    ]}}
+
+
+def test_one_invalid_output_blocks_all_artifact_persistence(sandbox):
+    activity, containers, records = sandbox
+    result = asyncio.run(activity({
+        "task_id": "runtime-test",
+        "node": {"id": "script", "type": "script", "code": "good = 'safe'\nbad = 'wrong'\nreturn good, bad",
+                 "outputs": ["good", "bad"], "output_validation": {
+                     "good": _contract()["result"], "bad": _contract(required_terms=["required"])["result"]}},
+        "inputs": {}, "iteration": 0, "attempt": 1,
+    }))
+
+    assert result == {"state": "failed", "outputs": {}, "error": {
+        "code": "OUTPUT_VALIDATION_FAILED", "message_key": "errors.output.validation_failed",
+        "params": {}, "details": [{"artifact": "bad", "level": "rules",
+                                    "message_key": "validation.rules",
+                                    "params": {"reason": "required_terms_missing", "terms": ["required"]}}],
+    }}
+    assert records == []
+    assert len(containers) == 1
+    assert not (Path(containers[0].workspace.parent) / "artifacts").exists()
+
+
+def test_valid_configured_script_outputs_are_persisted(sandbox):
+    activity, _, records = sandbox
+    result = asyncio.run(activity({
+        "task_id": "runtime-test", "node": {"id": "script", "type": "script",
+        "code": "result = 'required phrase'\nreturn result", "outputs": ["result"],
+        "output_validation": _contract(required_terms=["required"])},
+        "inputs": {}, "iteration": 0, "attempt": 1,
+    }))
+
+    assert result["state"] == "success"
+    assert len(records) == 1
+
+
+@pytest.mark.docker
+def test_real_container_invalid_output_is_not_recorded():
+    task_id = os.getenv("KOSMO_DOCKER_TEST_TASK_ID")
+    if not task_id:
+        pytest.skip("Set KOSMO_DOCKER_TEST_TASK_ID to a disposable task id")
+
+    from sqlalchemy import select
+    from app.core.db import AsyncSessionLocal
+    from app.domain.tasks.models import Artifact
+    from worker.activities.sandbox import run_script
+
+    node_id = "script-validation-proof"
+    attempt = 987655
+
+    async def exercise():
+        result = await run_script({
+            "task_id": task_id,
+            "node": {"id": node_id, "type": "script", "outputs": ["result"],
+                     "code": "result = 'not acceptable'\nreturn result",
+                     "output_validation": _contract(required_terms=["required"])},
+            "inputs": {}, "iteration": 0, "attempt": attempt,
+        })
+        async with AsyncSessionLocal() as db:
+            row = await db.scalar(select(Artifact).where(
+                Artifact.task_id == task_id, Artifact.node_id == node_id,
+                Artifact.attempt == attempt, Artifact.logical_name == "result"))
+        return result, row
+
+    result, row = asyncio.run(exercise())
+    assert result["state"] == "failed", result
+    assert result["outputs"] == {}
+    assert result["error"]["code"] == "OUTPUT_VALIDATION_FAILED"
+    assert row is None
 
 
 def test_typed_inputs_return_two_individual_named_artifacts(sandbox):
