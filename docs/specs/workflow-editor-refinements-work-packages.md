@@ -332,4 +332,22 @@ canonical contracts; the script-analysis lifecycle fix has a regression test;
 catalog parity 474/474. Operator asks for a fresh-process **task mapper**
 regression alongside the users-table fix.
 
-Status: AR3-01/02/03 IN PROGRESS; AR3-04/05/06 QUEUED.
+Status: AR3-01/02/03/04/06 IN PROGRESS→RESOLVED; AR3-04/05/06 QUEUED.
+
+### AR3 remediation results (2026-10-03)
+
+- **AR3-01/02/03/04/06 — RESOLVED** (re-review confirmed). Commits `413691d`,
+  `b2de476`, `6a519da`, `0d38eb9`, AR3-06 dialog commit (`styled confirmation +
+  LoadingControl`).
+- **AR3-05 — implementation landed, behavioral proof BLOCKED BY ENVIRONMENT.**
+  Bounded validation diagnostics and an opaque `execute_opaque_node` /
+  `validate_persisted_start_inputs` path gated by the `opaque-task-inputs-v1`
+  Temporal patch are in place (commit `66d61ad`); the launch and authored E2E
+  journeys still pass. The required sentinel/history and legacy-replay proofs
+  were authored (`backend/tests/worker/test_task_input_secrecy.py`) but the
+  in-process Temporal test server **hangs in this sandbox** (Windows host and the
+  backend container), so the tests are opt-in
+  (`KOSMO_TEMPORAL_INTEGRATION=1`) and were not executed. The architect requires
+  this proof for the security change: **run it where the Temporal test server can
+  start (or in CI)** before final approval.
+- Also fixed a flaky `ProviderModelSelect` full-suite test (`97562e1`).
