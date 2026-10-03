@@ -6,11 +6,76 @@ from collections.abc import Callable
 from shared.errors import ErrorDetail, ValidationFailedError
 from shared.graph.schema import AiNode, DecisionNode, EndNode, HttpNode, ScriptNode, StartNode, WorkflowDefinition, WorkflowNode
 from shared.graph.script_contract import analyze_script_body
+from shared.graph.output_contract import normalize_output_validation
+
+
+_FORMATS = {"auto", "text", "json", "markdown"}
+
+
+def validate_output_validation_catalogue(definition: dict) -> list[ErrorDetail]:
+    """Validate the bounded authoring catalogue without executing validators."""
+    issues: list[ErrorDetail] = []
+    for node in definition.get("nodes", []):
+        if not isinstance(node, dict):
+            continue
+        outputs = node.get("outputs", [])
+        if node.get("type") == "http":
+            outputs = ["response"]
+        contracts = node.get("output_validation") or {}
+        for output, contract in contracts.items():
+            if output not in outputs:
+                issues.append(_output_detail("output_validation_orphan", node, output, "output"))
+                continue
+            levels = contract.get("levels", []) if isinstance(contract, dict) else []
+            for index, section in enumerate(("syntax", "format", "rules")):
+                if index >= len(levels):
+                    continue
+                schema = levels[index].get("params_schema", {})
+                allowed = ({"format"} if index == 0 else
+                           {"required", "required_sections", "sections", "heading_levels"} if index == 1 else
+                           {"required_terms", "rule_type", "input_artifact"})
+                if not isinstance(schema, dict) or set(schema) - allowed:
+                    issues.append(_output_detail("output_validation_option_invalid", node, output, section))
+                    continue
+                if index == 0 and schema.get("format", "auto") not in _FORMATS:
+                    issues.append(_output_detail("output_validation_format_invalid", node, output, section))
+                if index == 1:
+                    if "required" in schema and (schema.get("required_sections") or schema.get("sections")):
+                        issues.append(_output_detail("output_validation_incompatible", node, output, section))
+                    levels_allowed = schema.get("heading_levels", list(range(1, 7)))
+                    if not isinstance(levels_allowed, list) or any(not isinstance(level, int) or level < 1 or level > 6 for level in levels_allowed):
+                        issues.append(_output_detail("output_validation_option_invalid", node, output, section))
+                if index == 2:
+                    rule = schema.get("rule_type")
+                    if rule not in (None, "required_terms", "supported_claims"):
+                        issues.append(_output_detail("output_validation_rule_unsupported", node, output, section))
+                    if rule == "supported_claims" and schema.get("input_artifact") not in node.get("inputs", []):
+                        issues.append(_output_detail("output_validation_input_required", node, output, section))
+    return issues
+
+
+def _output_detail(rule: str, node: dict, output: str, section: str) -> ErrorDetail:
+    return _detail(rule, node_id=node.get("id"), output=output, section=section)
+
+
+def inventory_output_validation_records(records: list[dict]) -> list[dict]:
+    """Read-only report of definitions that need manual output-contract repair."""
+    report = []
+    for record in records:
+        definition = record.get("definition", {})
+        try:
+            normalized = normalize_output_validation(definition)
+            issues = validate_output_validation_catalogue(normalized)
+        except ValueError:
+            issues = [_detail("output_validation_conflict", record_id=record.get("id"))]
+        if issues:
+            report.append({"id": record.get("id"), "issues": [issue.message_key for issue in issues]})
+    return report
 
 
 def validate_workflow(definition: WorkflowDefinition, workflow_exists: Callable[[str], bool] | None = None,
                       workflow_contract: Callable[[str], tuple[list[str], list[str]] | None] | None = None) -> None:
-    issues: list[ErrorDetail] = []
+    issues: list[ErrorDetail] = validate_output_validation_catalogue(definition.model_dump(mode="json", exclude_none=True))
     if not definition.name.strip():
         issues.append(_detail("name_required"))
     nodes = definition.nodes

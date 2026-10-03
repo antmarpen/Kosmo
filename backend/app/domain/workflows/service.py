@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pydantic import ValidationError
 from shared.errors import ConflictError, ErrorDetail, NotFoundError, PermissionDeniedError, ValidationFailedError
 from shared.graph.schema import WorkflowDefinition, WorkflowNode
+from shared.graph.output_contract import normalize_output_validation
 
 
 class WorkflowService:
@@ -109,10 +110,15 @@ class WorkflowService:
         if active is not None and base_id != _value(active, "id") and not confirm_overwrite:
             raise ConflictError("errors.workflow.stale_base_confirmation_required", {"active_version_id": _value(active, "id")})
         try:
-            definition = WorkflowDefinition.model_validate(_value(draft, "definition"))
+            raw_definition = normalize_output_validation(_value(draft, "definition"))
+            definition = WorkflowDefinition.model_validate(raw_definition)
             await self._validate_definition(definition)
         except ValidationError as error:
             raise ValidationFailedError("errors.workflow.invalid_definition") from error
+        except ValueError as error:
+            if str(error) == "errors.graph.output_validation_conflict":
+                raise ValidationFailedError(str(error)) from error
+            raise
         # The published definition carries the workflow name: renaming in the
         # editor renames the workflow itself. The name is normalized exactly
         # like creation (blank names are rejected by validate_workflow above),
@@ -221,12 +227,17 @@ class WorkflowService:
     async def validate_draft(self, workflow_id, draft_id, user):
         draft = await self.get_draft(workflow_id, draft_id, user)
         try:
-            definition = WorkflowDefinition.model_validate(_value(draft, "definition"))
+            raw_definition = normalize_output_validation(_value(draft, "definition"))
+            definition = WorkflowDefinition.model_validate(raw_definition)
             await self._validate_definition(definition)
         except ValidationFailedError as error:
             return [detail.__dict__ for detail in error.details]
         except ValidationError as error:
             return [{"message_key": "errors.workflow.invalid_definition", "params": {"field": ".".join(map(str, item["loc"])), "type": item["type"]}} for item in error.errors()]
+        except ValueError as error:
+            if str(error) == "errors.graph.output_validation_conflict":
+                return [{"message_key": str(error), "params": {}}]
+            raise
         return []
 
     @staticmethod
