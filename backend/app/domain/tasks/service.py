@@ -1,5 +1,8 @@
 from shared.errors import ConflictError, ErrorDetail, NotFoundError, PermissionDeniedError, ValidationFailedError
 from shared.state import TaskState
+import math
+
+from app.domain.workflows.validation_logic import evaluate_content
 
 
 TRANSITIONS = {
@@ -27,15 +30,7 @@ class TaskService:
             raise NotFoundError("errors.workflow.not_found")
         definition = value(version, "definition")
         start = next((node for node in definition["nodes"] if node["type"] == "start"), None)
-        errors = []
-        fields = {field["name"]: field for field in start["input_form"]}
-        for name, field in fields.items():
-            if field["required"] and name not in input_values:
-                errors.append(ErrorDetail("errors.task.input_required", {"field": name}))
-            elif name in input_values and not _matches_type(input_values[name], field["type"]):
-                errors.append(ErrorDetail("errors.task.input_type", {"field": name, "type": field["type"]}))
-        for name in input_values.keys() - fields.keys():
-            errors.append(ErrorDetail("errors.task.input_unknown", {"field": name}))
+        errors = await validate_start_inputs(start, input_values)
         if errors:
             raise ValidationFailedError("errors.task.invalid_input", details=errors)
         task = await self.repository.create_task(workflow_id=workflow_id, version_id=value(version, "id"), state=TaskState.queued.value,
@@ -179,5 +174,38 @@ def _role(user):
 
 
 def _matches_type(value_, type_):
-    return {"string": lambda x: isinstance(x, str), "number": lambda x: isinstance(x, (int, float)) and not isinstance(x, bool),
+    return {"string": lambda x: isinstance(x, str), "number": lambda x: isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x),
             "boolean": lambda x: isinstance(x, bool)}[type_](value_)
+
+
+async def validate_start_inputs(start, input_values, rule_validation=None):
+    """Shared submission/worker structural and contract checks for Start fields."""
+    errors = []
+    fields = {field["name"]: field for field in start.get("input_form", [])}
+    for name, field in fields.items():
+        if field["required"] and name not in input_values:
+            errors.append(ErrorDetail("errors.task.input_required", {"field": name}))
+            continue
+        if name not in input_values:
+            continue
+        submitted = input_values[name]
+        if not _matches_type(submitted, field["type"]):
+            errors.append(ErrorDetail("errors.task.input_type", {"field": name, "type": field["type"]}))
+            continue
+        contract = field.get("validation")
+        if contract and isinstance(submitted, str):
+            for level in (1, 2, 3):
+                if level == 3 and contract.get("rules"):
+                    if rule_validation:
+                        failures = await rule_validation(name, submitted, contract)
+                    else:
+                        from app.api.routes.mcp import _validation_probe
+                        failures = await _validation_probe(submitted.encode("utf-8"), contract, level, name)
+                else:
+                    failures = evaluate_content(submitted.encode("utf-8"), contract, level)
+                if failures:
+                    errors.extend(ErrorDetail(item["message_key"], {"field": name, **item["params"]}) for item in failures)
+                    break
+    for name in input_values.keys() - fields.keys():
+        errors.append(ErrorDetail("errors.task.input_unknown", {"field": name}))
+    return errors

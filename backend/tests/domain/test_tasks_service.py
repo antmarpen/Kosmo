@@ -73,6 +73,31 @@ def test_submission_reports_invalid_input_fields():
     assert error.value.details[0].params["field"] == "topic"
 
 
+def test_submission_rejects_non_finite_number_before_task_creation():
+    repository = FakeRepository()
+    repository.active["definition"]["nodes"][0]["input_form"] = [
+        {"name": "amount", "type": "number", "required": True}
+    ]
+    with pytest.raises(ValidationFailedError):
+        asyncio.run(TaskService(repository, FakeWorkflowStarter()).submit(
+            "workflow-1", {"amount": float("inf")}, None, "user-1"
+        ))
+    assert repository.created == []
+
+
+def test_submission_rejects_invalid_json_start_field_before_task_creation():
+    repository = FakeRepository()
+    repository.active["definition"]["nodes"][0]["input_form"] = [
+        {"name": "settings", "type": "string", "required": True,
+         "validation": {"format": "json", "json_schema": {"type": "object"}}}
+    ]
+    with pytest.raises(ValidationFailedError):
+        asyncio.run(TaskService(repository, FakeWorkflowStarter()).submit(
+            "workflow-1", {"settings": "not json"}, None, "user-1"
+        ))
+    assert repository.created == []
+
+
 def test_task_list_serialization_exposes_only_safe_summary_fields():
     from fastapi.encoders import jsonable_encoder
 

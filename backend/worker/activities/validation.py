@@ -12,6 +12,7 @@ from app.domain.workflows.output_validation import validate_content, validate_ou
 from app.domain.workflows.validation_logic import validate_outputs as validate_outputs_legacy
 from worker.validation_runner import run_rule
 from shared.paths import safe_path
+from app.domain.tasks.service import validate_start_inputs as _validate_start_inputs
 
 validate_outputs = validate_outputs_legacy
 
@@ -27,6 +28,17 @@ async def validate_outputs_async(outputs, workspace, contracts, level=None, inpu
         return await run_rule(rules, value, text)
 
     return await shared_validate_outputs_async(outputs, workspace, contracts, sandbox, inputs=inputs)
+
+
+@activity.defn(name="validate_start_inputs")
+async def validate_start_inputs(payload: dict) -> list[dict]:
+    async def validate_rule(name, submitted, contract):
+        failures = await validate_content(submitted.encode("utf-8"), contract, 3, _run_sandbox_rule)
+        for failure in failures:
+            failure["artifact"] = name
+        return failures
+    errors = await _validate_start_inputs(payload["start"], payload["input_values"], validate_rule)
+    return [{"message_key": error.message_key, "params": error.params} for error in errors]
 
 
 def _probe_directory(request_id: str) -> Path:
@@ -66,7 +78,7 @@ async def _run_sandbox_rule(rules, value, text):
     return await run_rule(rules, value, text)
 
 
-__all__ = ["validate_outputs", "validate_outputs_async", "validate_staged_candidate"]
+__all__ = ["validate_outputs", "validate_outputs_async", "validate_staged_candidate", "validate_start_inputs"]
 
 import json
 import os

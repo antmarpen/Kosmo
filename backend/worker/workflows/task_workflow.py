@@ -114,7 +114,16 @@ class TaskWorkflow:
                     else:
                         result = await workflow.execute_activity("run_node", (payload.task_id, node, node_inputs), start_to_close_timeout=timedelta(minutes=5))
             else:
-                result = {"state": "success", "error": None}
+                if node["type"] == "start" and workflow.patched("start-input-validation-v1"):
+                    failures = await workflow.execute_activity(
+                        "validate_start_inputs", {"start": node, "input_values": payload.input_values},
+                        start_to_close_timeout=timedelta(minutes=1),
+                    )
+                    result = ({"state": "failed", "outputs": {}, "error": {
+                        "code": "INVALID_START_INPUT", "message_key": "errors.task.invalid_input",
+                        "params": {"details": failures}}} if failures else {"state": "success", "error": None})
+                else:
+                    result = {"state": "success", "error": None}
             await workflow.execute_activity("finish_node", (payload.task_id, node["id"], result), start_to_close_timeout=timedelta(minutes=1))
             self._active_node_execution_id = None
             if self._stop_requested:
