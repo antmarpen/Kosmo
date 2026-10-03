@@ -211,4 +211,28 @@ Acceptance IDs: C3-01…C3-07, SEED-01, E2E-01 (as listed by the architect).
 
 ### Status
 
-- WP-14 — IN PROGRESS.
+- WP-14 — DONE (`1a6dd33`). `output_validation` per output; legacy AI
+  normalization (`normalize_output_validation`).
+- WP-15 — DONE (`2221307`). Authoritative catalogue validation + publication
+  boundaries + read-only legacy inventory.
+- WP-16 — DONE (`2bac01d`). Shared per-output validator for runtime + API.
+- WP-17 — DONE (`9340f1d`). Blocking script output validation; real-container
+  proof skipped on this host.
+- WP-18 — DONE (`9340f1d`). AI completion/correction migrated to per-output
+  contracts.
+- WP-19 — DONE (`fcc4177`). Frontend per-output types + provenance resolver.
+- WP-20 / WP-20b — DONE (`fcc4177`, `657390f`). Per-output validation modal,
+  provenance popover, input info, orphaned contracts. Build green. Browser
+  responsive evidence still outstanding.
+- WP-21 — DONE (`a93493c`). Explicit ACP default-model resolution; seed
+  migrated to per-output validation and `report` reference. New keyed error
+  `workflow.agent.model_default_unavailable` still needs en/es catalog entries.
+- WP-22 — PARTIAL. Backend 348/42, frontend 334, build green. E2E phase-2:
+  4 passed / 1 skipped / 3 failed. Root cause of the authoring publish failure
+  (diagnosed via API): the AI node's `inputs` snapshot must equal the union of
+  the predecessor Script's derived outputs (`["report","data"]`); otherwise
+  publication returns `derived_contract_stale`. The authored journey must let
+  the async script analysis resolve (and/or the UI must recompute derived inputs
+  after it) before publishing. The E2E edits remain uncommitted.
+- Outstanding: finish WP-22 (journey fixes + responsive evidence), architecture
+  review, documentator.
