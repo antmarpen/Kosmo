@@ -63,6 +63,28 @@ describe("properties panel node contracts", () => {
     expect(screen.getByText(expected("formatStructure"))).toBeInTheDocument();
     expect(screen.getByText(expected("rules"))).toBeInTheDocument();
   });
+  it("exposes provenance for input chips", () => {
+    const source = createNode("script", "source") as Extract<WorkflowNode, { type: "script" }>;
+    source.outputs = ["artifact"];
+    const target = createNode("script", "target") as Extract<WorkflowNode, { type: "script" }>;
+    const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [source, target], edges: [{ from: "source", to: "target" }] });
+    state.selection.nodeIds = ["target"];
+    render(<PropertiesPanel state={state} onUpdate={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /input information.*artifact/i })).toBeInTheDocument();
+  });
+  it("lists contracts orphaned by output removal and preserves them until explicit removal", () => {
+    const ai = createNode("ai", "n") as Extract<WorkflowNode, { type: "ai" }>;
+    ai.outputs = [];
+    ai.output_validation = { removed: { levels: [] } };
+    const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [ai], edges: [] });
+    state.selection.nodeIds = ["n"];
+    const onUpdate = vi.fn();
+    render(<PropertiesPanel state={state} onUpdate={onUpdate} />);
+    expect(screen.getByText(expected("orphanedContract"))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /validation.*removed/i }));
+    fireEvent.click(screen.getByRole("button", { name: expected("removeValidation") }));
+    expect(onUpdate).toHaveBeenCalledWith("n", expect.objectContaining({ output_validation: {} }));
+  });
   it("shows inputs but no outputs for End", () => {
     renderType("end", true);
     expect(screen.getByText(expected("inputs"))).toBeInTheDocument();
