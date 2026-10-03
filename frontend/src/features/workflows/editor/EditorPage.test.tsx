@@ -684,4 +684,24 @@ describe("workflow editor page", () => {
     resolveSave({ data: { revision: 2, issues: [] } });
     await waitFor(() => expect(saveButton).not.toBeDisabled());
   });
+
+  it("accepts current script analysis and publishes its recomputed downstream inputs", async () => {
+    const script = { ...createNode("script", "script-1"), code: "return 'report'", inputs: [], outputs: [] };
+    mockGets({ "/workflows/{workflow_id}/drafts/{draft_id}": { data: {
+      ...draftResponse,
+      definition: { ...baseDefinition, nodes: [createNode("start", "start"), script, createNode("end", "end")], edges: [{ from: "start", to: "script-1" }, { from: "script-1", to: "end" }] },
+    } } });
+    post.mockImplementation((path: string) => path === "/workflows/script-analysis"
+      ? Promise.resolve({ data: { outputs: ["report", "data"], issues: [] } })
+      : path === publishPath ? Promise.resolve({ data: publishResponse }) : Promise.resolve({ data: null }));
+    renderPage();
+    await screen.findByTestId("flow");
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/workflows/script-analysis", expect.anything()));
+    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+
+    await waitFor(() => expect(callsTo(publishPath)).toHaveLength(1));
+    const [, saveOptions] = put.mock.calls[0] as [string, { body: { definition: { nodes: any[] } } }];
+    expect(saveOptions.body.definition.nodes.find((node) => node.id === "script-1").outputs).toEqual(["report", "data"]);
+    expect(saveOptions.body.definition.nodes.find((node) => node.type === "end").inputs).toEqual(["report", "data"]);
+  });
 });

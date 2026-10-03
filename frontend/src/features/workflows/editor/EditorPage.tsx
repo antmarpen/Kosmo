@@ -169,11 +169,20 @@ export function EditorPage() {
       void api.POST("/workflows/script-analysis", { body: { code: node.code, inputs: node.inputs } }).then((response) => {
         const result = unwrap(response) as { outputs: string[]; issues: unknown[] };
         if (!result || !Array.isArray(result.outputs) || !Array.isArray(result.issues)) throw new Error("Invalid script analysis response");
-        if (scriptAnalysis.current.get(node.id) !== key) return;
+        if (scriptAnalysis.current.get(node.id) !== `${key}:pending`) return;
+        scriptAnalysis.current.set(node.id, result.issues.length ? `${key}:failed` : key);
         setAnalysisIssues((current) => ({ ...current, [node.id]: (result.issues as { message_key: string; params?: Record<string, unknown> }[]).map((issue) => ({ message_key: issue.message_key, params: issue.params })) }));
-        setState((current) => current ? { ...current, definition: { ...current.definition, nodes: current.definition.nodes.map((candidate) => candidate.id === node.id && candidate.type === "script" && JSON.stringify([candidate.code, candidate.inputs]) === key ? { ...candidate, outputs: result.issues.length ? [] : result.outputs } : candidate) } } : current);
+        setState((current) => {
+          if (!current) return current;
+          const candidate = current.definition.nodes.find((item) => item.id === node.id);
+          if (!candidate || candidate.type !== "script" || JSON.stringify([candidate.code, candidate.inputs]) !== key) return current;
+          const outputs = result.issues.length ? [] : result.outputs;
+          const next = updateNode(current, node.id, { outputs });
+          if (JSON.stringify(current.definition.nodes) !== JSON.stringify(next.definition.nodes)) setDirty(true);
+          return next;
+        });
       }).catch(() => {
-        if (scriptAnalysis.current.get(node.id) === key) {
+        if (scriptAnalysis.current.get(node.id) === `${key}:pending`) {
           scriptAnalysis.current.set(node.id, `${key}:failed`);
           setAnalysisIssues((current) => ({ ...current, [node.id]: [{ message_key: "workflowEditor.validation.scriptAnalysisFailed" }] }));
         }
