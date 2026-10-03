@@ -215,3 +215,37 @@ Owner decisions (2026-10-03):
   workflows/versions/drafts/tasks; reseed if the instance is left without
   workflows). The coordinator's next action is to hand this spec to `architect`
   for work-package planning.
+
+## Review corrections (2026-10-03, post-implementation)
+
+### C1 — Start/End panel and delete affordance (bugs)
+- The Start node currently renders **two Inputs sections**; it must show exactly
+  one Inputs section (the manual form fields) and no Outputs. The End node is
+  correct.
+- When Start or End is selected, the **"Delete selection" action still appears**;
+  it must not be available for the protected structural nodes (hide or disable
+  it, in addition to the existing model/canvas guard).
+
+### C2 — In-control loading with a spinner (global platform pattern)
+- For requests that can take time (e.g. provider model discovery), the loading
+  state must render **inside the control** — the select shows a spinner and a
+  live label — instead of a plain "Loading models…" text elsewhere.
+- This is a **global platform pattern** for any request that may be slow, not
+  only the AI model selector: prefer in-place, lively feedback (spinner/skeleton)
+  over static loading text.
+
+### C3 — Output provenance and core output validation (material extension)
+- Every Input/Output chip should offer an affordance (e.g. an info "i") that
+  reveals: the **source node** the value comes from, the **output kind/type**, and
+  whether it has **validation** configured.
+- Validation (syntax, format, rules) becomes a **core, cross-cutting capability
+  configurable on the outputs of every node**, not only AI nodes.
+- **Resolved (2026-10-03):** validation is a **per-output contract** with the
+  three sections (syntax/parse, format/structure, rules), configured through a
+  **modal** opened from a button on each output chip (compact in the panel;
+  viewable on demand). The AI node migrates from its AI-specific 3-level contract
+  to this general model. The chip's info "i" affordance summarises provenance
+  (source node), output kind/type, and whether validation is configured.
+- Still to design: the exact rule catalogue rendered by the modal and the
+  execution semantics for a failed non-AI output validation (blocking vs
+  feedback).
