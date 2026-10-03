@@ -72,7 +72,7 @@ async def run_script(payload):
                                subpath=f"{task_id}/sandbox/{node['id']}/{payload.get('iteration', 0)}-{payload.get('attempt', 1)}/output"),
         ]
         container = client.containers.create(
-            SANDBOX_IMAGE, command=["python", "/opt/kosmo/script_runner.py", "/workspace/descriptor.json"],
+            SANDBOX_IMAGE, command=["/opt/kosmo/script_runner.py", "/workspace/descriptor.json"],
             network_mode="none", user="10001:10001", mem_limit="256m", nano_cpus=1_000_000_000,
             read_only=True, tmpfs={"/tmp": "rw,noexec,nosuid,size=16m"},
             mounts=mounts,

@@ -18,7 +18,7 @@ class _Container:
         pass
 
     def wait(self, timeout):
-        if self.command and self.command[0] == "python":
+        if self.command and str(self.command[0]).endswith("script_runner.py"):
             descriptor_path = self.workspace / "descriptor.json"
             descriptor = json.loads(descriptor_path.read_text())
             descriptor["output_dir"] = str(self.workspace / "output")
@@ -121,6 +121,15 @@ def test_typed_inputs_return_two_individual_named_artifacts(sandbox):
     assert set(result["outputs"]) == {"size", "distance"}
     assert json.loads(Path(result["outputs"]["size"]["storage_path"]).read_text()) == 4
     assert json.loads(Path(result["outputs"]["distance"]["storage_path"]).read_text()) == 9
+
+
+def test_sandbox_command_uses_the_image_entrypoint_without_duplicating_python(sandbox):
+    # The sandbox image's ENTRYPOINT is `python`; the container command must be
+    # the runner script only, otherwise the process becomes `python python ...`.
+    _run(sandbox, "out = 1\nreturn out", {}, ["out"])
+    _, containers, _ = sandbox
+
+    assert containers and containers[0].command[0] == "/opt/kosmo/script_runner.py"
 
 
 @pytest.mark.parametrize(
