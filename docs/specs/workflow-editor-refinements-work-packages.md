@@ -236,3 +236,47 @@ Acceptance IDs: C3-01…C3-07, SEED-01, E2E-01 (as listed by the architect).
   after it) before publishing. The E2E edits remain uncommitted.
 - Outstanding: finish WP-22 (journey fixes + responsive evidence), architecture
   review, documentator.
+
+## Round-2 validation model (planned 2026-10-03) — WP-23…WP-34
+
+Spec: `docs/specs/workflow-editor-refinements.md` → "Review corrections — round 2" (C4/C5).
+
+### Canonical contract (replaces the bounded catalogue)
+
+`ValidationContract` discriminated by `format`:
+
+- `text` / `markdown`: UTF-8 only; **no** format/structure and **no** rules.
+- `json`: JSON Schema (Draft 2020-12) + optional **Python rules**; strict parse.
+- `yaml`: standard safe YAML validation + optional **Python rules**; no JSON Schema.
+
+Rules are optional Python function bodies run in the sandbox (like scripts) with
+`value` and `content` available; they must return exactly `True` (pass) or
+`False` (fail); exceptions/timeouts/malformed results fail closed. Start fields
+gain the same `validation` contract, validated like outputs. Blocking semantics
+remain. Legacy `levels` contracts stay readable via an isolated legacy reader
+with deterministic conversion where demonstrable; ambiguous/`auto` cases require
+explicit repair. No destructive migration.
+
+### Packages
+
+| WP | Type | Objective | Depends on |
+| --- | --- | --- | --- |
+| WP-23 | Dev | Canonical contracts + compatibility normalization (schema). | — |
+| WP-24 | Dev | Authoritative publication validation for the new contracts. | WP-23 |
+| WP-25 | Dev | Pure format/schema evaluator (JSON Schema, safe YAML, text/md) + deps. | WP-23/24 |
+| WP-26 | Dev | Sandboxed Python-rule runner (container). | WP-25 |
+| WP-27 | Dev | Shared async validation gateway + MCP bridge (no API Docker access). | WP-26 |
+| WP-28 | Dev | Blocking Script/AI integration with the new evaluator. | WP-27 |
+| WP-29 | Dev | Start submission + execution validation gates. | WP-27/28 |
+| WP-30 | Dev | Frontend contract state + provenance (preserve Start validation). | WP-23/24 |
+| WP-31 | Design | Format-dependent validation modal. | WP-30 |
+| WP-32 | Design | Start-field authoring + missing localization. | WP-31 |
+| WP-33 | Dev | Script-analysis lifecycle repair (WP-22 root cause). | WP-30 |
+| WP-34 | Dev | Seed + legacy catalogue transition (non-destructive). | WP-24/28/29 |
+| WP-22 | Test | Integrated acceptance + browser proof (C1…C5, C6/C7 regressions). | all |
+
+Acceptance IDs: R2-01…R2-08.
+
+### Status
+
+- WP-23 — IN PROGRESS.
