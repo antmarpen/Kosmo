@@ -169,7 +169,8 @@ services:
     profiles: ["image-build"]
     image: kosmo-sandbox:local
     build:
-      context: ./backend/docker/sandbox
+      context: ./backend
+      dockerfile: docker/sandbox/Dockerfile
 
   opencode:
     # Profile-gated image builder for the dynamically created ACP agent.
