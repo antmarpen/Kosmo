@@ -41,6 +41,22 @@ async def validate_start_inputs(payload: dict) -> list[dict]:
     return [{"message_key": error.message_key, "params": error.params} for error in errors]
 
 
+@activity.defn(name="validate_persisted_start_inputs")
+async def validate_persisted_start_inputs(task_id: str) -> list[dict]:
+    """Validate stored Start data in-worker; only diagnostics cross the boundary."""
+    from app.core.db import AsyncSessionLocal
+    from app.domain.tasks.models import Task
+    async with AsyncSessionLocal() as db:
+        task = await db.get(Task, task_id)
+        if task is None:
+            raise ValueError("Task no longer exists")
+        definition, values = task.resolved_definition, task.input_values or {}
+    return await validate_start_inputs({"start": next(
+        (node for node in definition["nodes"] if node.get("type") == "start"),
+        {"input_form": []},
+    ), "input_values": values})
+
+
 def _probe_directory(request_id: str) -> Path:
     # UUID parsing prevents a Temporal payload from selecting arbitrary files.
     canonical_id = uuid.UUID(request_id).hex

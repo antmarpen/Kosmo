@@ -3,11 +3,11 @@ import asyncio
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from worker.activities.tasks import begin_node, completed_nodes, finish_node, finish_task, ordered_nodes, run_node, start_task
+from worker.activities.tasks import begin_node, completed_nodes, execute_opaque_node, finish_node, finish_task, ordered_nodes, run_node, start_task
 from worker.activities.capacity import acquire_agent, admit_queued, cancel_agent_wait, release_agent
 from worker.activities.checkpoint import load_checkpoint, publish_completion, reconcile_checkpoint
 from worker.activities.ai_node import run_ai_node
-from worker.activities.validation import validate_staged_candidate, validate_start_inputs
+from worker.activities.validation import validate_staged_candidate, validate_start_inputs, validate_persisted_start_inputs
 from worker.activities.input import record_answer, pending_answer, mark_answer_delivered, await_human_answer
 from worker.activities.provider_verify import (
     list_opencode_candidate_models,
@@ -33,7 +33,7 @@ async def main():
                                   pending_answer, mark_answer_delivered, await_human_answer,
                                   list_opencode_models, list_opencode_candidate_models,
                                    verify_opencode_model, verify_opencode_candidate_model, validate_staged_candidate,
-                                   validate_start_inputs])
+                                  validate_start_inputs, validate_persisted_start_inputs, execute_opaque_node])
     await worker.run()
 
 

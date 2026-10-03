@@ -147,7 +147,7 @@ class TemporalWorkflowStarter:
 
         try:
             client = await Client.connect(settings.temporal_host, namespace=settings.temporal_namespace)
-            await client.start_workflow(TaskWorkflow.run, TaskExecutionInput(task_id, definition, input_values),
+            await client.start_workflow(TaskWorkflow.run, TaskExecutionInput(task_id, definition),
                                        id=workflow_id, task_queue=settings.temporal_task_queue)
         except Exception:
             logging.getLogger(__name__).exception("Could not start Temporal workflow for task %s", task_id)

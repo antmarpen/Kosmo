@@ -67,7 +67,7 @@ def evaluate_content(content: bytes, contract: dict, level: int) -> list[dict]:
     except (jsonschema.SchemaError, TypeError, ValueError):
         return failure("schema_invalid")
     return [{"artifact": "candidate", "level": "format", "message_key": "validation.format",
-             "params": {"reason": "schema_invalid", "path": ".".join(map(str, error.absolute_path)), "detail": error.message[:240]}}
+             "params": {"reason": "schema_invalid", "path": ".".join(map(str, error.absolute_path)), "detail": "Value does not match schema"}}
             for error in failures[:MAX_ERRORS]]
 
 

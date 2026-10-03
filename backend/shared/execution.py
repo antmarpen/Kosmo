@@ -25,7 +25,7 @@ class NodeResult:
 class TaskExecutionInput:
     task_id: str
     definition: dict
-    input_values: dict
+    input_values: dict | None = None
 
 
 def result_payload(result):

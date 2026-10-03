@@ -13,6 +13,15 @@ def test_json_schema_reports_nested_path_and_accepts_arrays_and_scalars():
     assert evaluate_content(b'4', {"format": "json", "json_schema": {"type": "integer"}}, 2) == []
 
 
+def test_json_schema_diagnostics_never_echo_candidate_values():
+    sentinel = "PRIVATE_SENTINEL"
+    errors = evaluate_content(json.dumps({"password": sentinel}).encode(), {
+        "format": "json", "json_schema": {"type": "object", "properties": {"password": {"type": "integer"}}}
+    }, 2)
+    assert errors[0]["params"]["path"] == "password"
+    assert sentinel not in json.dumps(errors)
+
+
 def test_json_schema_supports_local_fragment_refs():
     contract = {"format": "json", "json_schema": {"$defs": {"name": {"type": "string"}}, "$ref": "#/$defs/name"}}
     assert evaluate_content(b'"ok"', contract, 2) == []

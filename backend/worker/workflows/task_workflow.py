@@ -37,6 +37,7 @@ class TaskWorkflow:
     @workflow.run
     async def run(self, payload: TaskExecutionInput) -> str:
         self._task_id = payload.task_id
+        opaque_inputs = workflow.patched("opaque-task-inputs-v1")
         await workflow.execute_activity("start_task", payload.task_id, start_to_close_timeout=timedelta(minutes=1))
         await workflow.execute_activity("load_checkpoint", payload.task_id, start_to_close_timeout=timedelta(minutes=1))
         checkpoint = await workflow.execute_activity("reconcile_checkpoint", payload.task_id, start_to_close_timeout=timedelta(minutes=1))
@@ -71,7 +72,17 @@ class TaskWorkflow:
                     self._waiting_for_input = True
                     try:
                         try:
-                            node_inputs = resolve_edge_inputs(payload.definition["nodes"], edges, node, completed, payload.input_values)
+                            if opaque_inputs:
+                                result = await workflow.execute_activity(
+                                    "execute_opaque_node", {"task_id": payload.task_id, "node": node,
+                                                             "completed": completed,
+                                                             "node_execution_id": node_execution_id},
+                                    start_to_close_timeout=timedelta(minutes=30),
+                                    retry_policy=RetryPolicy(maximum_attempts=3),
+                                )
+                                node_inputs = None
+                            else:
+                                node_inputs = resolve_edge_inputs(payload.definition["nodes"], edges, node, completed, payload.input_values)
                         except (KeyError, ValueError) as exc:
                             ambiguous = isinstance(exc, ValueError)
                             result = {
@@ -83,15 +94,18 @@ class TaskWorkflow:
                                 },
                             }
                         else:
-                            result = await workflow.execute_activity(
-                                "run_ai_node",
-                                {"task_id": payload.task_id, "node": node,
-                                 "task_prompt": payload.input_values.get("prompt", ""),
-                                 "inputs": node_inputs,
-                                 "node_execution_id": node_execution_id},
-                                start_to_close_timeout=timedelta(minutes=30),
-                                retry_policy=RetryPolicy(maximum_attempts=3),
-                            )
+                            if opaque_inputs:
+                                pass
+                            else:
+                                result = await workflow.execute_activity(
+                                    "run_ai_node",
+                                    {"task_id": payload.task_id, "node": node,
+                                     "task_prompt": payload.input_values.get("prompt", ""),
+                                     "inputs": node_inputs,
+                                     "node_execution_id": node_execution_id},
+                                    start_to_close_timeout=timedelta(minutes=30),
+                                    retry_policy=RetryPolicy(maximum_attempts=3),
+                                )
                     except ActivityError:
                         result = {
                             "state": "failed", "outputs": {},
@@ -106,15 +120,36 @@ class TaskWorkflow:
                         await workflow.execute_activity("release_agent", payload.task_id, start_to_close_timeout=timedelta(minutes=1))
                 else:
                     try:
-                        node_inputs = resolve_edge_inputs(payload.definition["nodes"], edges, node, completed, payload.input_values)
+                        if opaque_inputs:
+                            result = await workflow.execute_activity(
+                                "execute_opaque_node", {"task_id": payload.task_id, "node": node,
+                                                         "completed": completed,
+                                                         "node_execution_id": node_execution_id},
+                                start_to_close_timeout=timedelta(minutes=30),
+                                retry_policy=RetryPolicy(maximum_attempts=3),
+                            )
+                            node_inputs = None
+                        else:
+                            node_inputs = resolve_edge_inputs(payload.definition["nodes"], edges, node, completed, payload.input_values)
                     except (KeyError, ValueError) as exc:
                         code = "INPUT_AMBIGUOUS" if isinstance(exc, ValueError) else "INPUT_MISSING"
                         key = "errors.agent.input_missing"
                         result = {"state": "failed", "outputs": {}, "error": {"code": code, "message_key": key, "params": {"inputs": str(exc)}}}
                     else:
-                        result = await workflow.execute_activity("run_node", (payload.task_id, node, node_inputs), start_to_close_timeout=timedelta(minutes=5))
+                        if opaque_inputs:
+                            pass
+                        else:
+                            result = await workflow.execute_activity("run_node", (payload.task_id, node, node_inputs), start_to_close_timeout=timedelta(minutes=5))
             else:
-                if node["type"] == "start" and workflow.patched("start-input-validation-v1"):
+                if node["type"] == "start" and opaque_inputs:
+                    failures = await workflow.execute_activity(
+                        "validate_persisted_start_inputs", payload.task_id,
+                        start_to_close_timeout=timedelta(minutes=1),
+                    )
+                    result = ({"state": "failed", "outputs": {}, "error": {
+                        "code": "INVALID_START_INPUT", "message_key": "errors.task.invalid_input",
+                        "params": {"details": failures}}} if failures else {"state": "success", "error": None})
+                elif node["type"] == "start" and workflow.patched("start-input-validation-v1"):
                     failures = await workflow.execute_activity(
                         "validate_start_inputs", {"start": node, "input_values": payload.input_values},
                         start_to_close_timeout=timedelta(minutes=1),

@@ -64,6 +64,40 @@ async def run_node(payload):
 
 
 @activity.defn
+async def execute_opaque_node(payload):
+    """Resolve persisted task inputs and execute without returning them to history."""
+    from app.core.db import AsyncSessionLocal
+    from app.domain.tasks.models import Task
+    from worker.interpreter import resolve_edge_inputs
+    from worker.activities.sandbox import run_script
+    from worker.activities.ai_node import run_ai_node
+
+    task_id, node, completed = payload["task_id"], payload["node"], payload["completed"]
+    async with AsyncSessionLocal() as db:
+        task = await db.get(Task, task_id)
+        if task is None:
+            raise ValueError("Task no longer exists")
+        inputs = task.input_values or {}
+        definition = task.resolved_definition
+        user_id = task.created_by
+        prompt = task.prompt or ""
+    try:
+        node_inputs = resolve_edge_inputs(definition["nodes"], definition.get("edges", []), node, completed, inputs)
+    except (KeyError, ValueError) as exc:
+        return {"state": "failed", "outputs": {}, "error": {
+            "code": "INPUT_AMBIGUOUS" if isinstance(exc, ValueError) else "INPUT_MISSING",
+            "message_key": "errors.agent.input_missing", "params": {"inputs": str(exc)},
+        }}
+    if node["type"] == "ai":
+        from worker.activities.sandbox import TASK_STORAGE_ROOT
+        return await run_ai_node({"task_id": task_id, "node": node, "task_prompt": prompt,
+                                  "inputs": node_inputs, "user_id": user_id,
+                                  "node_execution_id": payload.get("node_execution_id"),
+                                  "workspace": str(TASK_STORAGE_ROOT / task_id / "agent" / node["id"])})
+    return await run_script({"task_id": task_id, "node": node, "inputs": node_inputs})
+
+
+@activity.defn
 async def finish_node(payload):
     from sqlalchemy import select
     from app.domain.tasks.models import NodeExecution
