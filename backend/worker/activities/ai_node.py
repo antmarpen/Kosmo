@@ -8,7 +8,7 @@ from temporalio import activity
 
 from shared.agent_events import AgentError, CompletionProposed
 from worker.adapters.base import ArtifactContract
-from worker.activities.validation import validate_outputs
+from worker.activities.validation import validate_outputs_async
 from worker.activities.artifacts import output_media_type
 from shared.paths import safe_path
 
@@ -25,10 +25,16 @@ async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str
         contracts = ({name: legacy_contract for name in node.get("outputs", [])}
                      if legacy_contract else {})
     contracts = {name: contracts[name] for name in node.get("outputs", []) if name in contracts}
-    first_contract = next(iter(contracts.values()), None)
-    fallback_level = ((first_contract or {}).get("levels") or [
-        {"name": "completion", "message_key": "errors.node.completion_missing"}
-    ])[0]
+    fallback_error = {"artifact": "", "level": "completion",
+                      "message_key": "errors.node.completion_missing",
+                      "params": {"reason": "completion_not_proposed"}}
+    # Historical levels contracts use their first named level for compatibility
+    # diagnostics; canonical contracts never infer level from a section position.
+    legacy_levels = next((item.get("levels") for item in contracts.values()
+                         if isinstance(item, dict) and isinstance(item.get("levels"), list)), None)
+    if legacy_levels:
+        fallback_error = {**fallback_error, "level": legacy_levels[0]["name"],
+                          "message_key": legacy_levels[0]["message_key"]}
     expected = [ArtifactContract(logical_name=name) for name in node["outputs"]]
     attempts = min(int(node.get("max_validation_cycles", 3)), 3)
     aggregate = []
@@ -66,8 +72,7 @@ async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str
                 proposed = True
                 break
         if not proposed:
-            errors = [{"artifact": "", "level": fallback_level["name"],
-                       "message_key": fallback_level["message_key"], "params": {"reason": "completion_not_proposed"}}]
+            errors = [fallback_error.copy()]
         else:
             completion = await adapter.request_completion(expected)
             candidates = completion if isinstance(completion, dict) else getattr(completion, "artifacts", {})
@@ -82,14 +87,15 @@ async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str
                 ref = candidates.get(name)
                 declared[name] = {"media_type": (ref or {}).get("media_type", "application/octet-stream")}
                 if not ref:
-                    contract = contracts.get(name)
-                    level_data = ((contract or {}).get("levels") or [
-                        {"name": "syntax", "message_key": "validation.syntax"}
-                    ])[0]
-                    missing_candidates.append({"artifact": name, "level": level_data["name"],
-                                               "message_key": level_data["message_key"],
+                    legacy_contract = contracts.get(name) or {}
+                    legacy_first = (legacy_contract.get("levels") or [{}])[0]
+                    missing_candidates.append({"artifact": name,
+                                               "level": legacy_first.get("name", "completion"),
+                                               "message_key": legacy_first.get("message_key", "errors.node.completion_missing"),
                                                "params": {"reason": "missing"}})
-            errors = validate_outputs(declared, workspace, contracts, inputs=node.get("inputs", []))
+            # The agent writes declared files into its workspace; the shared façade
+            # reads those files and runs format/schema/rules before any side effect.
+            errors = await validate_outputs_async(declared, workspace, contracts, inputs=node.get("inputs", []))
             missing_names = {error["artifact"] for error in missing_candidates}
             errors = [error for error in errors if not (
                 error["artifact"] in missing_names and error["params"].get("reason") == "missing"

@@ -8,7 +8,7 @@ from temporalio import activity
 from shared.paths import safe_path
 
 from worker.activities.artifacts import artifact_digest, validate_output
-from app.domain.workflows.validation_logic import validate_outputs
+from worker.activities.validation import validate_outputs_async
 
 TASK_STORAGE_ROOT = Path(os.getenv("KOSMO_TASK_STORAGE_ROOT", "/var/lib/kosmo/tasks"))
 SANDBOX_IMAGE = os.getenv("KOSMO_SANDBOX_IMAGE", "kosmo-sandbox:local")
@@ -104,7 +104,7 @@ async def run_script(payload):
         if contracts:
             declared = {name: {"media_type": manifest[name]} for name in node["outputs"]}
             staged_input_names = [f"input-{index}" for index in range(len(input_names))]
-            errors = validate_outputs(declared, output, contracts, inputs=staged_input_names)
+            errors = await validate_outputs_async(declared, output, contracts, inputs=staged_input_names)
             if errors:
                 return {"state": "failed", "outputs": {}, "error": {
                     "code": "OUTPUT_VALIDATION_FAILED",
@@ -130,7 +130,7 @@ async def run_script(payload):
                 refs[name] = {"id": row.id, "storage_path": str(target), "sha256": row.sha256, "media_type": manifest[name]}
             await db.commit()
         return {"state": "success", "outputs": refs, "error": None}
-    except (ValueError, docker.errors.DockerException) as exc:
+    except Exception as exc:
         logger.exception("Sandbox execution failed", extra={"task_id": task_id, "node_id": node["id"]})
         return {"state": "failed", "error": {"code": "SCRIPT_EXECUTION_FAILED", "message_key": "errors.script.failed", "params": {}}}
     finally:

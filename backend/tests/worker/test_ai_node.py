@@ -300,6 +300,32 @@ def test_ai_missing_outputs_fail_even_without_validation_contract(tmp_path):
     assert writes == []
 
 
+def test_ai_runs_shared_validation_before_persisting_new_contract_outputs(tmp_path, monkeypatch):
+    import worker.activities.ai_node as module
+    candidate = tmp_path / "out.json"
+    candidate.write_text('{"ok": false}', encoding="utf-8")
+    proposal = {"out.json": {"path": str(candidate), "media_type": "application/json"}}
+    adapter = FakeAdapter([proposal, proposal, proposal])
+    effects = []
+
+    async def validate(outputs, workspace, contracts, *, inputs=None):
+        effects.append("validate")
+        assert outputs["out.json"]["media_type"] == "application/json"
+        return [{"artifact": "out.json", "level": "schema", "message_key": "validation.schema", "params": {"reason": "invalid"}}]
+
+    monkeypatch.setattr(module, "validate_outputs_async", validate)
+    async def persist(*args): effects.append("persist")
+    async def checkpoint(*args): effects.append("checkpoint")
+    async def note(*args): pass
+    result = asyncio.run(module.orchestrate_ai_node(
+        {"id": "ai", "agent": {}, "outputs": ["out.json"], "output_validation": {"out.json": {"format": "json"}}},
+        adapter, tmp_path, "task", persist, note, checkpoint,
+    ))
+    assert result["error"]["code"] == "VALIDATION_EXHAUSTED"
+    assert effects == ["validate"] * 3
+    assert all(error["artifact"] == "out.json" for batch in adapter.feedback for error in batch)
+
+
 def test_ai_feedback_only_contains_failing_output_errors(tmp_path):
     (tmp_path / "one.md").write_text("present", encoding="utf-8")
     proposal = {
