@@ -117,9 +117,19 @@ context loss does not lose the wave sequencing.
   tasks, 110 versions and 89 empty (never-published) E2E workflows removed; the
   reference workflow was reseeded and is active. Final state: 1 workflow, 0
   tasks. Commit `38e3139`.
-- **WP-13 — PENDING.** Integrated E2E: update the journeys to the new script
-  contract (function body + `return`), the fixed Start/End nodes, the
-  name-based task labels and the AI provider selector, then run the suite.
+- **WP-13 — PARTIAL (2026-10-03).** E2E journeys updated for the new authoring
+  contracts but the suite is not green (6 passed / 1 skipped / 7 failed). A
+  direct API probe of the reference workflow exposed a **real blocking defect**
+  that the mocked tests missed: the sandbox image's `ENTRYPOINT` is `python`
+  while WP-06 passed `command=["python", "/opt/kosmo/script_runner.py", ...]`,
+  producing `python python ...` (exit 2). Fixed in `4b40d97` with a regression
+  test (`test_sandbox_command_uses_the_image_entrypoint_without_duplicating_python`).
+  After the fix the reference script produces `report` + `data`; the AI node then
+  reaches `waiting_for_input` (agent-initiated input/permission request) — needs
+  follow-up (likely the seeded `model: "default"` and/or agent permission
+  behaviour). Remaining E2E failures are stale expectations (old artifact names,
+  validation-level locators, publish notices, terminal-state set) plus that AI
+  behaviour. The tester's E2E edits are uncommitted.
 
 ## Wave sequencing
 
