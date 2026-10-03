@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from shared.graph.schema import WorkflowDefinition
+from shared.graph.output_contract import normalize_output_validation
 
 
 def valid_definition():
@@ -42,11 +43,55 @@ def test_schema_rejects_unknown_node_discriminator():
         WorkflowDefinition.model_validate(value)
 
 
-def test_schema_requires_exactly_three_ai_validation_levels():
+def test_schema_requires_exactly_three_output_validation_levels():
     value = valid_definition()
-    value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": ["topic"], "outputs": [], "validation": {"levels": []}}
+    value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": ["topic"], "outputs": ["result"], "output_validation": {"result": {"levels": []}}}
     with pytest.raises(ValidationError):
         WorkflowDefinition.model_validate(value)
+
+
+def test_legacy_ai_contract_is_copied_to_each_output_without_aliasing():
+    value = valid_definition()
+    legacy = {"levels": [{"name": str(i), "message_key": "x", "params_schema": {"nested": []}} for i in range(3)]}
+    value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": ["a", "b"], "validation": legacy}
+    normalized = normalize_output_validation(value)
+    normalized["nodes"][1]["output_validation"]["a"]["levels"][0]["params_schema"]["nested"].append("changed")
+    assert normalized["nodes"][1]["output_validation"]["b"]["levels"][0]["params_schema"]["nested"] == []
+    assert "validation" not in normalized["nodes"][1]
+
+
+def test_legacy_ai_without_outputs_is_preserved_as_draft_extension():
+    value = valid_definition()
+    legacy = {"levels": []}
+    value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": [], "validation": legacy}
+    normalized = normalize_output_validation(value)
+    assert normalized["nodes"][1]["validation"] == legacy
+    assert WorkflowDefinition.model_validate(normalized).model_dump(mode="json")["nodes"][1].get("validation") is None
+
+
+def test_legacy_and_new_contract_conflict_raises_keyed_error():
+    value = valid_definition()
+    value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": ["a"], "validation": {}, "output_validation": {}}
+    with pytest.raises(ValueError, match="errors.graph.output_validation_conflict"):
+        normalize_output_validation(value)
+
+
+def test_schema_has_output_validation_only_on_contract_output_nodes():
+    value = valid_definition()
+    value["nodes"][1]["output_validation"] = {}
+    parsed = WorkflowDefinition.model_validate(value)
+    dumped = parsed.model_dump(mode="json")
+    assert "validation" not in dumped["nodes"][1]
+    for node in [
+        {"type": "script", "id": "s", "code": "pass", "inputs": [], "outputs": []},
+        {"type": "http", "id": "h", "method": "GET", "url": "https://example.invalid"},
+        {"type": "ai", "id": "a", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": []},
+        {"type": "workflow", "id": "w", "workflow_id": "child"},
+    ]:
+        value = valid_definition(); value["nodes"][1] = node
+        assert "output_validation" in WorkflowDefinition.model_validate(value).model_dump(mode="json")["nodes"][1]
+    with pytest.raises(ValidationError):
+        WorkflowDefinition.model_validate({**valid_definition(), "nodes": [{"type": "start", "id": "start", "input_form": [], "output_validation": {}}]})
 
 
 def test_schema_carries_optional_bounded_loop_phase():
@@ -64,7 +109,11 @@ def test_schema_round_trips_decision_and_workflow_nodes(node):
     value["nodes"].insert(1, node)
     parsed = WorkflowDefinition.model_validate(value)
     dumped = parsed.model_dump(mode="json", by_alias=True)
-    assert dumped["nodes"][1] == node
+    assert {key: value for key, value in dumped["nodes"][1].items() if key != "output_validation"} == node
+    if node["type"] == "workflow":
+        assert dumped["nodes"][1]["output_validation"] is None
+    else:
+        assert "output_validation" not in dumped["nodes"][1]
     assert type(WorkflowDefinition.model_validate(dumped).nodes[1]).__name__ == ("DecisionNode" if node["type"] == "decision" else "WorkflowNode")
 
 

@@ -24,29 +24,6 @@ class StartNode(ContractModel):
     input_form: list[FormField]
 
 
-class ScriptNode(ContractModel):
-    type: Literal["script"]
-    id: str = Field(pattern=SAFE_IDENTIFIER)
-    code: str
-    inputs: list[SafeIdentifier]
-    outputs: list[SafeIdentifier]
-
-
-class HttpNode(ContractModel):
-    type: Literal["http"]
-    id: str = Field(pattern=SAFE_IDENTIFIER)
-    method: str
-    url: str
-    inputs: list[SafeIdentifier] = Field(default_factory=list)
-    outputs: list[Literal["response"]] = Field(default_factory=lambda: ["response"], min_length=1, max_length=1)
-
-
-class AgentConfig(ContractModel):
-    runtime: Literal["opencode"]
-    model: str
-    instructions: str
-
-
 class ValidationLevel(ContractModel):
     name: str
     message_key: str
@@ -57,6 +34,31 @@ class ValidationContract(ContractModel):
     levels: list[ValidationLevel] = Field(min_length=3, max_length=3)
 
 
+class ScriptNode(ContractModel):
+    type: Literal["script"]
+    id: str = Field(pattern=SAFE_IDENTIFIER)
+    code: str
+    inputs: list[SafeIdentifier]
+    outputs: list[SafeIdentifier]
+    output_validation: dict[str, ValidationContract] | None = None
+
+
+class HttpNode(ContractModel):
+    type: Literal["http"]
+    id: str = Field(pattern=SAFE_IDENTIFIER)
+    method: str
+    url: str
+    inputs: list[SafeIdentifier] = Field(default_factory=list)
+    outputs: list[Literal["response"]] = Field(default_factory=lambda: ["response"], min_length=1, max_length=1)
+    output_validation: dict[str, ValidationContract] | None = None
+
+
+class AgentConfig(ContractModel):
+    runtime: Literal["opencode"]
+    model: str
+    instructions: str
+
+
 class AiNode(ContractModel):
     type: Literal["ai"]
     id: str = Field(pattern=SAFE_IDENTIFIER)
@@ -64,7 +66,10 @@ class AiNode(ContractModel):
     prompt_template: str
     inputs: list[SafeIdentifier]
     outputs: list[SafeIdentifier]
-    validation: ValidationContract
+    output_validation: dict[str, ValidationContract] | None = None
+    # Parsing-only compatibility for old persisted AI definitions. Excluded from
+    # serialization; callers normalize before storing canonical definitions.
+    validation: ValidationContract | dict | None = Field(default=None, exclude=True)
     max_validation_cycles: int = 3
 
 
@@ -85,6 +90,7 @@ class WorkflowNode(ContractModel):
     id: str = Field(pattern=SAFE_IDENTIFIER)
     workflow_id: str
     inputs: list[SafeIdentifier] = Field(default_factory=list)
+    output_validation: dict[str, ValidationContract] | None = None
 
 
 Node = Annotated[StartNode | ScriptNode | HttpNode | AiNode | EndNode | DecisionNode | WorkflowNode, Field(discriminator="type")]
