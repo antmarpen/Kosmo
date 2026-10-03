@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { parseJsonObject, type FormField, type WorkflowEditorState, type WorkflowNode } from "./model";
 import { ScriptEditor } from "./ScriptEditor";
+import { ProviderModelSelect } from "./ProviderModelSelect";
 
 type Props = { state: WorkflowEditorState; onUpdate: (id: string, update: Partial<WorkflowNode>) => void; errors?: Record<string, unknown[]>; sheetOpen?: boolean };
 const inputClasses = "w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring";
@@ -75,8 +76,7 @@ export function PropertiesPanel({ state, onUpdate, errors = {}, sheetOpen = true
       {node.type === "start" && <FormFieldBuilder fields={form} onChange={(input_form) => update({ input_form })} />}
       {node.type === "script" && <ScriptEditor label={t("editor.code")} value={node.code} onChange={(code) => update({ code })} />}
       {node.type === "ai" && <>
-        <SelectField label={t("editor.runtime" as never)} value={node.agent.runtime} onChange={(runtime) => update({ agent: { ...node.agent, runtime } })}><option value="opencode">opencode</option></SelectField>
-        <Field label={t("editor.model")} value={node.agent.model} onChange={(model) => update({ agent: { ...node.agent, model }})} />
+        <ProviderModelSelect runtime={node.agent.runtime} model={node.agent.model} onChange={(runtime, model) => update({ agent: { ...node.agent, runtime, model } })} />
         <Field label={t("editor.instructions")} value={node.agent.instructions} onChange={(instructions) => update({ agent: { ...node.agent, instructions } })} multiline />
         <Field label={t("editor.prompt")} value={node.prompt_template} onChange={(prompt_template) => update({ prompt_template })} multiline />
         <fieldset className="grid gap-1.5"><legend className="text-sm font-medium">{t("editor.validationContract" as never)}</legend>{node.validation.levels.map((level, index) => <div key={index} className="grid min-w-0 gap-1.5 rounded-md border border-border p-2"><Field label={t("editor.levelName" as never)} value={level.name} onChange={(name) => update({ validation: { ...node.validation, levels: node.validation.levels.map((item, i) => i === index ? { ...item, name } : item) } })} /><Field label={t("editor.levelMessageKey" as never)} value={level.message_key} onChange={(message_key) => update({ validation: { ...node.validation, levels: node.validation.levels.map((item, i) => i === index ? { ...item, message_key } : item) } })} /><JsonObjectField label={`${t("editor.levelParams" as never)} ${index + 1}`} value={level.params_schema} onChange={(params_schema) => update({ validation: { ...node.validation, levels: node.validation.levels.map((item, i) => i === index ? { ...item, params_schema } : item) } })} /></div>)}</fieldset>
