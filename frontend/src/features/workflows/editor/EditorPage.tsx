@@ -117,6 +117,7 @@ export function EditorPage() {
   const [loadError, setLoadError] = useState<KosmoError | null>(null);
   const [saveError, setSaveError] = useState<KosmoError | null>(null);
   const [validationIssues, setValidationIssues] = useState<NonNullable<KosmoError["details"]>>([]);
+  const [analysisIssues, setAnalysisIssues] = useState<Record<string, ValidationIssue[]>>({});
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -169,9 +170,13 @@ export function EditorPage() {
         const result = unwrap(response) as { outputs: string[]; issues: unknown[] };
         if (!result || !Array.isArray(result.outputs) || !Array.isArray(result.issues)) throw new Error("Invalid script analysis response");
         if (scriptAnalysis.current.get(node.id) !== key) return;
+        setAnalysisIssues((current) => ({ ...current, [node.id]: (result.issues as { message_key: string; params?: Record<string, unknown> }[]).map((issue) => ({ message_key: issue.message_key, params: issue.params })) }));
         setState((current) => current ? { ...current, definition: { ...current.definition, nodes: current.definition.nodes.map((candidate) => candidate.id === node.id && candidate.type === "script" && JSON.stringify([candidate.code, candidate.inputs]) === key ? { ...candidate, outputs: result.issues.length ? [] : result.outputs } : candidate) } } : current);
       }).catch(() => {
-        if (scriptAnalysis.current.get(node.id) === key) scriptAnalysis.current.set(node.id, `${key}:failed`);
+        if (scriptAnalysis.current.get(node.id) === key) {
+          scriptAnalysis.current.set(node.id, `${key}:failed`);
+          setAnalysisIssues((current) => ({ ...current, [node.id]: [{ message_key: "workflowEditor.validation.scriptAnalysisFailed" }] }));
+        }
       });
     }
     for (const id of scriptAnalysis.current.keys()) if (!state.definition.nodes.some((node) => node.id === id)) scriptAnalysis.current.delete(id);
@@ -476,8 +481,9 @@ export function EditorPage() {
     const add = (nodeId: string, issue: ValidationIssue) => { (messages[nodeId] ??= []).push(translateIssue(issue)); };
     for (const [nodeId, issues] of Object.entries(validation?.nodeErrors ?? {})) for (const issue of issues) add(nodeId, issue);
     for (const [nodeId, issues] of Object.entries(serverIssues.nodeErrors)) for (const issue of issues) add(nodeId, issue);
+    for (const [nodeId, issues] of Object.entries(analysisIssues)) for (const issue of issues) add(nodeId, issue);
     return messages;
-  }, [serverIssues, translateIssue, validation]);
+  }, [analysisIssues, serverIssues, translateIssue, validation]);
 
   // Activation choices come from the server listing (newest first), so every
   // published version stays selectable after a reload; the just-published one

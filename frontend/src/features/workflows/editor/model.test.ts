@@ -26,6 +26,13 @@ describe("workflow editor model", () => {
     const original = state([...nodes]);
     expect(serializeWorkflow(deserializeWorkflow(original.definition, original.layout))).toEqual(original.definition);
   });
+  it("normalizes graph-derived inputs on load, preserves phases, and preserves ordered producer outputs", () => {
+    const definition = { ...state([nodes[0], { ...(nodes[1] as Extract<WorkflowNode, { type: "script" }>), inputs: ["stale"], outputs: ["a", "b"] }, { ...(nodes[2] as Extract<WorkflowNode, { type: "http" }>), inputs: ["stale"] }, nodes[6]], [{ from: "start", to: "script" }, { from: "script", to: "end" }, { from: "start", to: "end" }]).definition, phases: [{ id: "phase-1" }] };
+    const loaded = deserializeWorkflow(definition);
+    expect((loaded.definition.nodes.find((n) => n.id === "script") as Extract<WorkflowNode, { type: "script" }>).inputs).toEqual([]);
+    expect((loaded.definition.nodes.find((n) => n.id === "end") as Extract<WorkflowNode, { type: "end" }>).inputs).toEqual(["a", "b"]);
+    expect(serializeWorkflow(loaded)).toMatchObject({ phases: definition.phases });
+  });
   it("keeps canvas layout and selection separate from serialized definitions", () => {
     const original = state();
     const editor = deserializeWorkflow(original.definition, original.layout);

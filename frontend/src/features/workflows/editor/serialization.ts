@@ -1,4 +1,5 @@
 import type { WorkflowDefinition, WorkflowEditorState } from "./model";
+import { deriveInputs } from "./model";
 
 export function serializeWorkflow(state: WorkflowEditorState): WorkflowDefinition {
   const ids = new Set<string>();
@@ -39,5 +40,5 @@ export function deserializeWorkflow(definition: WorkflowDefinition, layout?: Wor
   const edges = new Map<string, { from: string; to: string }>();
   for (const edge of definition.edges) { const from = retained.get(edge.from) ?? edge.from, to = retained.get(edge.to) ?? edge.to; if (present.has(from) && present.has(to)) edges.set(`${from}->${to}`, { from, to }); }
   const cleanDefinition = { ...structuredClone(definition), nodes, edges: [...edges.values()] };
-  return { definition: cleanDefinition, layout: { positions: Object.fromEntries(Object.entries(positions).filter(([id]) => present.has(id))), viewport: layout?.viewport ?? { x: 0, y: 0, zoom: 1 } }, selection: { nodeIds: [] } };
+  return deriveInputs({ definition: cleanDefinition, layout: { positions: Object.fromEntries(Object.entries(positions).filter(([id]) => present.has(id))), viewport: layout?.viewport ?? { x: 0, y: 0, zoom: 1 } }, selection: { nodeIds: [] } });
 }

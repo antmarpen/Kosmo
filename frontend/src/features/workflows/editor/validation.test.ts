@@ -13,6 +13,16 @@ function withRaw(node: WorkflowNode, patch: Record<string, unknown>): WorkflowNo
 }
 
 describe("client-side workflow validation", () => {
+  it("reports duplicate artifact names from direct producers on the receiving node", () => {
+    const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [
+      { type: "start", id: "s", input_form: [] },
+      { type: "script", id: "a", code: "x", inputs: [], outputs: ["shared"] },
+      { type: "script", id: "b", code: "x", inputs: [], outputs: ["shared"] },
+      { type: "end", id: "e", inputs: [] },
+    ], edges: [{ from: "s", to: "e" }, { from: "a", to: "e" }, { from: "b", to: "e" }] });
+    expect(validateWorkflow(state).nodeErrors.e).toContainEqual({ message_key: "workflowEditor.validation.duplicateProducer" });
+    expect((state.definition.nodes.find((node) => node.id === "e") as Extract<WorkflowNode, { type: "end" }>).inputs).toEqual(["shared"]);
+  });
   it("returns catalog-keyed issues located per node, not English strings", () => {
     const state = stateWith(["start", "script", "end"], [{ from: "start-0", to: "script-1" }, { from: "script-1", to: "end-2" }]);
     const result = validateWorkflow(state);

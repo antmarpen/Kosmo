@@ -34,6 +34,21 @@ export function validateWorkflow(state: WorkflowEditorState): ValidationResult {
   const ends = nodes.filter((node) => node.type === "end");
   if (!ends.length) globalErrors.push({ message_key: "workflowEditor.validation.endRequired" });
   const ids = new Set<string>();
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  for (const node of nodes) {
+    const producers = new Set<string>();
+    for (const raw of edges) {
+      const edge = record(raw);
+      if (edge.to !== node.id) continue;
+      const source = byId.get(str(edge.from));
+      const outputs = source?.type === "start" ? source.input_form.map((field) => field.name) : source && "outputs" in source ? source.outputs : [];
+      for (const name of outputs) {
+        if (producers.has(name)) { add(node.id, { message_key: "workflowEditor.validation.duplicateProducer" }); break; }
+        producers.add(name);
+      }
+      if (nodeErrors[node.id]?.some((issue) => issue.message_key === "workflowEditor.validation.duplicateProducer")) break;
+    }
+  }
   for (const node of nodes) {
     if (ids.has(node.id)) add(node.id, { message_key: "workflowEditor.validation.duplicateNodeId" });
     ids.add(node.id);
