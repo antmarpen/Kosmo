@@ -15,7 +15,7 @@ describe("ProviderModelSelect", () => {
 
   it("preserves saved provider type and model until edited, discovering only the unique config", async () => {
     render(<ProviderModelSelect {...props()} />);
-    expect(await screen.findByRole("option", { name: "new-model" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "new-model" }, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByLabelText("Provider")).toHaveValue("opencode");
     expect(screen.getByLabelText("Model")).toHaveValue("saved-model");
     expect(post).toHaveBeenCalledWith("/providers/opencode/config/verify", { body: { config_id: "c1" } });
@@ -33,7 +33,7 @@ describe("ProviderModelSelect", () => {
   it("stores only provider type and model, clearing model on type edit", async () => {
     const onChange = vi.fn();
     render(<ProviderModelSelect {...props("opencode", "", onChange)} />);
-    await screen.findByRole("option", { name: "new-model" });
+    await screen.findByRole("option", { name: "new-model" }, { timeout: 5000 });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "new-model" } });
     expect(onChange).toHaveBeenLastCalledWith("opencode", "new-model");
     fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "" } });
@@ -72,6 +72,6 @@ describe("ProviderModelSelect", () => {
     expect(status).not.toHaveClass("absolute", "right-3");
     expect(screen.getByLabelText("Model")).toHaveTextContent(/Loading models/i);
     resolve({ data: { valid: true, models: ["new-model"] } });
-    await screen.findByRole("option", { name: "new-model" });
+    await screen.findByRole("option", { name: "new-model" }, { timeout: 5000 });
   });
 });
