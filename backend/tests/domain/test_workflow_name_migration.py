@@ -146,7 +146,7 @@ def test_0020_replaces_exact_name_uniqueness_with_case_insensitive_uniqueness():
             long_name.lower(),    # case-insensitive sibling of the long name
         ])
 
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
 
         # Deterministic, non-destructive backfill: the first row (by id) of
         # each duplicate group keeps its name, later siblings take the first
@@ -216,7 +216,7 @@ def test_0020_replaces_exact_name_uniqueness_with_case_insensitive_uniqueness():
         assert len(_workflow_names(database_url)) == 6
 
         # ...and the upgrade applies again on the downgraded database.
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
         assert "uq_workflows_name_ci" in _index_names(database_url)
         assert "workflows_name_key" not in _constraint_names(database_url)
     finally:

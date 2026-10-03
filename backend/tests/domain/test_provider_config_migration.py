@@ -137,7 +137,7 @@ def test_0018_adds_purpose_and_verification_success_state():
         user_id = str(uuid.uuid4())
         _insert_legacy_candidate_operation(database_url, user_id)
 
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
         columns = {row["column_name"]: row for row in _fetch(
             database_url,
             "SELECT column_name, is_nullable, data_type FROM information_schema.columns "
@@ -155,7 +155,7 @@ def test_0018_adds_purpose_and_verification_success_state():
         assert "purpose" not in _candidate_operation_columns(database_url)
         assert "verification_succeeded" not in _candidate_operation_columns(database_url)
 
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
         assert "purpose" in _candidate_operation_columns(database_url)
         assert "verification_succeeded" in _candidate_operation_columns(database_url)
     finally:
@@ -192,7 +192,7 @@ def test_0016_drops_selected_model_and_upgrade_downgrade_roundtrips():
         subprocess.run(["uv", "run", "alembic", *arguments], cwd=BACKEND_ROOT, env=env, check=True)
 
     try:
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
         columns = _provider_config_columns(database_url)
         assert "selected_model" not in columns
         assert "verification_status" in columns
@@ -202,7 +202,7 @@ def test_0016_drops_selected_model_and_upgrade_downgrade_roundtrips():
         assert "selected_model" in columns
         assert "verification_status" in columns
 
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
         columns = _provider_config_columns(database_url)
         assert "selected_model" not in columns
         assert "verification_status" in columns
@@ -295,7 +295,7 @@ def test_0019_replaces_scope_uniqueness_with_case_insensitive_name_uniqueness():
             ("other-provider", "Team Config"),  # different provider: never a conflict
         ])
 
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
 
         # Collision-safe deterministic backfill: the first row (by id) keeps
         # the name, the case-insensitive sibling is suffixed, and the suffix
@@ -361,7 +361,7 @@ def test_0019_replaces_scope_uniqueness_with_case_insensitive_name_uniqueness():
         assert "uq_provider_configs_group_provider" in _index_names(database_url)
 
         # Round-trip: the migration applies again on the downgraded database.
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
         assert "uq_provider_config_owner_provider_name_ci" in _index_names(database_url)
     finally:
         asyncio.run(cleanup())
@@ -404,7 +404,7 @@ def test_0019_downgrade_refuses_to_merge_same_scope_instances():
         _insert_named_provider_configs(database_url, [
             ("opencode", "Alpha"), ("opencode", "Beta"),
         ])
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
 
         refused = alembic("downgrade", "0018_candidate_operation_purpose", check=False)
         assert refused.returncode != 0
@@ -470,7 +470,7 @@ def test_0019_backfill_suffixes_overlength_duplicates_within_column_limit():
 
         # Regression: the backfill used to append " (2)" to the 80-character
         # name and blew past the varchar(80) limit, failing the upgrade.
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
 
         rows = _fetch(database_url, "SELECT id, display_name, config_ciphertext, "
                                     "verification_status, visibility, group_id "
@@ -534,7 +534,7 @@ def test_0019_backfill_skips_occupied_truncated_suffix_slot():
             ("opencode", "A" * 76 + " (2)"),  # occupies the truncated " (2)" slot
         ])
 
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
 
         # The rename truncates the base to make room for the tag and skips the
         # already-occupied " (2)" slot, landing on " (3)".
@@ -594,7 +594,7 @@ def test_0019_backfill_collision_checks_the_final_truncated_value():
             ("opencode", "a" * 79 + "z"),
         ])
 
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
 
         names = {row["id"]: row["display_name"] for row in _fetch(
             database_url, "SELECT id, display_name FROM provider_configs")}
@@ -644,7 +644,7 @@ def test_0017_adds_not_null_display_name_backfilled_from_provider():
         assert "display_name" not in _provider_config_columns(database_url)
         _insert_legacy_provider_configs(database_url)
 
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
         columns = {row["column_name"]: row["is_nullable"] for row in _fetch(
             database_url,
             "SELECT column_name, is_nullable FROM information_schema.columns "
@@ -661,7 +661,7 @@ def test_0017_adds_not_null_display_name_backfilled_from_provider():
         alembic("downgrade", "0016_drop_selected_model")
         assert "display_name" not in _provider_config_columns(database_url)
 
-        alembic("upgrade", "head")
+        alembic("upgrade", "0020_workflow_name_ci")
         assert "display_name" in _provider_config_columns(database_url)
     finally:
         asyncio.run(cleanup())
