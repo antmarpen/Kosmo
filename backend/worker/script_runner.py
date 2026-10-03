@@ -122,6 +122,8 @@ def _validate_returns(source: str, inputs: list[str], outputs: list[str]) -> Non
     Visitor().visit(function)
     if any(signature != tuple(outputs) for signature in returns):
         raise ValueError("Return names do not match declared outputs")
+    if outputs and not returns:
+        raise ValueError("Declared outputs require a return")
     if not outputs and returns:
         raise ValueError("Unexpected returned values")
 

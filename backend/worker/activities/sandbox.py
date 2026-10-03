@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -6,7 +7,7 @@ from pathlib import Path
 from temporalio import activity
 from shared.paths import safe_path
 
-from worker.activities.artifacts import artifact_digest, output_media_type, validate_output
+from worker.activities.artifacts import artifact_digest, validate_output
 
 TASK_STORAGE_ROOT = Path(os.getenv("KOSMO_TASK_STORAGE_ROOT", "/var/lib/kosmo/tasks"))
 SANDBOX_IMAGE = os.getenv("KOSMO_SANDBOX_IMAGE", "kosmo-sandbox:local")
@@ -36,19 +37,31 @@ async def run_script(payload):
     output = safe_path(workspace, "output")
     output.mkdir(parents=True, exist_ok=True)
     output.chmod(0o777)
-    input_dir = workspace / "inputs"
+    input_dir = safe_path(workspace, "inputs")
     input_dir.mkdir(exist_ok=True)
-    env = {}
-    for key, value in inputs.items():
-        if key == "topic":
-            env["KOSMO_INPUT_TOPIC"] = str(value)
-        elif isinstance(value, dict) and value.get("storage_path"):
-            source = safe_path(base, value["storage_path"])
-            target = input_dir / source.name
+    input_names = list(node.get("inputs", []))
+    staged = {}
+    for index, name in enumerate(input_names):
+        value = inputs.get(name)
+        if isinstance(value, dict) and value.get("storage_path"):
+            source = Path(value["storage_path"]).resolve(strict=True)
+            if not source.is_file() or source.is_symlink():
+                raise ValueError("Invalid script input artifact")
+            media_type = value.get("media_type")
+            if not isinstance(media_type, str):
+                raise ValueError("Invalid script input media type")
+            target = safe_path(input_dir, f"input-{index}")
             target.write_bytes(source.read_bytes())
-            env[f"KOSMO_INPUT_ARTIFACT_{key.upper().replace('-', '_')}"] = f"/workspace/inputs/{target.name}"
-    env.update({f"KOSMO_OUTPUT_{name.upper().replace('.', '_').replace('-', '_')}": f"/workspace/output/{name}" for name in node["outputs"]})
-    env["KOSMO_OUTPUT_DIR"] = "/workspace/output"
+            staged[name] = {"media_type": media_type, "path": f"/workspace/inputs/{target.name}"}
+        else:
+            if isinstance(value, dict):
+                raise ValueError("Invalid script input")
+            target = safe_path(input_dir, f"input-{index}")
+            target.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+            staged[name] = {"media_type": "application/json", "path": f"/workspace/inputs/{target.name}"}
+    descriptor = safe_path(workspace, "descriptor.json")
+    descriptor.write_text(json.dumps({"source": node.get("code"), "input_names": input_names,
+        "inputs": staged, "output_names": node["outputs"], "output_dir": "/workspace/output"}), encoding="utf-8")
     client = docker.from_env()
     container = None
     try:
@@ -59,7 +72,7 @@ async def run_script(payload):
                                subpath=f"{task_id}/sandbox/{node['id']}/{payload.get('iteration', 0)}-{payload.get('attempt', 1)}/output"),
         ]
         container = client.containers.create(
-            SANDBOX_IMAGE, command=["-c", node["code"]], environment=env,
+            SANDBOX_IMAGE, command=["python", "/opt/kosmo/script_runner.py", "/workspace/descriptor.json"],
             network_mode="none", user="10001:10001", mem_limit="256m", nano_cpus=1_000_000_000,
             read_only=True, tmpfs={"/tmp": "rw,noexec,nosuid,size=16m"},
             mounts=mounts,
@@ -73,10 +86,19 @@ async def run_script(payload):
             await asyncio.to_thread(container.kill)
             return {"state": "failed", "error": {"code": "SCRIPT_TIMEOUT", "message_key": "errors.script.timeout", "params": {"seconds": SANDBOX_TIMEOUT_SECONDS}}}
         if result.get("StatusCode") != 0:
-            logger.error("Sandbox script exited unsuccessfully", extra={"task_id": task_id, "node_id": node["id"], "exit_code": result.get("StatusCode"), "output": (await asyncio.to_thread(container.logs)).decode("utf-8", errors="replace")[-300:]})
-            return script_failure(result.get("StatusCode"))
-        for name in node["outputs"]:
-            validate_output(safe_path(output, name), output_media_type(name))
+            logger.error("Sandbox script exited unsuccessfully", extra={"task_id": task_id, "node_id": node["id"], "exit_code": result.get("StatusCode")})
+            failure = script_failure(result.get("StatusCode"))
+            if len(input_names) == 1:
+                failure["error"]["params"]["input"] = input_names[0]
+            return failure
+        manifest_path = safe_path(output, "manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict) or set(manifest) != set(node["outputs"]):
+            raise ValueError("Invalid script output manifest")
+        for name, media_type in manifest.items():
+            if media_type not in {"text/plain", "application/json"}:
+                raise ValueError("Invalid script output media type")
+            validate_output(safe_path(output, name), media_type)
         from app.core.db import AsyncSessionLocal
         from app.domain.artifacts.repository import ArtifactRepository
         artifact_dir = safe_path(base, f'artifacts/{node["id"]}') / f'{payload.get("iteration", 0)}-{payload.get("attempt", 1)}'
@@ -91,9 +113,9 @@ async def run_script(payload):
                 target.write_bytes(source.read_bytes())
                 row = await repo.create(task_id=task_id, node_id=node["id"], logical_name=name,
                     iteration=payload.get("iteration", 0), attempt=payload.get("attempt", 1),
-                    media_type=output_media_type(name), size=target.stat().st_size,
+                media_type=manifest[name], size=target.stat().st_size,
                     sha256=artifact_digest(target), storage_path=str(target))
-                refs[name] = {"id": row.id, "storage_path": str(target), "sha256": row.sha256, "media_type": row.media_type}
+                refs[name] = {"id": row.id, "storage_path": str(target), "sha256": row.sha256, "media_type": manifest[name]}
             await db.commit()
         return {"state": "success", "outputs": refs, "error": None}
     except (ValueError, docker.errors.DockerException) as exc:
