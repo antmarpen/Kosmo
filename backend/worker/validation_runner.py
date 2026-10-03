@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
-import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -68,14 +69,15 @@ async def run_rule(
     docker_module = docker_module or docker
     client = client or await asyncio.to_thread(docker_module.from_env)
     image = image or os.getenv("KOSMO_SANDBOX_IMAGE", "kosmo-sandbox:local")
-    temp_context = tempfile.TemporaryDirectory(prefix="kosmo-validation-") if workspace is None else None
-    root = Path(temp_context.name if temp_context else workspace).resolve()
+    storage_root = Path(workspace or os.getenv("KOSMO_TASK_STORAGE_ROOT", "/var/lib/kosmo/tasks")).resolve()
+    root = storage_root / "validation" / uuid.uuid4().hex
     request, result_dir = root / "request", root / "result"
     request.mkdir(parents=True, exist_ok=True)
     result_dir.mkdir(parents=True, exist_ok=True)
     descriptor = request / "descriptor.json"
     result_path = result_dir / "result.json"
     result_path.unlink(missing_ok=True)
+    os.chmod(result_dir, 0o777)
     descriptor.write_text(json.dumps({"rules": rules, "value": value, "content": content,
                                      "result_path": "/result/result.json"}, allow_nan=False), encoding="utf-8")
     os.chmod(request, 0o555)
@@ -83,8 +85,10 @@ async def run_rule(
     container = None
     try:
         mounts = [
-            docker_module.types.Mount(target="/request", source=str(request), type="bind", read_only=True),
-            docker_module.types.Mount(target="/result", source=str(result_dir), type="bind", read_only=False),
+            docker_module.types.Mount(target="/request", source=os.getenv("KOSMO_TASK_STORAGE_VOLUME", "task-storage"),
+                                      type="volume", read_only=True, subpath=f"validation/{root.name}/request"),
+            docker_module.types.Mount(target="/result", source=os.getenv("KOSMO_TASK_STORAGE_VOLUME", "task-storage"),
+                                      type="volume", read_only=False, subpath=f"validation/{root.name}/result"),
         ]
         container = client.containers.create(
             image, command=["/opt/kosmo/validation_runner.py", "/request/descriptor.json"],
@@ -109,8 +113,7 @@ async def run_rule(
                 await asyncio.to_thread(container.remove, force=True)
             except Exception:
                 pass
-        if temp_context is not None:
-            temp_context.cleanup()
+        shutil.rmtree(root, ignore_errors=True)
 
 
 if __name__ == "__main__":

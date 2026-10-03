@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -54,11 +55,14 @@ def test_missing_fresh_result_fails_closed_even_if_workspace_has_old_result(tmp_
     assert result == {"passed": False, "reason": "invalid_result"}
 
 
-def test_docker_runner_uses_python_entrypoint_and_restrictive_mounts(tmp_path):
+def test_docker_runner_uses_shared_volume_subpaths_and_restrictive_mounts(tmp_path, monkeypatch):
+    monkeypatch.setenv("KOSMO_TASK_STORAGE_ROOT", str(tmp_path))
+    monkeypatch.setenv("KOSMO_TASK_STORAGE_VOLUME", "task-storage")
     class Container:
         def start(self): pass
         def wait(self, timeout):
-            result_path = tmp_path / "result" / "result.json"
+            request_path = next((tmp_path / "validation").glob("*/request/descriptor.json"))
+            result_path = request_path.parent.parent / "result" / "result.json"
             result_path.write_text('{"passed":true,"reason":"passed"}', encoding="utf-8")
             return {"StatusCode": 0}
         def remove(self, force): self.removed = force
@@ -70,6 +74,10 @@ def test_docker_runner_uses_python_entrypoint_and_restrictive_mounts(tmp_path):
             assert kwargs["network_mode"] == "none" and kwargs["read_only"] is True
             assert kwargs["user"] == "10001:10001"
             assert len(kwargs["mounts"]) == 2
+            assert all(mount.kwargs["type"] == "volume" for mount in kwargs["mounts"])
+            assert all(mount.kwargs["source"] == "task-storage" for mount in kwargs["mounts"])
+            assert kwargs["mounts"][0].kwargs["read_only"] is True
+            assert kwargs["mounts"][1].kwargs["read_only"] is False
             return container
     class Client:
         containers = Containers()
@@ -104,7 +112,29 @@ def test_docker_timeout_kills_and_always_removes_container(tmp_path):
 
 
 @pytest.mark.docker
-def test_real_sandbox_rule_cannot_access_network_or_unmounted_paths(tmp_path):
+@pytest.mark.parametrize(("body", "timeout", "expected"), [
+    ("return True", 5, {"passed": True, "reason": "passed"}),
+    ("return False", 5, {"passed": False, "reason": "rule_failed"}),
+    ("raise RuntimeError('rule failure')", 5, {"passed": False, "reason": "execution_error"}),
+    ("import time\ntime.sleep(30)\nreturn True", 1, {"passed": False, "reason": "timeout"}),
+])
+def test_real_sandbox_rule_outcomes_from_worker(body, timeout, expected):
+    if os.name == "nt" or not Path("/var/lib/kosmo/tasks").is_dir():
+        pytest.skip("Live Docker sandbox proofs must run inside the Compose worker")
+    import docker
+    client = docker.from_env()
+    try:
+        client.images.get("kosmo-sandbox:local")
+    except docker.errors.ImageNotFound:
+        pytest.skip("Build kosmo-sandbox:local to run sandbox proof")
+    assert asyncio.run(run_rule(body, {"ok": True}, "content", client=client,
+                                image="kosmo-sandbox:local", timeout_seconds=timeout)) == expected
+
+
+@pytest.mark.docker
+def test_real_sandbox_rule_cannot_access_network_or_unmounted_paths():
+    if os.name == "nt" or not Path("/var/lib/kosmo/tasks").is_dir():
+        pytest.skip("Live Docker sandbox proofs must run inside the Compose worker")
     import docker
     client = docker.from_env()
     try:
@@ -128,8 +158,9 @@ except OSError:
 return (os.geteuid() != 0 and not Path('/request/unrelated-task-secret').exists()
         and not Path('/workspace/unrelated-task-secret').exists())
 """
-    result = asyncio.run(run_rule(body, {"ok": True}, "content", client=client, image="kosmo-sandbox:local",
-                                  workspace=tmp_path))
+    result = asyncio.run(run_rule(
+        body, {"ok": True}, "content", client=client, image="kosmo-sandbox:local"
+    ))
     assert result == {"passed": True, "reason": "passed"}
 
 
