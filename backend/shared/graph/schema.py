@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SAFE_IDENTIFIER = r"^[a-zA-Z0-9._-]{1,64}$"
 SafeIdentifier = Annotated[str, Field(pattern=SAFE_IDENTIFIER)]
@@ -16,6 +16,7 @@ class FormField(ContractModel):
     name: str = Field(pattern=SAFE_IDENTIFIER)
     type: Literal["string", "number", "boolean"]
     required: bool
+    validation: "ValidationContract | None" = None
 
 
 class StartNode(ContractModel):
@@ -24,14 +25,30 @@ class StartNode(ContractModel):
     input_form: list[FormField]
 
 
-class ValidationLevel(ContractModel):
+class LegacyValidationLevel(ContractModel):
     name: str
     message_key: str
     params_schema: dict
 
 
 class ValidationContract(ContractModel):
-    levels: list[ValidationLevel] = Field(min_length=3, max_length=3)
+    """Canonical validation configuration. Legacy ``levels`` are read separately."""
+    format: Literal["text", "markdown", "json", "yaml"]
+    json_schema: bool | dict | None = None
+    rules_code: str | None = None
+
+    @model_validator(mode="after")
+    def validate_format_options(self):
+        if self.format in {"text", "markdown"} and (self.json_schema is not None or self.rules_code is not None):
+            raise ValueError("text and markdown validation are parse-only")
+        if self.format == "yaml" and self.json_schema is not None:
+            raise ValueError("YAML does not support JSON Schema")
+        return self
+
+
+class LegacyValidationContract(ContractModel):
+    """Isolated shape for reading historical C3 contracts only."""
+    levels: list[LegacyValidationLevel] = Field(min_length=3, max_length=3)
 
 
 class ScriptNode(ContractModel):

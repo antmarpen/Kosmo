@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from shared.graph.schema import WorkflowDefinition
-from shared.graph.output_contract import normalize_output_validation
+from shared.graph.output_contract import normalize_output_validation, normalize_validation_contracts
 
 
 def valid_definition():
@@ -52,11 +52,15 @@ def test_schema_requires_exactly_three_output_validation_levels():
 
 def test_legacy_ai_contract_is_copied_to_each_output_without_aliasing():
     value = valid_definition()
-    legacy = {"levels": [{"name": str(i), "message_key": "x", "params_schema": {"nested": []}} for i in range(3)]}
+    legacy = {"levels": [
+        {"name": "parse", "message_key": "x", "params_schema": {"format": "json"}},
+        {"name": "structure", "message_key": "x", "params_schema": {"required_keys": ["id"]}},
+        {"name": "rules", "message_key": "x", "params_schema": {}},
+    ]}
     value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": ["a", "b"], "validation": legacy}
     normalized = normalize_output_validation(value)
-    normalized["nodes"][1]["output_validation"]["a"]["levels"][0]["params_schema"]["nested"].append("changed")
-    assert normalized["nodes"][1]["output_validation"]["b"]["levels"][0]["params_schema"]["nested"] == []
+    normalized["nodes"][1]["output_validation"]["a"]["json_schema"]["required"].append("changed")
+    assert normalized["nodes"][1]["output_validation"]["b"]["json_schema"]["required"] == ["id"]
     assert "validation" not in normalized["nodes"][1]
 
 
@@ -69,11 +73,11 @@ def test_legacy_ai_without_outputs_is_preserved_as_draft_extension():
     assert WorkflowDefinition.model_validate(normalized).model_dump(mode="json")["nodes"][1].get("validation") is None
 
 
-def test_legacy_and_new_contract_conflict_raises_keyed_error():
+def test_legacy_and_new_contract_conflict_returns_keyed_issue():
     value = valid_definition()
     value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": ["a"], "validation": {}, "output_validation": {}}
-    with pytest.raises(ValueError, match="errors.graph.output_validation_conflict"):
-        normalize_output_validation(value)
+    _, issues = normalize_validation_contracts(value)
+    assert issues[0]["key"] == "errors.graph.output_validation_conflict"
 
 
 def test_schema_has_output_validation_only_on_contract_output_nodes():
