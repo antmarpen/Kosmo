@@ -296,12 +296,15 @@ Verification: **backend 403 passed / 42 skipped**; frontend **346 passed**, buil
 
 Environment fixes required by the new deps: `jsonschema` (and the evaluator deps) must be synced inside the backend container (`uv sync`), and `@radix-ui/react-popover` inside the frontend container (`pnpm install`); a missing container dep had crashed the API/app.
 
-- **WP-22 — PARTIAL.** E2E phase-2 (after syncing `jsonschema` into the
-  container and fixing the authoring journey's markdown expectation):
-  **authoring** and **publish-mode** journeys pass; **launch** fails because the
-  task stays `running` past the 240 s terminal-state timeout (needs a longer
-  timeout and/or explicit `waiting_for_input` handling); the **RR8 execution**
-  journey still needs the permission-request handling. `phase1` and the remaining
-  browser/responsive evidence are still outstanding. Commit `8e58f0f`.
-- Outstanding: finish the launch/RR8 E2E journeys, collect responsive/keyboard
-  evidence, then architecture review and documentator.
+- **WP-22 — DONE (2026-10-03).** Integrated E2E: **13 passed / 1 skipped**
+  (the credential-gated real-model journey), 5.0 min. The launch and
+  authored-execution journeys pass after: fixing the stale worker (restart to
+  register `validate_start_inputs`), fixing the worker mapper
+  (`tasks.created_by → users`, commit for `tasks/models.py`), and correcting the
+  journeys to round-2 expectations (markdown parse-only, longer timeouts,
+  `waiting_for_input` handling, `report`/`data` names). Commits: E2E journeys +
+  the mapper fix.
+- **Outstanding:** responsive/browser evidence for the modal/popover/loading
+  (768px/desktop/375px), then architecture review and documentator.
+- Environment notes: the worker does **not** hot-reload — restart it after
+  worker-module changes; new backend deps require `uv sync` in the container.
