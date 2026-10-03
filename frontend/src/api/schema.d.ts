@@ -365,6 +365,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workflows/script-analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analyze Script */
+        post: operations["analyze_script_workflows_script_analysis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workflows": {
         parameters: {
             query?: never;
@@ -658,6 +675,29 @@ export interface components {
         RefreshRequest: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /** ScriptAnalysisIssue */
+        ScriptAnalysisIssue: {
+            /** Message Key */
+            message_key: string;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ScriptAnalysisRequest */
+        ScriptAnalysisRequest: {
+            /** Code */
+            code: string;
+            /** Inputs */
+            inputs: string[];
+        };
+        /** ScriptAnalysisResponse */
+        ScriptAnalysisResponse: {
+            /** Outputs */
+            outputs: string[];
+            /** Issues */
+            issues: components["schemas"]["ScriptAnalysisIssue"][];
         };
         /** TaskCreated */
         TaskCreated: {
@@ -1567,6 +1607,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    analyze_script_workflows_script_analysis_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScriptAnalysisRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScriptAnalysisResponse"];
                 };
             };
             /** @description Validation Error */

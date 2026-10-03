@@ -71,3 +71,18 @@ class WorkflowDraftMetadata(BaseModel):
     id: str
     revision: int
     updated_at: datetime
+
+
+class ScriptAnalysisRequest(BaseModel):
+    code: str = Field(max_length=100_000)
+    inputs: list[str] = Field(max_length=64)
+
+
+class ScriptAnalysisIssue(BaseModel):
+    message_key: str
+    params: dict = Field(default_factory=dict)
+
+
+class ScriptAnalysisResponse(BaseModel):
+    outputs: list[str]
+    issues: list[ScriptAnalysisIssue]

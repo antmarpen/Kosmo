@@ -4,14 +4,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_roles
 from app.core.db import get_db
 from app.domain.workflows.repository import WorkflowRepository
-from app.domain.workflows.schemas import ActivateWorkflowRequest, CreateWorkflowRequest, PublishDraftRequest, WorkflowCreatedResponse, WorkflowDraftMetadata, WorkflowDraftResponse, WorkflowDraftSave, WorkflowResponse, WorkflowVersionResponse, WorkflowVersionSummary
+from app.domain.workflows.schemas import ActivateWorkflowRequest, CreateWorkflowRequest, PublishDraftRequest, ScriptAnalysisRequest, ScriptAnalysisResponse, WorkflowCreatedResponse, WorkflowDraftMetadata, WorkflowDraftResponse, WorkflowDraftSave, WorkflowResponse, WorkflowVersionResponse, WorkflowVersionSummary
 from app.domain.workflows.service import WorkflowService
+from shared.graph.script_contract import analyze_script_body
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 
 def service(db: AsyncSession) -> WorkflowService:
     return WorkflowService(WorkflowRepository(db))
+
+
+@router.post("/script-analysis", response_model=ScriptAnalysisResponse,
+             dependencies=[Depends(require_roles("admin", "builder"))])
+async def analyze_script(body: ScriptAnalysisRequest, _user=Depends(get_current_user)) -> ScriptAnalysisResponse:
+    analysis = analyze_script_body(body.code, body.inputs)
+    return ScriptAnalysisResponse(
+        outputs=list(analysis.outputs),
+        issues=[{"message_key": issue.message_key, "params": issue.params} for issue in analysis.issues],
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=WorkflowCreatedResponse, dependencies=[Depends(require_roles("admin", "builder"))])
