@@ -156,7 +156,7 @@ def validate_workflow(definition: WorkflowDefinition, workflow_exists: Callable[
             _check_snapshot(node, list(analysis.outputs), "outputs", issues)
         if isinstance(node, HttpNode):
             _check_snapshot(node, ["response"], "outputs", issues)
-        if isinstance(node, AiNode) and len(node.validation.levels) != 3:
+        if isinstance(node, AiNode) and node.validation is not None and len(node.validation.levels) != 3:
             issues.append(_detail("ai_validation_level_count", node_id=node.id, count=len(node.validation.levels)))
     if issues: raise ValidationFailedError("errors.workflow.invalid", details=issues)
 

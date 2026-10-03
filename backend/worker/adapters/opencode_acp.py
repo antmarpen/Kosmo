@@ -86,7 +86,17 @@ class OpenCodeACPAdapter:
         self._available_models = [option["value"] for option in (model_option or {}).get("options", [])
                                   if isinstance(option, dict) and isinstance(option.get("value"), str)]
         model = cfg.get("model", "default") if isinstance(cfg, dict) else "default"
-        if model != "default":
+        if not isinstance(model, str) or not model.strip() or model == "default":
+            if model_option is None:
+                raise ValueError("workflow.agent.model_default_unavailable")
+            model = model_option.get("currentValue")
+            allowed = {option.get("value") for option in (model_option.get("options") or []) if isinstance(option, dict)}
+            if not isinstance(model, str) or not model.strip() or model not in allowed:
+                raise ValueError("workflow.agent.model_default_unavailable")
+            await self._transport.request("session/set_config_option", {
+                "sessionId": self._session_id, "configId": model_option["id"], "value": model,
+            })
+        else:
             if model_option is None:
                 raise RuntimeError("OpenCode ACP session does not advertise model selection")
             allowed = {option.get("value") for option in (model_option.get("options") or [])}

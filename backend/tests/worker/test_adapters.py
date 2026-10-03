@@ -16,7 +16,9 @@ class ScriptedTransport:
         if method == "initialize":
             return {"protocolVersion": 1, "agentCapabilities": {}}
         if method == "session/new":
-            return {"sessionId": "session-1", "configOptions": getattr(self, "config_options", [])}
+            return {"sessionId": "session-1", "configOptions": getattr(self, "config_options", [
+                {"id": "model", "currentValue": "provider/current", "options": [{"value": "provider/current"}]}
+            ])}
         if method == "session/prompt":
             return {"stopReason": "end_turn"}
         return {}
@@ -44,7 +46,7 @@ def test_session_start_and_prompt_speak_acp():
         await adapter.send_prompt("Hello")
         await asyncio.sleep(0)
         assert session.id == "session-1"
-        assert [method for method, _ in transport.sent] == ["initialize", "session/new", "session/prompt"]
+        assert [method for method, _ in transport.sent] == ["initialize", "session/new", "session/set_config_option", "session/prompt"]
     asyncio.run(run())
 
 
@@ -422,13 +424,23 @@ def test_session_new_uses_container_path_and_applies_model_config_option():
     asyncio.run(run())
 
 
-def test_default_model_leaves_opencode_session_default_unchanged():
+def test_default_model_explicitly_selects_advertised_current_model():
     async def run():
         transport = ScriptedTransport()
-        transport.config_options = [{"id": "model", "currentValue": "provider/default"}]
+        transport.config_options = [{"id": "model", "currentValue": "provider/current", "options": [{"value": "provider/current"}]}]
         adapter = OpenCodeACPAdapter(transport, output_dir="/host/path", session_cwd="/workspace")
         await adapter.start_session({"model": "default"})
-        assert [method for method, _ in transport.sent] == ["initialize", "session/new"]
+        assert transport.sent[-1] == ("session/set_config_option", {"sessionId": "session-1", "configId": "model", "value": "provider/current"})
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("current_value, options", [(None, []), ("", [{"value": "provider/model"}]), ("not-listed", [{"value": "provider/model"}])])
+def test_default_model_fails_when_current_model_is_missing_or_unusable(current_value, options):
+    async def run():
+        transport = ScriptedTransport()
+        transport.config_options = [{"id": "model", "currentValue": current_value, "options": options}]
+        with pytest.raises(ValueError, match="workflow.agent.model_default_unavailable"):
+            await OpenCodeACPAdapter(transport).start_session({"model": "default"})
     asyncio.run(run())
 
 
@@ -534,7 +546,9 @@ def test_permission_request_is_serviced_while_prompt_is_pending():
             if method == "initialize":
                 return {"protocolVersion": 1}
             if method == "session/new":
-                return {"sessionId": "interactive-session"}
+                return {"sessionId": "interactive-session", "configOptions": [
+                    {"id": "model", "currentValue": "provider/current", "options": [{"value": "provider/current"}]}
+                ]}
             if method == "session/prompt":
                 await self.inbound.put({
                     "jsonrpc": "2.0", "id": 47, "method": "session/request_permission",

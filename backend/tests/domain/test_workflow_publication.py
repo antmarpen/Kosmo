@@ -433,7 +433,9 @@ def test_seed_reference_workflow_definition_has_required_shape():
     assert [node.type for node in seed.nodes] == ["start", "script", "ai", "end"]
     assert seed.nodes[2].outputs == ["summary.md"]
     assert seed.nodes[2].max_validation_cycles == 3
-    assert len(seed.nodes[2].validation.levels) == 3
+    validation = seed.nodes[2].output_validation["summary.md"]
+    assert len(validation.levels) == 3
+    assert validation.levels[2].params_schema["input_artifact"] == "report"
 
 
 def test_seed_is_idempotent_when_reference_workflow_already_exists():
@@ -443,6 +445,7 @@ def test_seed_is_idempotent_when_reference_workflow_already_exists():
     asyncio.run(ensure_reference_workflow(repository))
     asyncio.run(ensure_reference_workflow(repository))
     assert len(repository.versions["reference-security-analysis"]) == 1
+    assert repository.versions["reference-security-analysis"][0]["definition"]["nodes"][2]["output_validation"]["summary.md"]["levels"][2]["params_schema"]["input_artifact"] == "report"
 
 
 def test_list_published_versions_reports_active_metadata_newest_first():
