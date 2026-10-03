@@ -38,8 +38,14 @@ Kosmo has successfully completed the Phase 1 — Foundations and Execution Proof
     - 5-minute recent-publication confirmation.
     - Scoped provider visibility (personal, group, or global).
     - Credential and configuration contents are hidden from non-owners.
-- **Phase 2 Remediation**:
-  - Successfully resolved RR1–RR8 and AR-01/AR-02 findings, including the SSE reconciliation fix.
+- **Workflow Editor Round-2 Validation & AR3 Remediation**:
+  - **Per-output Validation Contract**: Discriminated by `format` (`text`/`markdown` parse-only; `json` with JSON Schema Draft 2020-12 + optional Python rules; `yaml` with standard YAML + optional Python rules). No "automatic" validation.
+  - **Python Rules**: Run as function bodies in an isolated sandbox (non-root, no network, read-only rootfs, resource limits); failures fail closed; blocking semantics (a failed configured check blocks persistence/checkpoints).
+  - **Start Inputs**: Validated at submission and at execution; typed numeric/boolean values validated.
+  - **Validation Infrastructure**: Shared async validation gateway with a worker probe; API has no Docker-socket access.
+  - **Legacy `levels` Compatibility**: Isolated and non-destructive (no rewriting of published versions/task snapshots/checkpoints); reference seed uses the canonical contract.
+  - **AR3 Remediation**: Canonical `rules_code` dispatch; rule sandbox staged on the shared task-storage volume (works from the Compose worker); boolean JSON schemas honored/preserved; new error `workflow.agent.model_default_unavailable` and runtime default-model resolution.
+  - **Verification State**: Backend 412 passed / 49 skipped; frontend 350 passed; build green; E2E 13 passed / 1 skipped (credential-gated).
 - **Provider Instance Management (P2-09)**:
   - Provider list actions (verify, delete, edit) are now implemented.
 
@@ -54,6 +60,10 @@ Kosmo has successfully completed the Phase 1 — Foundations and Execution Proof
 - Spanish (`es`) catalog repaired and synchronized.
 - **DONE:** Provider instance management (P2-09) is now implemented.
 
+### Implementation Caveats & Residuals
+
+- **AR3-05 (Temporal Integration):** Task inputs are resolved opaquely inside activities with a Temporal patch gate. The history-secrecy and legacy-replay behavioral proof is authored but not executed because the in-process Temporal test server hangs in this sandbox; tests are opt-in (`KOSMO_TEMPORAL_INTEGRATION=1`) and must be run where the server can start (or in CI).
+
 ### Outstanding Live Proofs & Phase 2 Roadmap
 
 The following items are part of the next development cycle:
@@ -63,6 +73,13 @@ The following items are part of the next development cycle:
 - **Interaction Depth:** Human-input restart/replay, delivery idempotency evidence, and scheduling/start-retry reconciliation.
 - **Platform Features:** Notes/audit UI, Applications, and production deployment.
 - **Open Decision #11:** Workflow visibility and ownership model.
+
+## Operational Constraints
+
+- **Worker Reloading:** The worker does not hot-reload; a restart is required after changes to worker modules.
+- **Dependency Management:**
+  - New backend dependencies require `uv sync` within the container.
+  - New frontend dependencies require `pnpm install` within the container.
 
 ## Confirmed direction
 
