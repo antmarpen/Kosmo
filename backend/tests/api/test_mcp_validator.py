@@ -37,6 +37,8 @@ def scoped_token(task_id="task-1", node_id="ai-1", execution_id="execution-1"):
 
 def test_scoped_validator_accepts_unpersisted_candidate_content(monkeypatch):
     monkeypatch.setattr(settings, "jwt_secret", "test-validator-signing-secret-32-bytes")
+    async def probe(*args): return []
+    monkeypatch.setattr("app.api.routes.mcp._validation_probe", probe)
     token = scoped_token()
     app = create_app()
     app.dependency_overrides[get_db] = lambda: ValidatorDb()
@@ -53,6 +55,11 @@ def test_scoped_validator_accepts_unpersisted_candidate_content(monkeypatch):
 
 def test_scoped_validator_selects_contract_by_logical_output(monkeypatch):
     monkeypatch.setattr(settings, "jwt_secret", "test-validator-signing-secret-32-bytes")
+    async def probe(content, contract, level, logical_name):
+        assert logical_name == "notes" and contract["levels"][2]["params_schema"]["required_terms"] == ["secret"]
+        return [{"artifact": logical_name, "level": "rules", "message_key": "validation.rules",
+                 "params": {"reason": "required_terms_missing"}}]
+    monkeypatch.setattr("app.api.routes.mcp._validation_probe", probe)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: ValidatorDb()
     client = TestClient(app)

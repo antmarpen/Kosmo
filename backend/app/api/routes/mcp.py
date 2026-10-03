@@ -2,7 +2,10 @@
 
 import json
 import logging
-import tempfile
+import os
+import shutil
+import uuid
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -15,11 +18,35 @@ from app.api.deps import bearer, get_current_user
 from app.core.config import settings
 from app.core.db import get_db
 from app.domain.tasks.validator_repository import ValidatorRepository
-from app.domain.workflows.output_validation import validate_outputs
 from shared.errors import AuthError, NotFoundError, PermissionDeniedError, ValidationFailedError
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 logger = logging.getLogger(__name__)
+
+
+async def _validation_probe(content: bytes, contract: dict, level: int, logical_name: str) -> list[dict]:
+    """Stage content outside Temporal history and ask the worker to validate it."""
+    from temporalio.client import Client
+    from worker.workflows.validation_probe import ValidationProbeWorkflow
+
+    request_id = uuid.uuid4().hex
+    root = Path(os.getenv("KOSMO_TASK_STORAGE_ROOT", "/var/lib/kosmo/tasks"))
+    directory = root / "validation-probes" / request_id
+    directory.mkdir(parents=True, exist_ok=False)
+    try:
+        (directory / "candidate.bin").write_bytes(content)
+        (directory / "request.json").write_text(
+            json.dumps({"contract": contract, "level": level, "logical_name": logical_name}, allow_nan=False), encoding="utf-8"
+        )
+        client = await Client.connect(settings.temporal_host, namespace=settings.temporal_namespace)
+        result = await client.execute_workflow(
+            ValidationProbeWorkflow.run, args=[{"request_id": request_id}],
+            id=f"validation-probe-{request_id}", task_queue=settings.temporal_task_queue,
+            execution_timeout=timedelta(seconds=25),
+        )
+        return result["errors"]
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
 VALIDATOR_ISSUER = "kosmo-agent-validator"
 VALIDATOR_AUDIENCE = "kosmo-validator"
 VALIDATOR_TOOL = {
@@ -151,8 +178,8 @@ async def _validate_request(request: ValidationRequest, auth, repository: Valida
         await _authorize_task_scope(auth, repository, task_id, node_id, execution_id)
         task = await repository.get_task(task_id)
         ai_node = _ai_node(task, node_id)
-        return validate_outputs({logical_name: {"media_type": media_type}}, workspace,
-                                _contracts(ai_node), request.level)
+        source = safe_candidate_path(workspace, logical_name)
+        return await _validation_probe(source.read_bytes(), _contract(ai_node, logical_name), request.level, logical_name)
 
     task_id, node_id = request.task_id, request.node_id
     await _authorize_task_scope(auth, repository, task_id, node_id, request.node_execution_id)
@@ -163,13 +190,19 @@ async def _validate_request(request: ValidationRequest, auth, repository: Valida
     logical_path = Path(request.logical_name)
     if logical_path.is_absolute() or ".." in logical_path.parts:
         raise ValidationFailedError("errors.artifact.invalid_path")
-    with tempfile.TemporaryDirectory(prefix="kosmo-validator-") as directory:
-        workspace = Path(directory)
-        candidate = workspace / logical_path
-        candidate.parent.mkdir(parents=True, exist_ok=True)
-        candidate.write_text(request.content or "", encoding="utf-8")
-        return validate_outputs({request.logical_name: {"media_type": request.media_type}}, workspace,
-                                _contracts(ai_node), request.level)
+    return await _validation_probe((request.content or "").encode("utf-8"),
+                                   _contract(ai_node, request.logical_name), request.level, request.logical_name)
+
+
+def safe_candidate_path(workspace: Path, logical_name: str) -> Path:
+    from shared.paths import safe_path
+    return safe_path(workspace, logical_name)
+
+
+def _contract(node: dict, logical_name: str) -> dict:
+    contracts = _contracts(node)
+    contract = contracts.get(logical_name, {})
+    return contract if isinstance(contract, dict) else {}
 
 
 async def _authorize_task_scope(auth, repository: ValidatorRepository, task_id: str, node_id: str, node_execution_id: str | None = None):
