@@ -14,13 +14,9 @@ def reference_workflow_definition() -> WorkflowDefinition:
     return WorkflowDefinition.model_validate({
         "schema_version": "v1", "name": "reference-security-analysis",
         "nodes": [
-            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
-            {"type": "script", "id": "collect", "inputs": ["topic"], "outputs": ["report", "data"], "code": "report = f'# Security analysis\\n\\nTopic: {topic}\\n\\n## Findings\\n- Review the supplied topic.\\n'\ndata = {'topic': topic, 'findings': []}\nreturn report, data"},
-            {"type": "ai", "id": "summarize", "agent": {"runtime": "opencode", "model": "default", "instructions": "Summarize the report accurately; do not invent findings."}, "prompt_template": "Read report and write a concise security summary to summary.md with Overview, Findings, and Recommendations sections.", "inputs": ["report", "data"], "outputs": ["summary.md"], "max_validation_cycles": 3, "output_validation": {"summary.md": {"levels": [
-                {"name": "exists_and_parseable", "message_key": "workflow.validation.exists_parseable", "params_schema": {"format": "markdown"}},
-                {"name": "required_sections", "message_key": "workflow.validation.required_sections", "params_schema": {"required_sections": ["Overview", "Findings", "Recommendations"], "heading_levels": [1, 2]}},
-                {"name": "content_rule", "message_key": "workflow.validation.content_rule", "params_schema": {"rule_type": "supported_claims", "input_artifact": "report"}},
-            ]}}},
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "validation": {"format": "text"}}]},
+            {"type": "script", "id": "collect", "inputs": ["topic"], "outputs": ["report", "data"], "code": "report = f'# Security analysis\\n\\nTopic: {topic}\\n\\n## Findings\\n- Review the supplied topic.\\n'\ndata = {'topic': topic, 'findings': []}\nreturn report, data", "output_validation": {"data": {"format": "json", "json_schema": {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object", "required": ["topic", "findings"], "properties": {"topic": {"type": "string"}, "findings": {"type": "array"}}, "additionalProperties": False}}}},
+            {"type": "ai", "id": "summarize", "agent": {"runtime": "opencode", "model": "default", "instructions": "Summarize the report accurately; do not invent findings."}, "prompt_template": "Read report and write a concise security summary to summary.md.", "inputs": ["report", "data"], "outputs": ["summary.md"], "max_validation_cycles": 3, "output_validation": {"summary.md": {"format": "markdown"}}},
             {"type": "end", "id": "end", "inputs": ["summary.md"]},
         ], "edges": [{"from": "start", "to": "collect"}, {"from": "collect", "to": "summarize"}, {"from": "summarize", "to": "end"}],
     })
@@ -41,6 +37,22 @@ async def ensure_reference_workflow(repository) -> None:
         version = await repository.get_latest_version(workflow_id)
         if version is not None:
             await repository.activate(workflow_id, version["id"] if isinstance(version, dict) else version.id)
+
+
+async def upgrade_reference_workflow(repository):
+    """Explicitly publish the corrected reference definition without activating it."""
+    service = WorkflowService(repository)
+    definition = reference_workflow_definition()
+    await service._validate_definition(definition)
+    workflow = await repository.get_by_name(definition.name)
+    if workflow is None:
+        raise ValueError("Reference workflow does not exist; use ordinary seeding first")
+    workflow_id = workflow["id"] if isinstance(workflow, dict) else workflow.id
+    version = await repository.next_version(workflow_id)
+    graph = definition.model_dump(mode="json", by_alias=True, exclude_none=True)
+    row = await repository.create_version(workflow_id, version, graph)
+    await repository.increment_publication_revision(workflow)
+    return row
 
 
 async def seed() -> None:

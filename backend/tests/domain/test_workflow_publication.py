@@ -433,9 +433,13 @@ def test_seed_reference_workflow_definition_has_required_shape():
     assert [node.type for node in seed.nodes] == ["start", "script", "ai", "end"]
     assert seed.nodes[2].outputs == ["summary.md"]
     assert seed.nodes[2].max_validation_cycles == 3
-    validation = seed.nodes[2].output_validation["summary.md"]
-    assert len(validation.levels) == 3
-    assert validation.levels[2].params_schema["input_artifact"] == "report"
+    assert seed.nodes[0].input_form[0].validation.format == "text"
+    assert seed.nodes[1].output_validation["data"].format == "json"
+    assert seed.nodes[1].output_validation["data"].json_schema["type"] == "object"
+    assert seed.nodes[2].output_validation["summary.md"].model_dump(exclude_none=True) == {"format": "markdown"}
+    assert seed.nodes[2].agent.runtime == "opencode"
+    assert seed.nodes[2].agent.model == "default"
+    assert seed.nodes[2].inputs == ["report", "data"]
 
 
 def test_seed_is_idempotent_when_reference_workflow_already_exists():
@@ -445,7 +449,35 @@ def test_seed_is_idempotent_when_reference_workflow_already_exists():
     asyncio.run(ensure_reference_workflow(repository))
     asyncio.run(ensure_reference_workflow(repository))
     assert len(repository.versions["reference-security-analysis"]) == 1
-    assert repository.versions["reference-security-analysis"][0]["definition"]["nodes"][2]["output_validation"]["summary.md"]["levels"][2]["params_schema"]["input_artifact"] == "report"
+    stored_contract = repository.versions["reference-security-analysis"][0]["definition"]["nodes"][2]["output_validation"]["summary.md"]
+    assert stored_contract["format"] == "markdown"
+    assert stored_contract["json_schema"] is None and stored_contract["rules_code"] is None
+
+
+def test_explicit_reference_upgrade_publishes_without_activation():
+    from scripts.seed import ensure_reference_workflow, upgrade_reference_workflow
+    repository = FakeRepository()
+    asyncio.run(ensure_reference_workflow(repository))
+    original = repository.versions["reference-security-analysis"][0]["definition"]
+    asyncio.run(upgrade_reference_workflow(repository))
+    asyncio.run(ensure_reference_workflow(repository))
+    versions = repository.versions["reference-security-analysis"]
+    assert len(versions) == 2
+    assert versions[0]["definition"] == original
+    assert repository.activations["reference-security-analysis"] == versions[0]["id"]
+
+
+def test_legacy_catalogue_inventory_identifies_repair_path_without_mutation():
+    from app.domain.workflows.validation import inventory_output_validation_records
+    original = {"nodes": [{"type": "ai", "id": "legacy", "output_validation": {
+        "summary.md": {"levels": [{"name": "parse", "params_schema": {"format": "auto"}}]}
+    }}]}
+    result = inventory_output_validation_records([{"id": "version-1", "definition": original}])
+    assert result[0]["legacy_catalogue_paths"] == [{
+        "path": "nodes[0].output_validation.summary.md", "node_id": "legacy",
+        "output": "summary.md", "reason": "legacy_levels_requires_explicit_repair"}]
+    assert result[0]["repair_required"] is True
+    assert original["nodes"][0]["output_validation"]["summary.md"]["levels"][0]["params_schema"]["format"] == "auto"
 
 
 def test_list_published_versions_reports_active_metadata_newest_first():

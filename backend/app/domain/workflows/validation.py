@@ -93,18 +93,42 @@ def _validate_start_type(contract, field, issues, node_id) -> None:
 
 
 def inventory_output_validation_records(records: list[dict]) -> list[dict]:
-    """Read-only report of definitions that need manual output-contract repair."""
+    """Read-only, path-specific inventory of definitions needing contract repair."""
     report = []
     for record in records:
         definition = record.get("definition", {})
+        legacy_paths = _legacy_catalogue_paths(definition)
         try:
             normalized, _ = normalize_validation_contracts(definition)
             issues = validate_output_validation_catalogue(normalized)
         except ValueError:
             issues = [_detail("output_validation_conflict", record_id=record.get("id"))]
-        if issues:
-            report.append({"id": record.get("id"), "issues": [issue.message_key for issue in issues]})
+        if issues or legacy_paths:
+            report.append({"id": record.get("id"), "issues": [issue.message_key for issue in issues],
+                           "legacy_catalogue_paths": legacy_paths,
+                           "repair_required": bool(issues or legacy_paths)})
     return report
+
+
+def _legacy_catalogue_paths(definition: dict) -> list[dict]:
+    """Identify legacy levels contracts without mutating or interpreting them."""
+    found = []
+    for node_index, node in enumerate(definition.get("nodes", [])):
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("id")
+        for output, contract in (node.get("output_validation") or {}).items():
+            if isinstance(contract, dict) and "levels" in contract:
+                found.append({"path": f"nodes[{node_index}].output_validation.{output}",
+                              "node_id": node_id, "output": output,
+                              "reason": "legacy_levels_requires_explicit_repair"})
+        for field_index, field in enumerate(node.get("input_form", [])):
+            contract = field.get("validation") if isinstance(field, dict) else None
+            if isinstance(contract, dict) and "levels" in contract:
+                found.append({"path": f"nodes[{node_index}].input_form[{field_index}].validation",
+                              "node_id": node_id, "output": field.get("name"),
+                              "reason": "legacy_levels_requires_explicit_repair"})
+    return found
 
 
 def validate_workflow(definition: WorkflowDefinition, workflow_exists: Callable[[str], bool] | None = None,

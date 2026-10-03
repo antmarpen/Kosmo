@@ -208,44 +208,33 @@ def test_validation_forcing_flag_fails_level_one_deterministically(tmp_path, mon
     assert errors[0]["params"]["reason"] == "forced"
 
 
-def test_seeded_markdown_sections_and_supported_claims_are_enforced(tmp_path):
+def test_seeded_markdown_contract_is_parse_only(tmp_path):
     from scripts.seed import reference_workflow_definition
     node = next(n for n in reference_workflow_definition().nodes if n.type == "ai")
     (tmp_path / "summary.md").write_text("An unrelated claim about Atlantis.", encoding="utf-8")
-    (tmp_path / "inputs").mkdir()
-    (tmp_path / "inputs" / "report").write_text("# Security analysis\n\n## Findings\n- Review supplied topic.\n", encoding="utf-8")
     errors = validate_outputs({"summary.md": {"media_type": "text/markdown"}}, tmp_path,
-                              node.output_validation["summary.md"].model_dump(), inputs=["report"])
-    assert [(e["level"], e["params"]["reason"]) for e in errors] == [
-        ("required_sections", "required_sections_missing"),
-        ("content_rule", "unsupported_claim"),
-    ]
-    assert errors[0]["params"]["sections"] == ["Overview", "Findings", "Recommendations"]
-    assert errors[1]["params"]["input_artifact"] == "report"
+                              node.output_validation["summary.md"].model_dump())
+    assert errors == []
 
 
-def test_seeded_validator_uses_staged_inputs_and_checks_each_sentence(tmp_path):
+def test_seeded_validator_does_not_apply_obsolete_claim_rules(tmp_path):
     from scripts.seed import reference_workflow_definition
     from app.domain.workflows.validation_logic import validate_outputs as canonical
     from worker.activities.validation import validate_outputs as compatibility
     assert canonical is compatibility
     node = next(n for n in reference_workflow_definition().nodes if n.type == "ai")
-    (tmp_path / "inputs").mkdir()
-    (tmp_path / "inputs" / "report").write_text("Security analysis reviews supplied topic and findings.", encoding="utf-8")
     summary = tmp_path / "summary.md"
     summary.write_text("## Overview\nSecurity analysis reviews findings.\n## Findings\nReview supplied topic.\n## Recommendations\nAtlantis discovered.", encoding="utf-8")
-    errors = canonical({"summary.md": {"media_type": "text/markdown"}}, tmp_path, node.output_validation["summary.md"].model_dump(), inputs=["report"])
-    assert [(error["level"], error["params"]["reason"]) for error in errors] == [("content_rule", "unsupported_claim")]
-    assert errors[0]["params"]["claims"] == ["Atlantis discovered."]
+    errors = canonical({"summary.md": {"media_type": "text/markdown"}}, tmp_path, node.output_validation["summary.md"].model_dump())
+    assert errors == []
 
 
-def test_seeded_validator_reports_absent_staged_source(tmp_path):
+def test_seeded_validator_accepts_summary_without_legacy_staged_source(tmp_path):
     from scripts.seed import reference_workflow_definition
     node = next(n for n in reference_workflow_definition().nodes if n.type == "ai")
     (tmp_path / "summary.md").write_text("## Overview\nSecurity analysis.\n## Findings\nReview findings.\n## Recommendations\nReview topic.", encoding="utf-8")
-    errors = validate_outputs({"summary.md": {"media_type": "text/markdown"}}, tmp_path, node.output_validation["summary.md"].model_dump(), inputs=["report"])
-    assert len(errors) == 1
-    assert errors[0]["params"] == {"reason": "source_artifact_missing", "input_artifact": "report"}
+    errors = validate_outputs({"summary.md": {"media_type": "text/markdown"}}, tmp_path, node.output_validation["summary.md"].model_dump())
+    assert errors == []
 
 
 def test_validation_failures_are_flat_attempt_details_and_feedback_is_structured(tmp_path):
