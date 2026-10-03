@@ -162,3 +162,53 @@ Integration skips are not passing evidence. WP-12 is destructive and
 irreversible: reconfirm with the owner, capture affected task IDs, and drain/
 stop affected Temporal executions before applying; never test against the
 owner's database.
+
+## C3 increment — per-output validation (planned 2026-10-03)
+
+Spec: `docs/specs/workflow-editor-refinements.md` → "Review corrections" C3.
+C1/C2 are implemented and committed (`24a0541`).
+
+### Architectural decisions
+
+- Schema v1 gains `output_validation?: Record<string, ValidationContract>` on
+  **Script, HTTP, AI and Workflow** nodes. Output-name lists are preserved.
+  A contract keeps exactly three positional sections (syntax/parse,
+  format/structure, rules). AI's node-wide `validation` is removed and
+  normalized (deep-copied) onto each declared AI output; no destructive
+  migration and no rewriting of published versions/task snapshots.
+- Bounded rule catalogue (existing capabilities only): syntax `format`
+  (auto/text/json/markdown); format = JSON required keys or Markdown required
+  sections/heading levels; rules = required terms and the existing lexical
+  `supported_claims` rule with an explicit input artifact. Unknown/incompatible
+  options are keyed authoring errors.
+- **Blocking** execution: all configured checks must pass before persistence/
+  checkpoint. Scripts return `OUTPUT_VALIDATION_FAILED` (no automatic rerun);
+  AI keeps its bounded three-cycle feedback. HTTP/Workflow execution remains
+  unsupported.
+- Provenance is **derived, not persisted**: an editor-only `OutputDescriptor`
+  (name, source node, node type, kind, value type, validation) feeds the chip's
+  info affordance.
+- Seed/model: keep `"default"` but resolve it explicitly to the selected ACP
+  session's advertised current model (fail clearly if none). `waiting_for_input`
+  is a legitimate permission request, not a defect. Fix the seed's stale
+  `report.md` references to `report`.
+
+### Packages
+
+| WP | Type | Objective | Depends on |
+| --- | --- | --- | --- |
+| WP-14 | Dev | General output contract + legacy AI normalization (schema). | — |
+| WP-15 | Dev | Authoritative catalogue validation + publication boundaries. | WP-14 |
+| WP-16 | Dev | Shared per-output validator + validator API. | WP-14, WP-15 |
+| WP-17 | Dev | Blocking Script output validation. | WP-16 |
+| WP-18 | Dev | AI completion/correction migrated to the general model. | WP-16 |
+| WP-19 | Dev | Frontend types + provenance/output-contract resolver. | WP-14, WP-15 |
+| WP-20 | Design | Per-output validation modal + chip info UI. | WP-19 |
+| WP-21 | Dev | Explicit runtime default + seed `report` repair. | WP-14, WP-18 |
+| WP-22 | Test | Finish WP-13 integrated E2E (AC-01…AC-10 + C1/C2/C3). | WP-17,18,20,21 |
+
+Acceptance IDs: C3-01…C3-07, SEED-01, E2E-01 (as listed by the architect).
+
+### Status
+
+- WP-14 — IN PROGRESS.
