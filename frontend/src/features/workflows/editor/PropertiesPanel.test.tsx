@@ -36,6 +36,8 @@ describe("properties panel node contracts", () => {
     expect(screen.getByRole("button", { name: expected("addField") })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: `${expected("fieldRequired")} 1` })).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByText(expected("fieldLabelKey"))).not.toBeInTheDocument();
+    expect(screen.getAllByText(expected("inputs"))).toHaveLength(1);
+    expect(screen.queryByText(expected("outputs"))).not.toBeInTheDocument();
   });
   it("shows graph inputs read-only, and script code only behind Edit script", () => {
     renderType("script", true);

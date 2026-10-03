@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/auth";
+import { LoadingControl } from "@/components/ui/loading-control";
 
 type ProviderConfig = { id: string; name: string; provider_type: string; visibility: string; verification_status: string; auth_present: boolean };
 type Props = { runtime: string; model: string; onChange: (runtime: string, model: string) => void };
@@ -55,14 +56,15 @@ export function ProviderModelSelect({ runtime, model, onChange }: Props) {
     </label>
     {listError && <p role="alert" className="text-sm text-destructive">{t("editor.providersLoadError" as never)}</p>}
     <label className="grid min-w-0 gap-1.5 text-sm font-medium">{t("editor.model" as never)}
-      <select aria-label={t("editor.model" as never)} className={SELECT_CLASS} value={model} disabled={listLoading || loading || multiple || error || empty || matching.length !== 1} onChange={(event) => onChange(runtime, event.target.value)}>
+      <LoadingControl loading={loading} label={t("editor.loadingModels" as never)}>{loading ? <select aria-label={t("editor.model" as never)} className={`${SELECT_CLASS} pr-36`} value={model} disabled onChange={() => undefined}>
+        <option value="">{t("editor.loadingModels" as never)}</option>
+      </select> : <select aria-label={t("editor.model" as never)} className={SELECT_CLASS} value={model} disabled={listLoading || multiple || error || empty || matching.length !== 1} onChange={(event) => onChange(runtime, event.target.value)}>
         <option value="">{t("editor.selectModel" as never)}</option>
         {model && !models.includes(model) && <option value={model}>{model}</option>}
         {models.map((item) => <option key={item} value={item}>{item}</option>)}
-      </select>
+      </select>}</LoadingControl>
     </label>
     {multiple && <p className="text-sm text-muted-foreground">{t("editor.multipleProviderConfigs" as never)}</p>}
-    {loading && <p role="status" className="text-sm text-muted-foreground">{t("editor.loadingModels" as never)}</p>}
     {error && <p role="alert" className="text-sm text-destructive">{t("editor.modelsLoadError" as never)}</p>}
     {empty && <p className="text-sm text-muted-foreground">{t("editor.noModels" as never)}</p>}
   </div>;

@@ -60,4 +60,16 @@ describe("ProviderModelSelect", () => {
     resolve({ data: { valid: true, models: ["stale"] } });
     await waitFor(() => expect(screen.queryByRole("option", { name: "stale" })).not.toBeInTheDocument());
   });
+
+  it("shows an in-control spinner and live label during model discovery", async () => {
+    let resolve!: (value: unknown) => void;
+    post.mockReturnValueOnce(new Promise((done) => { resolve = done; }) as never);
+    render(<ProviderModelSelect {...props("opencode", "")} />);
+    const status = await screen.findByRole("status");
+    expect(status).toHaveAttribute("aria-label", expect.stringMatching(/Loading models/i));
+    expect(status.querySelector('[data-slot="icon"]')).toHaveClass("animate-spin");
+    expect(screen.getByLabelText("Model")).toHaveTextContent(/Loading models/i);
+    resolve({ data: { valid: true, models: ["new-model"] } });
+    await screen.findByRole("option", { name: "new-model" });
+  });
 });

@@ -553,7 +553,7 @@ export function EditorPage() {
         {ready && <span role="status" className="text-xs text-muted-foreground">{saving ? t("workflowEditor.saving") : dirty ? t("workflowEditor.unsaved") : t("workflowEditor.saved")}</span>}
         <Button variant="outline" className="lg:hidden" aria-expanded={paletteOpen} onClick={() => { setPropertiesOpen(false); setPaletteOpen((open) => !open); }}>{t("workflowEditor.addNode")}</Button>
         <Button variant="outline" className="lg:hidden" aria-expanded={propertiesOpen} disabled={!selectedNode} onClick={() => { setPaletteOpen(false); setPropertiesOpen((open) => !open); }}>{t("editor.properties")}</Button>
-        <Button variant="outline" disabled={!ready} onClick={deleteSelection}>{t("workflowEditor.deleteSelection")}</Button>
+          {ready && (!selectedNode || (selectedNode.type !== "start" && selectedNode.type !== "end")) && <Button variant="outline" onClick={deleteSelection}>{t("workflowEditor.deleteSelection")}</Button>}
         {/* Spec AC-P2-06: optional activation in the publish flow, off by default. */}
         {ready && <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <input

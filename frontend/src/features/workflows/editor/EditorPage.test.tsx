@@ -152,9 +152,22 @@ describe("workflow editor page", () => {
     await screen.findByTestId("flow");
     fireEvent.click(screen.getByRole("button", { name: "connect valid" }));
     fireEvent.click(screen.getByRole("button", { name: "select end" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete selection" }));
+    expect(screen.queryByRole("button", { name: "Delete selection" })).not.toBeInTheDocument();
     expect(screen.getByText("2 nodes")).toBeInTheDocument();
     expect(screen.getByTestId("connection-count")).toHaveTextContent("1 connection");
+  });
+
+  it("hides Delete selection for Start and End but keeps it for ordinary nodes", async () => {
+    mockGets({ "/workflows/{workflow_id}/drafts/{draft_id}": { data: { ...draftResponse, definition: { ...baseDefinition, nodes: [createNode("start", "start"), createNode("script", "script"), createNode("end", "end")] } } } });
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: "select start" }));
+    expect(screen.queryByRole("button", { name: "Delete selection" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "select end" }));
+    expect(screen.queryByRole("button", { name: "Delete selection" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "clear selection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Script" }));
+    expect(screen.getByRole("button", { name: "Delete selection" })).toBeInTheDocument();
   });
 
   it("syncs node positions to editor layout state", async () => {
