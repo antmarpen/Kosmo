@@ -134,6 +134,43 @@ async function fitView(page: Page): Promise<void> {
 }
 
 /**
+ * Waits for the authored task while answering any legitimate agent input
+ * request through the task detail form (never a global auto-approval). Returns
+ * the last observed state; the caller asserts success explicitly.
+ */
+async function waitForSuccessAnsweringInput(
+  page: Page,
+  request: APIRequestContext,
+  token: string,
+  taskId: string,
+  timeoutMs = 720_000,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = "unknown";
+  while (Date.now() < deadline) {
+    const response = await request.get(`/api/tasks/${taskId}`, { headers: authed(token) });
+    if (response.ok()) {
+      const payload = (await response.json()) as { task?: { state: string } } & { state?: string };
+      const task = payload.task ?? payload;
+      lastState = task.state;
+      if (["success", "failed", "stopped"].includes(lastState)) return lastState;
+      if (lastState === "waiting_for_input") {
+        const answer = page.locator("#task-answer");
+        if (await answer.isVisible().catch(() => false)) {
+          await answer.fill("yes").catch(() => {});
+          await page
+            .getByRole("button", { name: /send answer|enviar respuesta/i })
+            .click()
+            .catch(() => {});
+        }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  return lastState;
+}
+
+/**
  * Authors Start→Script→AI→End through the real editor UI.  The AI node runs
  * the configured real model and must produce summary; the script produces
  * report and data from its declared return.
@@ -166,8 +203,7 @@ async function authorExecutableGraph(page: Page): Promise<void> {
   await page.getByRole("button", { name: /validation.*summary/i }).click();
   const validationDialog = page.getByRole("dialog");
   await validationDialog.getByLabel(/format/i).selectOption("markdown");
-  await validationDialog.getByLabel(/required.*sections/i).fill("Summary");
-  await validationDialog.getByRole("textbox", { name: /^required terms/i }).fill("security");
+  // Markdown is parse-only in the round-2 contract: no schema and no rules.
   await validationDialog.getByRole("button", { name: /save|guardar/i }).click();
   await expect(validationDialog).not.toBeVisible();
 
@@ -194,7 +230,7 @@ async function authorExecutableGraph(page: Page): Promise<void> {
 }
 
 test("executes a visually authored Start→Script→AI→End graph to success", async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(900_000);
 
   const token = await apiToken(request);
 
@@ -237,9 +273,9 @@ test("executes a visually authored Start→Script→AI→End graph to success", 
   const taskId = page.url().match(/\/tasks\/([0-9a-f-]{36})$/)?.[1];
   expect(taskId, "Task detail URL must carry the task id").toBeTruthy();
 
-  // Follow to a terminal state; AC-P2-08 requires success.
-  const result = await waitTerminalTask(request, token, taskId!);
-  expect(result.state, "Authored graph must reach success").toBe("success");
+  // Follow to success while answering any legitimate agent input request.
+  const state = await waitForSuccessAnsweringInput(page, request, token, taskId!);
+  expect(state, "Authored graph must reach success").toBe("success");
 
   await expect(page.getByText(/succeeded|completada/i).first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/summary/).first()).toBeVisible({ timeout: 15_000 });

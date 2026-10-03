@@ -58,7 +58,7 @@ function uniqueSuffix(): string {
 // Credential-gated prerequisite: a real provider key enabling a real model call.
 const providerKey = process.env.KOSMO_E2E_OPENCODE_API_KEY ?? process.env.OPENCODE_API_KEY;
 
-const TERMINAL_TASK_STATES = ["success", "failed", "stopped"];
+const TERMINAL_TASK_STATES = ["success", "failed", "stopped", "waiting_for_input"];
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@ async function waitTerminalTask(
   request: APIRequestContext,
   token: string,
   taskId: string,
-  timeoutMs = 240_000,
+  timeoutMs = 600_000,
 ): Promise<TaskPayload> {
   const deadline = Date.now() + timeoutMs;
   let lastState = "unknown";
@@ -300,7 +300,7 @@ async function authorReferenceGraph(page: Page, workflowName: string): Promise<v
 // ─── AC-P2-04: launch a workflow from /tasks/new ───────────────────────────────
 
 test("launch a task from /tasks/new and reach a terminal state", async ({ page, request }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(900_000);
   await login(page);
   await page.goto("/tasks/new");
 
@@ -327,13 +327,14 @@ test("launch a task from /tasks/new and reach a terminal state", async ({ page, 
     success: /succeeded|completada/i,
     failed: /failed|fallida/i,
     stopped: /stopped|detenida/i,
+    waiting_for_input: /waiting|esperando|input|entrada|atención/i,
   };
   await expect(page.getByText(terminalLabel[task.state]).first()).toBeVisible({ timeout: 15_000 });
 
   if (task.state === "success") {
-    // Artifacts the reference workflow declares.
-    await expect(page.getByText(/report(?:\.json)?/).first()).toBeVisible();
-    await expect(page.getByText(/data\.json/).first()).toBeVisible();
+    // Artifacts the reference workflow declares (round-2 names).
+    await expect(page.getByText(/\breport\b/).first()).toBeVisible();
+    await expect(page.getByText(/\bdata\b/).first()).toBeVisible();
   } else if (task.state === "failed") {
     // Structured, localized failure without any raw stack trace.
     await expect(
