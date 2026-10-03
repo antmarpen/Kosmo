@@ -249,3 +249,38 @@ Owner decisions (2026-10-03):
 - Still to design: the exact rule catalogue rendered by the modal and the
   execution semantics for a failed non-AI output validation (blocking vs
   feedback).
+
+## Review corrections — round 2 (2026-10-03, post-C3)
+
+### C4 — Start inputs are validated like outputs (material)
+- Start is the external boundary: its fields have no prior workflow control, so
+  each declared input field must support the **same validation contract as node
+  outputs**, configured the same way. This extends per-output validation to
+  Start form fields (whose "outputs" are the field names available downstream).
+
+### C5 — Format-dependent validation modal + Python rules (material)
+- Format selector: **text | json | yaml | markdown** (no "automatic").
+- The format/structure section depends on the selected format:
+  - **json / yaml** → a **JSON Schema** editor (validated and enforced on the value);
+  - **text / markdown** → no format/structure content;
+  - **rules** → like scripts, **Python code** (sandboxed), replacing the current
+    bounded terms/`supported_claims` catalogue.
+- Questions: does "no rules" apply to text/markdown (the owner wrote both "ni
+  reglas" and "reglas como los scripts")? Which JSON Schema draft? What is the
+  Python-rule execution interface (variable name / return contract) and is it run
+  in the same sandbox as scripts?
+- **Resolved (2026-10-03):** for **text/markdown**, neither format/structure nor
+  rules apply (format/structure and rules are only for json/yaml). For
+  **json/yaml**, use the standard validation for the selected type (JSON Schema
+  for JSON; the standard YAML validation for YAML). Rules are **Python code run
+  as a body in the sandbox** (same model as scripts). **C4:** each Start input
+  field is validated exactly like an output — by type, schema/format and rules —
+  using the same authoring criteria.
+
+### C6 — AI model loading spinner overlaps text (bug)
+- The in-control loading spinner currently overlaps its text; show only the
+  spinner plus the label, with no overlap.
+
+### C7 — Chip info popover formatting
+- The provenance popover presents too much unformatted information; it needs
+  clear visual separation and structure (labelled rows/sections).
