@@ -381,7 +381,9 @@
       "startFieldNameInvalid": "Los nombres de los campos de entrada deben ser identificadores válidos.",
       "startFieldLabelKeyRequired": "Cada campo de entrada necesita una clave de etiqueta.",
       "levelNameRequired": "Cada nivel de validación necesita un nombre.",
-      "levelMessageKeyRequired": "Cada nivel de validación necesita una clave de mensaje."
+      "levelMessageKeyRequired": "Cada nivel de validación necesita una clave de mensaje.",
+      "duplicateProducer": "Dos productores declaran el mismo nombre de salida.",
+      "scriptAnalysisFailed": "No se pudo analizar el script."
     },
     "nodeCount_one": "{{count}} nodo",
     "nodeCount_other": "{{count}} nodos",
@@ -530,6 +532,14 @@
     "workflow": "Flujo de trabajo",
     "outputMapping": "Mapeo de salida (objeto JSON)",
     "invalidJson": "Introduce un objeto JSON válido.",
-    "decisionNotFunctional": "El enrutamiento de decisiones aún no está disponible."
+    "decisionNotFunctional": "El enrutamiento de decisiones aún no está disponible.",
+    "loadingWorkflows": "Cargando flujos de trabajo…",
+    "workflowsLoadError": "No se pudieron cargar los flujos de trabajo referenciados.",
+    "workflowUnavailable": "El flujo de trabajo referenciado no está disponible.",
+    "workflowNoActiveDefinition": "Este flujo de trabajo no tiene una definición activa.",
+    "referencedInputs": "Entradas del flujo de trabajo referenciado",
+    "referencedOutputs": "Salidas del flujo de trabajo referenciado",
+    "workflowNoInputs": "No hay entradas definidas.",
+    "workflowNoOutputs": "Ninguna salida llega al nodo End."
   }
 }

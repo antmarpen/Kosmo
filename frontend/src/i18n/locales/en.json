@@ -381,7 +381,9 @@
       "startFieldNameInvalid": "Start input field names must be valid identifiers.",
       "startFieldLabelKeyRequired": "Each start input field needs a label key.",
       "levelNameRequired": "Each validation level needs a name.",
-      "levelMessageKeyRequired": "Each validation level needs a message key."
+      "levelMessageKeyRequired": "Each validation level needs a message key.",
+      "duplicateProducer": "Two producers declare the same output name.",
+      "scriptAnalysisFailed": "Script analysis failed."
     },
     "nodeCount_one": "{{count}} node",
     "nodeCount_other": "{{count}} nodes",
@@ -530,6 +532,14 @@
     "workflow": "Workflow",
     "outputMapping": "Output mapping (JSON object)",
     "invalidJson": "Enter a valid JSON object.",
-    "decisionNotFunctional": "Decision routing is not functional yet."
+    "decisionNotFunctional": "Decision routing is not functional yet.",
+    "loadingWorkflows": "Loading workflows…",
+    "workflowsLoadError": "Referenced workflows could not be loaded.",
+    "workflowUnavailable": "The referenced workflow is unavailable.",
+    "workflowNoActiveDefinition": "This workflow has no active definition.",
+    "referencedInputs": "Referenced workflow inputs",
+    "referencedOutputs": "Referenced workflow outputs",
+    "workflowNoInputs": "No inputs are defined.",
+    "workflowNoOutputs": "No outputs reach the End node."
   }
 }

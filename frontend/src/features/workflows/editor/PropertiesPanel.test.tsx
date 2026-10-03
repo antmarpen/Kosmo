@@ -15,6 +15,17 @@ function renderType(type: WorkflowNode["type"], connected = false) {
 }
 
 describe("properties panel node contracts", () => {
+  it("shows referenced workflow contracts, distinct from graph-derived chips", async () => {
+    const workflow = createNode("workflow", "n") as Extract<WorkflowNode, { type: "workflow" }>;
+    workflow.workflow_id = "child";
+    const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [workflow], edges: [] });
+    state.selection.nodeIds = ["n"];
+    const { api } = await import("@/api/auth");
+    vi.mocked(api.GET).mockResolvedValueOnce({ data: [{ id: "child", name: "Child", active_version: { definition: { nodes: [{ type: "start", input_form: [{ name: "long-input-name" }] }, { type: "end", inputs: ["output-name"] }] } } }], error: undefined } as never);
+    render(<PropertiesPanel state={state} onUpdate={vi.fn()} />);
+    expect(await screen.findByText("long-input-name")).toBeInTheDocument();
+    expect(screen.getByText("output-name")).toBeInTheDocument();
+  });
   it("uses a visual Start field builder and a required switch, without raw JSON or label key", () => {
     const start = createNode("start", "n") as Extract<WorkflowNode, { type: "start" }>;
     start.input_form = [{ name: "topic", type: "string", required: true }];

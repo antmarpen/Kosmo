@@ -185,7 +185,7 @@ describe("task views",()=>{
     const user=userEvent.setup();
     const fetcher=vi.fn(async(input:any)=>requestUrl(input)==="/api/workflows"?new Response(JSON.stringify([{id:"reference-security-analysis",name:"Security analysis",active_version:activeVersion}])):requestUrl(input)==="/api/tasks"?new Response(JSON.stringify({id:"t1",state:"queued"}),{status:201}):new Response(JSON.stringify({task:{...task("queued"),notes:[]}})));
     setup("/tasks/new",fetcher);
-    await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+    await user.type(await screen.findByLabelText("topic"),"smoke");
     await user.click(screen.getByRole("button",{name:"Add"}));
     await screen.findByText("reference-security-analysis");
     await waitFor(async()=>expect(await bodyOf(fetcher.mock.calls.find(call=>requestUrl(call[0])==="/api/tasks")![0])).toEqual({workflow_id:"reference-security-analysis",input_values:{topic:"smoke"}}));
@@ -204,9 +204,10 @@ describe("task views",()=>{
       return new Response(JSON.stringify({task:{...task("queued"),notes:[]}}));
     });
     setup("/tasks/new",fetcher);
-    await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
-    await user.type(await screen.findByLabelText("Workflow progress"),"3");
-    await user.click(screen.getByLabelText("Artifacts"));
+    expect(await screen.findByLabelText("topic")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("topic"),"smoke");
+    await user.type(screen.getByLabelText("retries"),"3");
+    await user.click(screen.getByLabelText("verbose"));
     await user.click(screen.getByRole("button",{name:"Add"}));
     await waitFor(async()=>expect(await bodyOf(fetcher.mock.calls.find(call=>requestUrl(call[0])==="/api/tasks")![0])).toEqual({workflow_id:"wf-form",input_values:{topic:"smoke",retries:3,verbose:true}}));
   });
@@ -220,7 +221,7 @@ describe("task views",()=>{
     const user=userEvent.setup();
     setup("/tasks/new",vi.fn(async(input:any)=>requestUrl(input)==="/api/workflows"?new Response(JSON.stringify([{id:"reference-security-analysis",name:"Security analysis",active_version:activeVersion}])):new Response(JSON.stringify({task:{...task("queued"),notes:[]}}))));
     const button=await screen.findByRole("button",{name:"Add"});
-    await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+    await user.type(await screen.findByLabelText("topic"),"smoke");
     await waitFor(()=>expect(button).toBeEnabled());
     expect(button.querySelector('[data-slot="icon"]')).toHaveAttribute("aria-hidden","true");
   });
@@ -234,7 +235,7 @@ describe("task views",()=>{
       return new Response(JSON.stringify({task:{...task("queued"),notes:[]}}));
     });
     setup("/tasks/new",fetcher);
-    await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+    await user.type(await screen.findByLabelText("topic"),"smoke");
     const button=await screen.findByRole("button",{name:"Add"});
     await waitFor(()=>expect(button).toBeEnabled());
     await user.click(button);
@@ -417,7 +418,7 @@ describe("task views",()=>{
       });
       setup("/tasks/new",fetcher);
       expect(await screen.findByLabelText("Workflow")).toHaveValue("wf-ref");
-      await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+      await user.type(await screen.findByLabelText("topic"),"smoke");
       await user.click(screen.getByRole("button",{name:"Add"}));
       await waitFor(async()=>expect(await bodyOf(fetcher.mock.calls.find(call=>requestUrl(call[0])==="/api/tasks")![0])).toEqual({workflow_id:"wf-ref",input_values:{topic:"smoke"}}));
     });
@@ -449,7 +450,7 @@ describe("task views",()=>{
       setup("/tasks/new",fetcher);
       expect(await screen.findByRole("heading",{name:catalogText("tasks.new.noLaunchableWorkflows")})).toBeInTheDocument();
       expect(screen.queryByRole("button",{name:"Add"})).not.toBeInTheDocument();
-      expect(screen.queryByLabelText("Analysis topic")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("topic")).not.toBeInTheDocument();
     });
     it("renders the backend workflow-not-found error instead of the generic submit failure",async()=>{
       const user=userEvent.setup();
@@ -460,7 +461,7 @@ describe("task views",()=>{
         return new Response(JSON.stringify({task:{...task("queued"),notes:[]}}));
       });
       setup("/tasks/new",fetcher);
-      await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+      await user.type(await screen.findByLabelText("topic"),"smoke");
       await user.click(await screen.findByRole("button",{name:"Add"}));
       expect(await screen.findByRole("alert")).toHaveTextContent("Workflow not found.");
       expect(screen.queryByText("Could not create the task. Please try again.")).not.toBeInTheDocument();
@@ -475,7 +476,7 @@ describe("task views",()=>{
         return new Response(JSON.stringify({task:{...task("queued"),notes:[]}}));
       });
       setup("/tasks/new",fetcher);
-      await user.type(await screen.findByLabelText("Analysis topic"),"smoke");
+      await user.type(await screen.findByLabelText("topic"),"smoke");
       await user.click(await screen.findByRole("button",{name:"Add"}));
       expect(await screen.findByRole("alert")).toHaveTextContent("An unexpected error occurred.");
     });

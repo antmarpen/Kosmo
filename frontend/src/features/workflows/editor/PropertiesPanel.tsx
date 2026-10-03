@@ -47,28 +47,30 @@ function IdentifierList({ label, values, onChange, editable = false, addLabel, r
   </fieldset>;
 }
 
-const panelClasses = (sheetOpen: boolean) => `${sheetOpen ? "fixed inset-x-0 bottom-0 z-20 max-h-[65vh] rounded-t-lg border-t bg-background shadow-lg" : "hidden"} w-full min-w-0 overflow-x-hidden overflow-y-auto p-4 lg:static lg:block lg:max-h-none lg:w-80 lg:shrink-0 lg:border-l lg:border-t-0 lg:rounded-none lg:shadow-none lg:p-5`;
+const panelClasses = (sheetOpen: boolean) => `${sheetOpen ? "fixed inset-x-0 bottom-0 z-20 max-h-[65vh] rounded-t-lg border-t bg-background shadow-lg" : "hidden"} w-full min-w-0 overflow-y-auto p-4 lg:static lg:block lg:max-h-none lg:w-80 lg:shrink-0 lg:border-l lg:border-t-0 lg:rounded-none lg:shadow-none lg:p-5`;
 
 export function PropertiesPanel({ state, onUpdate, errors = {}, sheetOpen = true }: Props) {
   const { t } = useTranslation();
   const id = state.selection.nodeIds[0];
   const node = state.definition.nodes.find((item) => item.id === id);
   const [workflows, setWorkflows] = useState<{ id: string; name: string; inputs: string[]; outputs: string[] }[] | null>(null);
+  const [workflowsError, setWorkflowsError] = useState(false);
   useEffect(() => {
     if (node?.type !== "workflow") return;
     let active = true;
     api.GET("/workflows").then((result) => {
       if (result.error || result.data === undefined) throw new Error("Workflow request failed");
-      if (active) setWorkflows(result.data.map((workflow) => {
+      if (active) { setWorkflowsError(false); setWorkflows(result.data.map((workflow) => {
         const definition = workflow.active_version?.definition as { nodes?: { type?: string; input_form?: { name: string }[]; inputs?: string[] }[] } | undefined;
         return { id: workflow.id, name: workflow.name, inputs: definition?.nodes?.find((item) => item.type === "start")?.input_form?.map((field) => field.name) ?? [], outputs: definition?.nodes?.find((item) => item.type === "end")?.inputs ?? [] };
-      }));
-    }).catch(() => { if (active) setWorkflows(null); });
+      })); }
+    }).catch(() => { if (active) { setWorkflowsError(true); setWorkflows([]); } });
     return () => { active = false; };
   }, [node?.type]);
   if (!node) return null;
   const update = (patch: Record<string, unknown>) => onUpdate(node.id, { ...node, ...patch } as WorkflowNode);
   const form = node.type === "start" ? node.input_form : [];
+  const referencedWorkflow = node.type === "workflow" ? workflows?.find((workflow) => workflow.id === node.workflow_id) : undefined;
   const outputs = node.type === "http" ? ["response"] : node.type === "script" || node.type === "ai" ? node.outputs : node.type === "workflow" ? workflows?.find((workflow) => workflow.id === node.workflow_id)?.outputs ?? [] : [];
   return <aside aria-label={t("editor.properties")} className={panelClasses(sheetOpen)}>
     <h2 className="mb-4 text-base font-semibold">{t("editor.properties")}: {t(`workflowEditor.types.${node.type}`)}</h2>
@@ -83,7 +85,7 @@ export function PropertiesPanel({ state, onUpdate, errors = {}, sheetOpen = true
       </>}
       {node.type === "http" && <><SelectField label={t("editor.method")} value={node.method} onChange={(method) => update({ method })}>{["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => <option key={method}>{method}</option>)}</SelectField><Field label={t("editor.url")} value={node.url} onChange={(url) => update({ url })} /></>}
       {node.type === "decision" && <p className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">{t("editor.decisionNotFunctional" as never)}</p>}
-      {node.type === "workflow" && <SelectField label={t("editor.workflow")} value={node.workflow_id} onChange={(workflow_id) => update({ workflow_id })}><option value="" />{workflows?.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</SelectField>}
+      {node.type === "workflow" && <><SelectField label={t("editor.workflow" as never)} value={node.workflow_id} onChange={(workflow_id) => update({ workflow_id })}><option value="" />{workflows?.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</SelectField>{workflowsError ? <p role="alert" className="break-words text-sm text-destructive">{t("editor.workflowsLoadError" as never)}</p> : !workflows ? <p role="status" className="text-sm text-muted-foreground">{t("editor.loadingWorkflows" as never)}</p> : node.workflow_id && !referencedWorkflow ? <p className="text-sm text-muted-foreground">{t("editor.workflowUnavailable" as never)}</p> : referencedWorkflow && <div className="grid min-w-0 gap-3 rounded-md border border-border p-3"><IdentifierList label={t("editor.referencedInputs" as never)} values={referencedWorkflow.inputs} addLabel="" removeLabel=""/></div>}</>}
       {node.type !== "start" && <IdentifierList label={t("editor.inputs" as never)} values={node.type === "decision" ? [] : node.inputs} addLabel={t("editor.addInput" as never)} removeLabel={t("editor.removeIdentifier" as never)} />}
       {node.type !== "start" && node.type !== "end" && <IdentifierList label={t("editor.outputs" as never)} values={outputs} editable={node.type === "ai"} onChange={(outputs) => update({ outputs })} addLabel={t("editor.addOutput" as never)} removeLabel={t("editor.removeIdentifier" as never)} />}
       {node.type === "start" && <><h3 className="text-sm font-medium">{t("editor.inputs" as never)}</h3><IdentifierList label={t("editor.inputs" as never)} values={node.input_form.map((field) => field.name)} addLabel="" removeLabel="" /></>}

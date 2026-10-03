@@ -281,7 +281,7 @@ function WorkflowSummary({ workflow }: { workflow: Workflow | null }) {
   return <aside className="h-fit border-t border-border pt-5 lg:border-t-0 lg:border-l lg:pl-6"><h2 className="text-sm font-semibold">{t("tasks.workflow")}</h2><p className="mt-2 text-sm">{workflow?.name??workflow?.id??t("tasks.loading")}</p><p className="mt-2 text-sm leading-6 text-muted-foreground">{t("tasks.workflowDescription")}</p></aside>;
 }
 
-type StartField = { name: string; type: "string" | "number" | "boolean"; required: boolean; label_message_key: string };
+type StartField = { name: string; type: "string" | "number" | "boolean"; required: boolean };
 
 /**
  * Reads the Start node's authored input_form from an active version
@@ -300,8 +300,7 @@ function startInputForm(definition: unknown): StartField[] {
     return item !== null && typeof item === "object"
       && typeof item.name === "string"
       && (item.type === "string" || item.type === "number" || item.type === "boolean")
-      && typeof item.required === "boolean"
-      && typeof item.label_message_key === "string";
+      && typeof item.required === "boolean";
   });
 }
 
@@ -375,7 +374,7 @@ export function NewTaskPage() {
           </select>
         </div>
         {inputForm.map(field=>{
-          const label=t(field.label_message_key as never);
+          const label=field.name;
           if(field.type==="boolean")return (
             <div key={field.name}>
               <label htmlFor={`task-input-${field.name}`} className="text-sm font-medium">{label}</label>
