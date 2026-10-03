@@ -31,7 +31,7 @@ function FormFieldBuilder({ fields, onChange, onEditValidation }: { fields: Form
       <Field label={`${t("editor.fieldName" as never)} ${index + 1}`} value={field.name} onChange={(name) => update(index, { name })} />
       <SelectField label={`${t("editor.fieldType" as never)} ${index + 1}`} value={field.type} onChange={(type) => update(index, { type: type as FormField["type"] })}>{["string", "number", "boolean"].map((type) => <option key={type}>{type}</option>)}</SelectField>
       <div className="flex items-center justify-between gap-3 text-sm"><span>{t("editor.fieldRequired" as never)}</span><Switch aria-label={`${t("editor.fieldRequired" as never)} ${index + 1}`} checked={field.required} onCheckedChange={(required) => update(index, { required })} /></div>
-      <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => onEditValidation(index)}>{t("editor.fieldValidation" as never)}</Button>
+      <div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => onEditValidation(index)}>{t("editor.fieldValidation" as never)}</Button><span role="status" className="text-xs text-muted-foreground">{field.validation ? t("editor.validationConfigured" as never) : t("editor.validationNotConfigured" as never)}</span></div>
       <Button type="button" variant="outline" size="sm" className="w-fit" aria-label={`${t("editor.removeField" as never)} ${index + 1}`} onClick={() => onChange(fields.filter((_, i) => i !== index))}>{t("editor.removeField" as never)}</Button>
     </li>)}</ul>
     <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => onChange([...fields, { name: "", type: "string", required: true }])}>{t("editor.addField" as never)}</Button>
@@ -55,6 +55,9 @@ export function PropertiesPanel({ state, onUpdate, errors = {}, sheetOpen = true
   const [workflowsError, setWorkflowsError] = useState(false);
   const [editingOutput, setEditingOutput] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<number | null>(null);
+  useEffect(() => { setEditingField(null); setEditingOutput(null); }, [id]);
+  const selectedForm = node?.type === "start" ? node.input_form : undefined;
+  useEffect(() => { setEditingField(null); }, [selectedForm]);
   useEffect(() => {
     if (node?.type !== "workflow") return;
     let active = true;

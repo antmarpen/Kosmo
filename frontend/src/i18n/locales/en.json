@@ -479,6 +479,9 @@
       "exists_parseable": "The artifact must exist and be parseable as {{format}}.",
       "required_sections": "Required sections are missing: {{sections}}.",
       "content_rule": "The artifact does not satisfy the content rule: {{rule}}."
+    },
+    "agent": {
+      "model_default_unavailable": "No default model is available for this agent session."
     }
   },
   "editor": {

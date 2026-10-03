@@ -479,6 +479,9 @@
       "exists_parseable": "El artefacto debe existir y poder analizarse como {{format}}.",
       "required_sections": "Faltan secciones obligatorias: {{sections}}.",
       "content_rule": "El artefacto no cumple la regla de contenido: {{rule}}."
+    },
+    "agent": {
+      "model_default_unavailable": "No hay un modelo predeterminado disponible para esta sesión del agente."
     }
   },
   "editor": {

@@ -51,6 +51,30 @@ describe("properties panel node contracts", () => {
     fireEvent.click(screen.getByRole("button", { name: expected("saveValidation") }));
     expect(onUpdate).toHaveBeenCalledWith("n", expect.objectContaining({ input_form: [start.input_form[0], { ...start.input_form[1], validation: { format: "yaml" } }] }));
   });
+  it("shows configured validation, preserves it through field edits, and removes it", () => {
+    const start = createNode("start", "n") as Extract<WorkflowNode, { type: "start" }>;
+    start.input_form = [{ name: "topic", type: "string", required: true, validation: { format: "json", json_schema: { type: "object" } } }];
+    const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [start], edges: [] });
+    state.selection.nodeIds = ["n"];
+    const onUpdate = vi.fn();
+    render(<PropertiesPanel state={state} onUpdate={onUpdate} />);
+    expect(screen.getByText(expected("validationConfigured"))).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(`${expected("fieldName")} 1`), { target: { value: "details" } });
+    expect(onUpdate).toHaveBeenCalledWith("n", expect.objectContaining({ input_form: [{ ...start.input_form[0], name: "details" }] }));
+    fireEvent.click(screen.getByRole("button", { name: expected("fieldValidation") }));
+    fireEvent.click(screen.getByRole("button", { name: expected("removeValidation") }));
+    expect(onUpdate).toHaveBeenLastCalledWith("n", expect.objectContaining({ input_form: [{ name: "topic", type: "string", required: true, validation: undefined }] }));
+  });
+  it("keeps a Start validation when field type changes", () => {
+    const start = createNode("start", "n") as Extract<WorkflowNode, { type: "start" }>;
+    start.input_form = [{ name: "payload", type: "string", required: true, validation: { format: "json" } }];
+    const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [start], edges: [] });
+    state.selection.nodeIds = ["n"];
+    const onUpdate = vi.fn();
+    render(<PropertiesPanel state={state} onUpdate={onUpdate} />);
+    fireEvent.change(screen.getByLabelText(`${expected("fieldType")} 1`), { target: { value: "number" } });
+    expect(onUpdate).toHaveBeenCalledWith("n", expect.objectContaining({ input_form: [{ ...start.input_form[0], type: "number" }] }));
+  });
   it("shows graph inputs read-only, and script code only behind Edit script", () => {
     renderType("script", true);
     expect(screen.getByText(expected("inputs"))).toBeInTheDocument();
