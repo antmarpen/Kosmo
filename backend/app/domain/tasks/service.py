@@ -1,6 +1,7 @@
 from shared.errors import ConflictError, ErrorDetail, NotFoundError, PermissionDeniedError, ValidationFailedError
 from shared.state import TaskState
 import math
+import json
 
 from app.domain.workflows.validation_logic import evaluate_content
 
@@ -193,16 +194,18 @@ async def validate_start_inputs(start, input_values, rule_validation=None):
             errors.append(ErrorDetail("errors.task.input_type", {"field": name, "type": field["type"]}))
             continue
         contract = field.get("validation")
-        if contract and isinstance(submitted, str):
+        if contract:
+            validation_value = submitted if isinstance(submitted, str) else json.dumps(submitted, allow_nan=False)
+            validation_bytes = validation_value.encode("utf-8")
             for level in (1, 2, 3):
                 if level == 3 and contract.get("rules_code"):
                     if rule_validation:
-                        failures = await rule_validation(name, submitted, contract)
+                        failures = await rule_validation(name, validation_value, contract)
                     else:
                         from app.api.routes.mcp import _validation_probe
-                        failures = await _validation_probe(submitted.encode("utf-8"), contract, level, name)
+                        failures = await _validation_probe(validation_bytes, contract, level, name)
                 else:
-                    failures = evaluate_content(submitted.encode("utf-8"), contract, level)
+                    failures = evaluate_content(validation_bytes, contract, level)
                 if failures:
                     errors.extend(ErrorDetail(item["message_key"], {"field": name, **item["params"]}) for item in failures)
                     break

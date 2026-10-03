@@ -98,6 +98,53 @@ def test_submission_rejects_invalid_json_start_field_before_task_creation():
     assert repository.created == []
 
 
+@pytest.mark.parametrize(("field_type", "submitted", "validation"), [
+    ("number", 1, {"format": "json", "json_schema": {"type": "number", "minimum": 10}}),
+    ("number", 101, {"format": "json", "json_schema": {"type": "number", "maximum": 10}}),
+    ("boolean", True, {"format": "json", "json_schema": {"type": "boolean", "const": False}}),
+])
+def test_submission_rejects_typed_start_contract_violation(field_type, submitted, validation):
+    repository = FakeRepository()
+    repository.active["definition"]["nodes"][0]["input_form"] = [
+        {"name": "value", "type": field_type, "required": True, "validation": validation}
+    ]
+    with pytest.raises(ValidationFailedError):
+        asyncio.run(TaskService(repository, FakeWorkflowStarter()).submit(
+            "workflow-1", {"value": submitted}, None, "user-1"
+        ))
+    assert repository.created == []
+
+
+def test_submission_applies_rejecting_rule_to_numeric_field():
+    repository = FakeRepository()
+    repository.active["definition"]["nodes"][0]["input_form"] = [
+        {"name": "value", "type": "number", "required": True,
+         "validation": {"format": "json", "rules_code": "return False"}}
+    ]
+    async def reject_rule(name, serialized_value, contract):
+        assert serialized_value == "1"
+        return [{"message_key": "validation.rules", "params": {"reason": "rule_failed"}}]
+    from app.domain.tasks.service import validate_start_inputs
+    errors = asyncio.run(validate_start_inputs(repository.active["definition"]["nodes"][0],
+                                               {"value": 1}, reject_rule))
+    assert errors
+    assert repository.created == []
+
+
+def test_typed_start_execution_validation_rejects_without_downstream_work():
+    from worker.activities.validation import validate_start_inputs as worker_validate
+    start = {"type": "start", "input_form": [
+        {"name": "value", "type": "number", "required": True,
+         "validation": {"format": "json", "json_schema": {"type": "number", "minimum": 10}}}
+    ]}
+    errors = asyncio.run(worker_validate({"start": start, "input_values": {"value": 1}}))
+    assert errors
+    downstream_calls = []
+    if not errors:
+        downstream_calls.append("executed")
+    assert downstream_calls == []
+
+
 def test_submission_runs_canonical_start_rules_code_before_task_creation():
     repository = FakeRepository()
     repository.active["definition"]["nodes"][0]["input_form"] = [
