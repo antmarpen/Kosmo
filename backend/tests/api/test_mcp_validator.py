@@ -12,7 +12,10 @@ class ValidatorDb:
     def __init__(self):
         levels = [{"name": f"level-{i}", "message_key": f"validation.level_{i}", "params_schema": {}} for i in range(1, 4)]
         self.task = SimpleNamespace(id="task-1", created_by="owner-1", resolved_definition={"nodes": [
-            {"type": "ai", "id": "ai-1", "outputs": ["summary.md"], "validation": {"levels": levels}},
+            {"type": "ai", "id": "ai-1", "outputs": ["summary.md", "notes"], "output_validation": {
+                "summary.md": {"levels": levels},
+                "notes": {"levels": [{**levels[0]}, {**levels[1]}, {**levels[2], "params_schema": {"required_terms": ["secret"]}}]},
+            }},
         ]})
         self.node_execution = SimpleNamespace(id="execution-1", task_id="task-1", node_id="ai-1", state="running")
 
@@ -45,6 +48,20 @@ def test_scoped_validator_accepts_unpersisted_candidate_content(monkeypatch):
     })
     assert response.status_code == 200
     assert response.json() == {"errors": []}
+    client.close()
+
+
+def test_scoped_validator_selects_contract_by_logical_output(monkeypatch):
+    monkeypatch.setattr(settings, "jwt_secret", "test-validator-signing-secret-32-bytes")
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: ValidatorDb()
+    client = TestClient(app)
+    response = client.post("/mcp/validator", headers={"Authorization": f"Bearer {scoped_token()}"}, json={
+        "task_id": "task-1", "node_id": "ai-1", "node_execution_id": "execution-1",
+        "level": 3, "logical_name": "notes", "media_type": "text/plain", "content": "ordinary words",
+    })
+    assert response.status_code == 200
+    assert response.json()["errors"][0]["params"]["reason"] == "required_terms_missing"
     client.close()
 
 

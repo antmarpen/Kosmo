@@ -70,7 +70,10 @@ async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str
             for name in node["outputs"]:
                 ref = candidates.get(name)
                 declared[name] = {"media_type": (ref or {}).get("media_type", "application/octet-stream")}
-            errors = validate_outputs(declared, workspace, node["validation"], inputs=node.get("inputs", []))
+            contracts = node.get("output_validation")
+            if contracts is None and node.get("validation"):
+                contracts = {name: node["validation"] for name in node.get("outputs", [])}
+            errors = validate_outputs(declared, workspace, contracts or {}, inputs=node.get("inputs", []))
         if errors:
             details = [{**error, "attempt": attempt} for error in errors]
             aggregate.extend(details)

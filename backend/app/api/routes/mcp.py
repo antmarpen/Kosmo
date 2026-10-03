@@ -152,7 +152,7 @@ async def _validate_request(request: ValidationRequest, auth, repository: Valida
         task = await repository.get_task(task_id)
         ai_node = _ai_node(task, node_id)
         return validate_outputs({logical_name: {"media_type": media_type}}, workspace,
-                                ai_node["validation"], request.level)
+                                _contracts(ai_node), request.level)
 
     task_id, node_id = request.task_id, request.node_id
     await _authorize_task_scope(auth, repository, task_id, node_id, request.node_execution_id)
@@ -169,7 +169,7 @@ async def _validate_request(request: ValidationRequest, auth, repository: Valida
         candidate.parent.mkdir(parents=True, exist_ok=True)
         candidate.write_text(request.content or "", encoding="utf-8")
         return validate_outputs({request.logical_name: {"media_type": request.media_type}}, workspace,
-                                ai_node["validation"], request.level)
+                                _contracts(ai_node), request.level)
 
 
 async def _authorize_task_scope(auth, repository: ValidatorRepository, task_id: str, node_id: str, node_execution_id: str | None = None):
@@ -195,11 +195,19 @@ async def _authorize_task_scope(auth, repository: ValidatorRepository, task_id: 
         raise PermissionDeniedError("errors.permission.denied")
 
 
+def _contracts(node):
+    contracts = node.get("output_validation") or {}
+    if contracts:
+        return contracts
+    legacy = node.get("validation")
+    return {name: legacy for name in node.get("outputs", [])} if legacy else {}
+
+
 def _ai_node(task, node_id):
     if task is None:
         raise NotFoundError("errors.task.not_found")
     return next((node for node in task.resolved_definition["nodes"]
-                 if node["type"] == "ai" and node["id"] == node_id), None) or _missing_ai_node()
+                 if node["id"] == node_id and node["type"] in {"ai", "script", "http", "workflow"}), None) or _missing_ai_node()
 
 
 def _missing_ai_node():
