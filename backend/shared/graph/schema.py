@@ -16,7 +16,6 @@ class FormField(ContractModel):
     name: str = Field(pattern=SAFE_IDENTIFIER)
     type: Literal["string", "number", "boolean"]
     required: bool
-    label_message_key: str
 
 
 class StartNode(ContractModel):
@@ -38,7 +37,8 @@ class HttpNode(ContractModel):
     id: str = Field(pattern=SAFE_IDENTIFIER)
     method: str
     url: str
-    outputs: list[SafeIdentifier]
+    inputs: list[SafeIdentifier] = Field(default_factory=list)
+    outputs: list[Literal["response"]] = Field(default_factory=lambda: ["response"], min_length=1, max_length=1)
 
 
 class AgentConfig(ContractModel):
@@ -71,6 +71,7 @@ class AiNode(ContractModel):
 class EndNode(ContractModel):
     type: Literal["end"]
     id: str = Field(pattern=SAFE_IDENTIFIER)
+    inputs: list[SafeIdentifier] = Field(default_factory=list)
 
 
 class DecisionNode(ContractModel):
@@ -83,6 +84,7 @@ class WorkflowNode(ContractModel):
     type: Literal["workflow"]
     id: str = Field(pattern=SAFE_IDENTIFIER)
     workflow_id: str
+    inputs: list[SafeIdentifier] = Field(default_factory=list)
 
 
 Node = Annotated[StartNode | ScriptNode | HttpNode | AiNode | EndNode | DecisionNode | WorkflowNode, Field(discriminator="type")]

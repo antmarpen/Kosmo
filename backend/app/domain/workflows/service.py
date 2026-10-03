@@ -19,9 +19,41 @@ class WorkflowService:
         referenced = {node.workflow_id for node in definition.nodes if isinstance(node, WorkflowNode)}
         if not referenced:
             return None
-        existing = {workflow_id for workflow_id in referenced
-                    if await self.repository.get_workflow(workflow_id) is not None}
-        return lambda workflow_id: workflow_id in existing
+        exists: set[str] = set()
+        contracts: dict[str, tuple[list[str], list[str]]] = {}
+        pending = list(referenced)
+        seen = set()
+        while pending and len(seen) < 64:
+            workflow_id = pending.pop()
+            if workflow_id in seen:
+                continue
+            seen.add(workflow_id)
+            if await self.repository.get_workflow(workflow_id) is None:
+                continue
+            exists.add(workflow_id)
+            active = await self.repository.get_active_version(workflow_id)
+            if active is None:
+                continue
+            child = WorkflowDefinition.model_validate(_value(active, "definition"))
+            starts = [node for node in child.nodes if getattr(node, "type", None) == "start"]
+            inputs = [field.name for field in starts[0].input_form] if len(starts) == 1 else []
+            outputs = []
+            by_id = {node.id: node for node in child.nodes}
+            for edge in child.edges:
+                source = by_id.get(edge.from_node)
+                if edge.to in {node.id for node in child.nodes if getattr(node, "type", None) == "end"}:
+                    outputs.extend(getattr(source, "outputs", []) if source is not None else [])
+            contracts[workflow_id] = (inputs, list(dict.fromkeys(outputs)))
+            pending.extend(node.workflow_id for node in child.nodes if isinstance(node, WorkflowNode) and node.workflow_id not in seen)
+        return (lambda workflow_id: workflow_id in exists,
+                lambda workflow_id: contracts.get(workflow_id))
+
+    async def _validate_definition(self, definition):
+        resolvers = await self._workflow_reference_check(definition)
+        if resolvers is None:
+            validate_workflow(definition)
+        else:
+            validate_workflow(definition, workflow_exists=resolvers[0], workflow_contract=resolvers[1])
 
     async def publish(self, definition, published_by=None):
         """Bootstrap helper: create a workflow and publish its first version.
@@ -31,7 +63,7 @@ class WorkflowService:
         workflow publishes through publish_draft so the publication lock,
         revision precondition, and confirmation semantics always apply.
         """
-        validate_workflow(definition, await self._workflow_reference_check(definition))
+        await self._validate_definition(definition)
         definition = _normalized_definition(definition)
         if await self.repository.find_name_conflict(definition.name) is not None:
             raise ConflictError("errors.workflow.name_conflict", {"name": definition.name})
@@ -78,7 +110,7 @@ class WorkflowService:
             raise ConflictError("errors.workflow.stale_base_confirmation_required", {"active_version_id": _value(active, "id")})
         try:
             definition = WorkflowDefinition.model_validate(_value(draft, "definition"))
-            validate_workflow(definition, await self._workflow_reference_check(definition))
+            await self._validate_definition(definition)
         except ValidationError as error:
             raise ValidationFailedError("errors.workflow.invalid_definition") from error
         # The published definition carries the workflow name: renaming in the
@@ -190,7 +222,7 @@ class WorkflowService:
         draft = await self.get_draft(workflow_id, draft_id, user)
         try:
             definition = WorkflowDefinition.model_validate(_value(draft, "definition"))
-            validate_workflow(definition, await self._workflow_reference_check(definition))
+            await self._validate_definition(definition)
         except ValidationFailedError as error:
             return [detail.__dict__ for detail in error.details]
         except ValidationError as error:

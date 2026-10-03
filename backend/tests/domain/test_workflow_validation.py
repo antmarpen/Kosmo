@@ -9,9 +9,9 @@ def workflow(nodes=None, edges=None):
     return WorkflowDefinition.model_validate({
         "schema_version": "v1", "name": "example",
         "nodes": nodes or [
-            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
-            {"type": "script", "id": "script", "code": "pass", "inputs": ["topic"], "outputs": ["report"]},
-            {"type": "end", "id": "end"},
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
+            {"type": "script", "id": "script", "code": "report = topic\nreturn report", "inputs": ["topic"], "outputs": ["report"]},
+            {"type": "end", "id": "end", "inputs": ["report"]},
         ], "edges": edges or [{"from": "start", "to": "script"}, {"from": "script", "to": "end"}],
     })
 
@@ -29,10 +29,10 @@ def test_valid_reference_definition_passes():
 def decision_definition(target):
     return workflow(
         nodes=[
-            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
             {"type": "decision", "id": "decision", "selected_next_node_id": target},
-            {"type": "script", "id": "script", "code": "pass", "inputs": [], "outputs": []},
-            {"type": "end", "id": "end"},
+            {"type": "script", "id": "script", "code": "result = topic; return result", "inputs": [], "outputs": ["result"]},
+            {"type": "end", "id": "end", "inputs": ["result"]},
         ],
         edges=[{"from": "start", "to": "decision"}, {"from": "decision", "to": "script"}, {"from": "decision", "to": "end"}, {"from": "script", "to": "end"}],
     )
@@ -49,7 +49,7 @@ def test_decision_invalid_target_is_reported(target, rule):
 
 def workflow_node_definition(workflow_id):
     return workflow(nodes=[
-        {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
+        {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
         {"type": "workflow", "id": "invoke", "workflow_id": workflow_id},
         {"type": "end", "id": "end"},
     ], edges=[{"from": "start", "to": "invoke"}, {"from": "invoke", "to": "end"}])
@@ -57,12 +57,12 @@ def workflow_node_definition(workflow_id):
 
 def test_workflow_node_requires_nonempty_existing_reference():
     assert "errors.workflow.workflow_id_required" in keys(workflow_node_definition(""))
-    assert validate_workflow(workflow_node_definition("child"), workflow_exists=lambda workflow_id: workflow_id == "child") is None
+    assert "errors.workflow.reference_contract_unavailable" in keys(workflow_node_definition("child"))
 
 
 def test_workflow_node_without_resolver_fails_closed():
     """Callers must inject existence checking: absent resolver means the reference cannot be verified."""
-    assert "errors.workflow.workflow_not_found" in keys(workflow_node_definition("child"))
+    assert "errors.workflow.reference_contract_unavailable" in keys(workflow_node_definition("child"))
 
 
 def test_workflow_node_reports_missing_reference():
@@ -73,7 +73,7 @@ def test_workflow_node_reports_missing_reference():
 
 def test_duplicate_node_ids_are_reported():
     assert "errors.workflow.duplicate_node_id" in keys(workflow(nodes=[
-        {"type": "start", "id": "same", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
+        {"type": "start", "id": "same", "input_form": [{"name": "topic", "type": "string", "required": True}]},
         {"type": "end", "id": "same"},
     ], edges=[]))
 
@@ -84,7 +84,7 @@ def test_unknown_edge_endpoints_are_reported():
 
 def test_exactly_one_start_and_end_are_required():
     assert "errors.workflow.start_count" in keys(workflow(nodes=[{"type": "end", "id": "end"}], edges=[]))
-    assert "errors.workflow.end_count" in keys(workflow(nodes=[{"type": "start", "id": "start", "input_form": [{"name": "x", "type": "string", "required": True, "label_message_key": "x"}] }], edges=[]))
+    assert "errors.workflow.end_count" in keys(workflow(nodes=[{"type": "start", "id": "start", "input_form": [{"name": "x", "type": "string", "required": True}] }], edges=[]))
 
 
 def test_start_cannot_have_incoming_edge():
@@ -96,7 +96,7 @@ def test_end_cannot_have_outgoing_edge():
 
 
 def test_disconnected_graph_is_reported():
-    nodes = workflow().model_dump(mode="python")["nodes"] + [{"type": "script", "id": "orphan", "code": "pass", "inputs": [], "outputs": []}]
+    nodes = workflow().model_dump(mode="python")["nodes"] + [{"type": "script", "id": "orphan", "code": "return", "inputs": ["topic"], "outputs": []}]
     assert "errors.workflow.disconnected" in keys(workflow(nodes=nodes))
 
 
@@ -108,7 +108,7 @@ def test_unresolved_input_and_output_artifacts_are_reported():
     nodes = workflow().model_dump(mode="python")["nodes"]
     nodes[1]["inputs"] = ["absent"]
     found = keys(workflow(nodes=nodes))
-    assert found.count("errors.workflow.artifact_not_declared") == 1
+    assert found.count("errors.workflow.derived_contract_stale") == 1
 
 
 def test_start_requires_at_least_one_form_field():
@@ -125,3 +125,4 @@ def test_ai_requires_three_validation_levels():
         edges=[Edge.model_construct(from_node="start", to="ai"), Edge.model_construct(from_node="ai", to="end")], phases=None,
     )
     assert "errors.workflow.ai_validation_level_count" in keys(definition)
+

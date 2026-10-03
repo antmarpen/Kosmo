@@ -17,9 +17,9 @@ def definition(name="sample"):
     return WorkflowDefinition.model_validate({
         "schema_version": "v1", "name": name,
         "nodes": [
-            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
-            {"type": "script", "id": "script", "code": "pass", "inputs": ["topic"], "outputs": ["report"]},
-            {"type": "end", "id": "end"},
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
+            {"type": "script", "id": "script", "code": "report = topic\nreturn report", "inputs": ["topic"], "outputs": ["report"]},
+            {"type": "end", "id": "end", "inputs": ["report"]},
         ], "edges": [{"from": "start", "to": "script"}, {"from": "script", "to": "end"}],
     })
 
@@ -571,9 +571,9 @@ def http_draft_definition(outputs, name="Parent flow"):
     return {
         "schema_version": "v1", "name": name,
         "nodes": [
-            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
-            {"type": "http", "id": "http", "method": "GET", "url": "https://example.invalid", "outputs": outputs},
-            {"type": "end", "id": "end"},
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
+            {"type": "http", "id": "http", "method": "GET", "url": "https://example.invalid", "outputs": outputs, "inputs": ["topic"]},
+            {"type": "end", "id": "end", "inputs": ["response"]},
         ],
         "edges": [{"from": "start", "to": "http"}, {"from": "http", "to": "end"}],
     }
@@ -583,9 +583,9 @@ def workflow_draft_definition(child_workflow_id, name="Parent flow"):
     return {
         "schema_version": "v1", "name": name,
         "nodes": [
-            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
-            {"type": "workflow", "id": "invoke", "workflow_id": child_workflow_id},
-            {"type": "end", "id": "end"},
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
+            {"type": "workflow", "id": "invoke", "workflow_id": child_workflow_id, "inputs": ["topic"]},
+            {"type": "end", "id": "end", "inputs": []},
         ],
         "edges": [{"from": "start", "to": "invoke"}, {"from": "invoke", "to": "end"}],
     }
@@ -657,13 +657,13 @@ def test_draft_with_http_node_outputs_saves_and_publishes():
     client, original_service = route_client(repository)
     try:
         parent = client.post("/workflows", json={"name": "Parent flow"}).json()
-        saved = save_draft(client, parent["id"], parent["draft_id"], http_draft_definition([]))
+        saved = save_draft(client, parent["id"], parent["draft_id"], http_draft_definition(["response"]))
         assert saved.status_code == 200
         assert draft_issues(client, parent["id"], parent["draft_id"]) == []
         published = client.post(f"/workflows/{parent['id']}/drafts/{parent['draft_id']}/publish",
                                 json={"expected_pub_revision": 0})
         assert published.status_code == 201
-        assert published.json()["definition"]["nodes"][1]["outputs"] == []
+        assert published.json()["definition"]["nodes"][1]["outputs"] == ["response"]
     finally:
         workflow_routes.service = original_service
 
@@ -677,7 +677,7 @@ def test_draft_with_invalid_http_output_reports_keyed_issue_and_blocks_publicati
         assert saved.status_code == 200
         assert draft_issues(client, parent["id"], parent["draft_id"]) == [
             {"message_key": "errors.workflow.invalid_definition",
-             "params": {"field": "nodes.1.http.outputs.0", "type": "string_pattern_mismatch"}},
+             "params": {"field": "nodes.1.http.outputs.0", "type": "literal_error"}},
         ]
         rejected = client.post(f"/workflows/{parent['id']}/drafts/{parent['draft_id']}/publish",
                                json={"expected_pub_revision": 0})
@@ -693,6 +693,19 @@ def test_draft_with_existing_subworkflow_reference_saves_and_publishes():
     client, original_service = route_client(repository)
     try:
         child = client.post("/workflows", json={"name": "Child flow"}).json()
+        child_definition = {
+            "schema_version": "v1", "name": "Child flow",
+            "nodes": [
+                {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
+                {"type": "end", "id": "end", "inputs": ["topic"]},
+            ],
+            "edges": [{"from": "start", "to": "end"}],
+        }
+        save_draft(client, child["id"], child["draft_id"], child_definition)
+        published_child = client.post(f"/workflows/{child['id']}/drafts/{child['draft_id']}/publish",
+                                      json={"expected_pub_revision": 0}).json()
+        client.post(f"/workflows/{child['id']}/activate",
+                    json={"version_id": published_child["id"], "expected_active_revision": 0})
         parent = client.post("/workflows", json={"name": "Parent flow"}).json()
         saved = save_draft(client, parent["id"], parent["draft_id"], workflow_draft_definition(child["id"]))
         assert saved.status_code == 200
@@ -729,8 +742,17 @@ def test_draft_with_missing_subworkflow_reference_fails_with_keyed_issue():
 def test_bootstrap_publish_checks_subworkflow_references():
     repository = FakeRepository()
     service = WorkflowService(repository)
-    child = asyncio.run(service.create_workflow("Child", "author-1"))
-    published = asyncio.run(service.publish(WorkflowDefinition.model_validate(workflow_draft_definition(child["id"], name="Parent"))))
+    child_definition = WorkflowDefinition.model_validate({
+        "schema_version": "v1", "name": "Child",
+        "nodes": [
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
+            {"type": "end", "id": "end", "inputs": ["topic"]},
+        ],
+        "edges": [{"from": "start", "to": "end"}],
+    })
+    published_child = asyncio.run(service.publish(child_definition))
+    asyncio.run(service.activate_version(published_child["workflow_id"], published_child["id"], 0))
+    published = asyncio.run(service.publish(WorkflowDefinition.model_validate(workflow_draft_definition(published_child["workflow_id"], name="Parent"))))
     assert published["version"] == 1
     missing = WorkflowDefinition.model_validate(workflow_draft_definition("absent", name="Other"))
     with pytest.raises(ValidationFailedError) as caught:

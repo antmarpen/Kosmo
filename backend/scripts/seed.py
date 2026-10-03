@@ -14,14 +14,14 @@ def reference_workflow_definition() -> WorkflowDefinition:
     return WorkflowDefinition.model_validate({
         "schema_version": "v1", "name": "reference-security-analysis",
         "nodes": [
-            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
-            {"type": "script", "id": "collect", "inputs": ["topic"], "outputs": ["report.md", "data.json"], "code": "from pathlib import Path\nimport json\nimport os\n\ntopic = os.environ['KOSMO_INPUT_TOPIC']\noutput = Path('output')\noutput.mkdir(exist_ok=True)\n(output / 'report.md').write_text(f'# Security analysis\\n\\nTopic: {topic}\\n\\n## Findings\\n- Review the supplied topic.\\n', encoding='utf-8')\n(output / 'data.json').write_text(json.dumps({'topic': topic, 'findings': []}), encoding='utf-8')"},
-            {"type": "ai", "id": "summarize", "agent": {"runtime": "opencode", "model": "default", "instructions": "Summarize the report accurately; do not invent findings."}, "prompt_template": "Read report.md and write a concise security summary to summary.md with Overview, Findings, and Recommendations sections.", "inputs": ["report.md"], "outputs": ["summary.md"], "max_validation_cycles": 3, "validation": {"levels": [
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
+            {"type": "script", "id": "collect", "inputs": ["topic"], "outputs": ["report", "data"], "code": "report = f'# Security analysis\\n\\nTopic: {topic}\\n\\n## Findings\\n- Review the supplied topic.\\n'\ndata = {'topic': topic, 'findings': []}\nreturn report, data"},
+            {"type": "ai", "id": "summarize", "agent": {"runtime": "opencode", "model": "default", "instructions": "Summarize the report accurately; do not invent findings."}, "prompt_template": "Read report and write a concise security summary to summary.md with Overview, Findings, and Recommendations sections.", "inputs": ["report", "data"], "outputs": ["summary.md"], "max_validation_cycles": 3, "validation": {"levels": [
                 {"name": "exists_and_parseable", "message_key": "workflow.validation.exists_parseable", "params_schema": {"artifact": "summary.md", "format": "markdown"}},
                 {"name": "required_sections", "message_key": "workflow.validation.required_sections", "params_schema": {"sections": ["Overview", "Findings", "Recommendations"], "heading_levels": [1, 2]}},
                 {"name": "content_rule", "message_key": "workflow.validation.content_rule", "params_schema": {"rule": "Summary claims must be supported by report.md.", "rule_type": "supported_claims", "input_artifact": "report.md"}},
             ]}},
-            {"type": "end", "id": "end"},
+            {"type": "end", "id": "end", "inputs": ["summary.md"]},
         ], "edges": [{"from": "start", "to": "collect"}, {"from": "collect", "to": "summarize"}, {"from": "summarize", "to": "end"}],
     })
 

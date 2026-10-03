@@ -7,7 +7,7 @@ from shared.graph.schema import WorkflowDefinition
 def valid_definition():
     return {
         "schema_version": "v1", "name": "example", "nodes": [
-            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True, "label_message_key": "workflow.topic.label"}]},
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
             {"type": "script", "id": "script", "code": "pass", "inputs": ["topic"], "outputs": ["report"]},
             {"type": "end", "id": "end"},
         ], "edges": [{"from": "start", "to": "script"}, {"from": "script", "to": "end"}],
@@ -24,6 +24,13 @@ def test_schema_parses_v1_with_discriminated_node_types_and_edge_aliases():
 def test_schema_rejects_unknown_version():
     value = valid_definition()
     value["schema_version"] = "v2"
+    with pytest.raises(ValidationError):
+        WorkflowDefinition.model_validate(value)
+
+
+def test_form_field_rejects_removed_label_message_key():
+    value = valid_definition()
+    value["nodes"][0]["input_form"][0]["label_message_key"] = "workflow.topic.label"
     with pytest.raises(ValidationError):
         WorkflowDefinition.model_validate(value)
 
@@ -50,7 +57,7 @@ def test_schema_carries_optional_bounded_loop_phase():
 
 @pytest.mark.parametrize("node", [
     {"type": "decision", "id": "decision", "selected_next_node_id": "end"},
-    {"type": "workflow", "id": "invoke", "workflow_id": "child-workflow"},
+    {"type": "workflow", "id": "invoke", "workflow_id": "child-workflow", "inputs": []},
 ])
 def test_schema_round_trips_decision_and_workflow_nodes(node):
     value = valid_definition()
@@ -74,18 +81,23 @@ def http_definition(outputs):
     return value
 
 
-def test_http_node_outputs_accept_empty_and_valid_identifier_lists():
-    assert WorkflowDefinition.model_validate(http_definition([])).nodes[1].outputs == []
-    assert WorkflowDefinition.model_validate(http_definition(["report", "summary.md"])).nodes[1].outputs == ["report", "summary.md"]
+def test_http_node_defaults_to_fixed_response_output():
+    value = valid_definition()
+    value["nodes"][1] = {"type": "http", "id": "http", "method": "GET", "url": "https://example.invalid"}
+    assert WorkflowDefinition.model_validate(value).nodes[1].outputs == ["response"]
 
 
 @pytest.mark.parametrize("outputs", [["../escape"], ["bad/name"], ["x" * 65], [""], ["nested/file"]])
-def test_http_node_output_violations_are_structured_issues_not_type_errors(outputs):
+def test_http_node_rejects_output_other_than_fixed_response(outputs):
     with pytest.raises(ValidationError) as caught:
         WorkflowDefinition.model_validate(http_definition(outputs))
-    error = caught.value.errors()[0]
-    assert error["type"] == "string_pattern_mismatch"
-    assert error["loc"] == ("nodes", 1, "http", "outputs", 0)
+    assert caught.value
+
+
+@pytest.mark.parametrize("outputs", [[], ["other"], ["response", "other"]])
+def test_http_node_rejects_non_fixed_outputs(outputs):
+    with pytest.raises(ValidationError):
+        WorkflowDefinition.model_validate(http_definition(outputs))
 
 
 @pytest.mark.parametrize("location,value", [
@@ -103,3 +115,4 @@ def test_schema_rejects_invalid_path_identifiers(location, value):
         definition["nodes"][1]["outputs"] = [value]
     with pytest.raises(ValidationError):
         WorkflowDefinition.model_validate(definition)
+
