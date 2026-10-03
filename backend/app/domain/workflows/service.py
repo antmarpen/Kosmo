@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pydantic import ValidationError
 from shared.errors import ConflictError, ErrorDetail, NotFoundError, PermissionDeniedError, ValidationFailedError
 from shared.graph.schema import WorkflowDefinition, WorkflowNode
-from shared.graph.output_contract import normalize_output_validation
+from shared.graph.output_contract import normalize_validation_contracts
 
 
 class WorkflowService:
@@ -110,7 +110,9 @@ class WorkflowService:
         if active is not None and base_id != _value(active, "id") and not confirm_overwrite:
             raise ConflictError("errors.workflow.stale_base_confirmation_required", {"active_version_id": _value(active, "id")})
         try:
-            raw_definition = normalize_output_validation(_value(draft, "definition"))
+            raw_definition, repairs = normalize_validation_contracts(_value(draft, "definition"))
+            if repairs:
+                raise ValidationFailedError("errors.workflow.invalid", details=[ErrorDetail(item["key"], {"path": item["path"]}) for item in repairs])
             definition = WorkflowDefinition.model_validate(raw_definition)
             await self._validate_definition(definition)
         except ValidationError as error:
@@ -219,7 +221,8 @@ class WorkflowService:
         author_id = _value(draft, "author_id")
         if user.role.value == "admin":
             author_id = user.id if author_id == user.id else author_id
-        saved = await self.repository.save_draft(draft_id, author_id, expected_revision, definition, layout)
+        canonical, _ = normalize_validation_contracts(definition)
+        saved = await self.repository.save_draft(draft_id, author_id, expected_revision, canonical, layout)
         if saved is None:
             raise NotFoundError("errors.workflow.draft_not_found")
         return saved
@@ -227,7 +230,9 @@ class WorkflowService:
     async def validate_draft(self, workflow_id, draft_id, user):
         draft = await self.get_draft(workflow_id, draft_id, user)
         try:
-            raw_definition = normalize_output_validation(_value(draft, "definition"))
+            raw_definition, repairs = normalize_validation_contracts(_value(draft, "definition"))
+            if repairs:
+                return [ErrorDetail(item["key"], {"path": item["path"]}).__dict__ for item in repairs]
             definition = WorkflowDefinition.model_validate(raw_definition)
             await self._validate_definition(definition)
         except ValidationFailedError as error:

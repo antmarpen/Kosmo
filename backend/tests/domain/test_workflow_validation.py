@@ -117,12 +117,4 @@ def test_start_requires_at_least_one_form_field():
     assert "errors.workflow.start_input_required" in keys(workflow(nodes=nodes))
 
 
-def test_ai_requires_three_validation_levels():
-    invalid_ai = AiNode.model_construct(id="ai", validation=ValidationContract.model_construct(levels=[]), inputs=["topic"], outputs=[])
-    definition = WorkflowDefinition.model_construct(
-        schema_version="v1", name="example",
-        nodes=[StartNode.model_construct(id="start", input_form=[FormField.model_construct(name="topic")]), invalid_ai, EndNode.model_construct(id="end")],
-        edges=[Edge.model_construct(from_node="start", to="ai"), Edge.model_construct(from_node="ai", to="end")], phases=None,
-    )
-    assert "errors.workflow.ai_validation_level_count" in keys(definition)
 

@@ -2,60 +2,94 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from collections.abc import Callable
+import ast
+import jsonschema
+from jsonschema.validators import validator_for
 
 from shared.errors import ErrorDetail, ValidationFailedError
 from shared.graph.schema import AiNode, DecisionNode, EndNode, HttpNode, ScriptNode, StartNode, WorkflowDefinition, WorkflowNode
 from shared.graph.script_contract import analyze_script_body
-from shared.graph.output_contract import normalize_output_validation
-
-
-_FORMATS = {"auto", "text", "json", "markdown"}
+from shared.graph.output_contract import normalize_validation_contracts
 
 
 def validate_output_validation_catalogue(definition: dict) -> list[ErrorDetail]:
-    """Validate the bounded authoring catalogue without executing validators."""
+    """Validate authored format contracts without executing user rules."""
     issues: list[ErrorDetail] = []
     for node in definition.get("nodes", []):
         if not isinstance(node, dict):
             continue
-        outputs = node.get("outputs", [])
-        if node.get("type") == "http":
-            outputs = ["response"]
         contracts = node.get("output_validation") or {}
         for output, contract in contracts.items():
-            if output not in outputs:
-                issues.append(_output_detail("output_validation_orphan", node, output, "output"))
-                continue
-            levels = contract.get("levels", []) if isinstance(contract, dict) else []
-            for index, section in enumerate(("syntax", "format", "rules")):
-                if index >= len(levels):
-                    continue
-                schema = levels[index].get("params_schema", {})
-                allowed = ({"format"} if index == 0 else
-                           {"required", "required_sections", "sections", "heading_levels"} if index == 1 else
-                           {"required_terms", "rule_type", "input_artifact"})
-                if not isinstance(schema, dict) or set(schema) - allowed:
-                    issues.append(_output_detail("output_validation_option_invalid", node, output, section))
-                    continue
-                if index == 0 and schema.get("format", "auto") not in _FORMATS:
-                    issues.append(_output_detail("output_validation_format_invalid", node, output, section))
-                if index == 1:
-                    if "required" in schema and (schema.get("required_sections") or schema.get("sections")):
-                        issues.append(_output_detail("output_validation_incompatible", node, output, section))
-                    levels_allowed = schema.get("heading_levels", list(range(1, 7)))
-                    if not isinstance(levels_allowed, list) or any(not isinstance(level, int) or level < 1 or level > 6 for level in levels_allowed):
-                        issues.append(_output_detail("output_validation_option_invalid", node, output, section))
-                if index == 2:
-                    rule = schema.get("rule_type")
-                    if rule not in (None, "required_terms", "supported_claims"):
-                        issues.append(_output_detail("output_validation_rule_unsupported", node, output, section))
-                    if rule == "supported_claims" and schema.get("input_artifact") not in node.get("inputs", []):
-                        issues.append(_output_detail("output_validation_input_required", node, output, section))
+            _validate_contract(contract, issues, node_id=node.get("id"), output=output)
+        if node.get("type") == "start":
+            for field in node.get("input_form", []):
+                contract = field.get("validation")
+                if contract:
+                    _validate_contract(contract, issues, node_id=node.get("id"), output=field.get("name"))
+                    _validate_start_type(contract, field, issues, node.get("id"))
     return issues
 
 
-def _output_detail(rule: str, node: dict, output: str, section: str) -> ErrorDetail:
-    return _detail(rule, node_id=node.get("id"), output=output, section=section)
+def _validate_contract(contract: dict, issues: list[ErrorDetail], **params) -> None:
+    if not isinstance(contract, dict):
+        issues.append(_detail("validation_contract_invalid", **params)); return
+    fmt = contract.get("format")
+    allowed = {"format", "json_schema", "rules_code"}
+    if set(contract) - allowed:
+        issues.append(_detail("validation_option_invalid", **params))
+    if fmt in {"text", "markdown"}:
+        if "json_schema" in contract or "rules_code" in contract:
+            issues.append(_detail("validation_forbidden_property", **params))
+        return
+    if fmt not in {"json", "yaml"}:
+        issues.append(_detail("validation_format_invalid", **params)); return
+    if fmt == "yaml" and "json_schema" in contract:
+        issues.append(_detail("validation_forbidden_property", **params))
+    schema = contract.get("json_schema")
+    if schema is not None:
+        if fmt != "json" or not isinstance(schema, (dict, bool)):
+            issues.append(_detail("validation_schema_invalid", **params))
+        else:
+            try:
+                validator = validator_for(schema)
+                if validator.META_SCHEMA.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
+                    issues.append(_detail("validation_schema_draft_invalid", **params))
+                validator.check_schema(schema)
+                if _has_remote_ref(schema):
+                    issues.append(_detail("validation_remote_ref_forbidden", **params))
+            except (jsonschema.SchemaError, TypeError, ValueError):
+                issues.append(_detail("validation_schema_invalid", **params))
+    code = contract.get("rules_code")
+    if code is not None:
+        if not isinstance(code, str):
+            issues.append(_detail("validation_rules_invalid", **params))
+        else:
+            try:
+                ast.parse("def __rule__(value, content):\n" + "\n".join("    " + line for line in code.splitlines()), mode="exec")
+            except (SyntaxError, ValueError, TypeError):
+                issues.append(_detail("validation_rules_invalid", **params))
+
+
+def _has_remote_ref(value) -> bool:
+    if isinstance(value, dict):
+        ref = value.get("$ref")
+        if isinstance(ref, str) and not ref.startswith("#"):
+            return True
+        return any(_has_remote_ref(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_remote_ref(item) for item in value)
+    return False
+
+
+def _validate_start_type(contract, field, issues, node_id) -> None:
+    if field.get("type") == "string":
+        return
+    schema = contract.get("json_schema") if contract.get("format") == "json" else None
+    expected = "integer" if field.get("type") == "number" else "boolean"
+    schema_type = schema.get("type") if isinstance(schema, dict) else None
+    compatible = schema is None or schema_type in ({"number", "integer"} if expected == "integer" else {"boolean"})
+    if not compatible:
+        issues.append(_detail("validation_start_type_incompatible", node_id=node_id, field=field.get("name")))
 
 
 def inventory_output_validation_records(records: list[dict]) -> list[dict]:
@@ -64,7 +98,7 @@ def inventory_output_validation_records(records: list[dict]) -> list[dict]:
     for record in records:
         definition = record.get("definition", {})
         try:
-            normalized = normalize_output_validation(definition)
+            normalized, _ = normalize_validation_contracts(definition)
             issues = validate_output_validation_catalogue(normalized)
         except ValueError:
             issues = [_detail("output_validation_conflict", record_id=record.get("id"))]
@@ -75,7 +109,15 @@ def inventory_output_validation_records(records: list[dict]) -> list[dict]:
 
 def validate_workflow(definition: WorkflowDefinition, workflow_exists: Callable[[str], bool] | None = None,
                       workflow_contract: Callable[[str], tuple[list[str], list[str]] | None] | None = None) -> None:
-    issues: list[ErrorDetail] = validate_output_validation_catalogue(definition.model_dump(mode="json", exclude_none=True))
+    try:
+        raw_definition = definition.model_dump(mode="json", exclude_none=True)
+    except TypeError:
+        # Defensive support for deliberately model_construct-created instances
+        # in tests and old in-memory integrations.
+        raw_definition = definition.__dict__
+    raw, repair = normalize_validation_contracts(raw_definition)
+    issues: list[ErrorDetail] = [_detail("legacy_validation_repair_required", path=item["path"]) for item in repair]
+    issues.extend(validate_output_validation_catalogue(raw))
     if not definition.name.strip():
         issues.append(_detail("name_required"))
     nodes = definition.nodes
@@ -139,6 +181,10 @@ def validate_workflow(definition: WorkflowDefinition, workflow_exists: Callable[
                 output_map[node.id] = list(contract[1])
         else: output_map[node.id] = []
     for node in nodes:
+        declared = output_map.get(node.id, [])
+        for output in (getattr(node, "output_validation", None) or {}):
+            if output not in declared:
+                issues.append(_detail("output_validation_orphan", node_id=node.id, output=output))
         if isinstance(node, WorkflowNode):
             if workflow_exists is not None and node.workflow_id.strip() and not workflow_exists(node.workflow_id):
                 issues.append(_detail("workflow_not_found", node_id=node.id, workflow_id=node.workflow_id))
@@ -156,8 +202,6 @@ def validate_workflow(definition: WorkflowDefinition, workflow_exists: Callable[
             _check_snapshot(node, list(analysis.outputs), "outputs", issues)
         if isinstance(node, HttpNode):
             _check_snapshot(node, ["response"], "outputs", issues)
-        if isinstance(node, AiNode) and node.validation is not None and len(node.validation.levels) != 3:
-            issues.append(_detail("ai_validation_level_count", node_id=node.id, count=len(node.validation.levels)))
     if issues: raise ValidationFailedError("errors.workflow.invalid", details=issues)
 
 
