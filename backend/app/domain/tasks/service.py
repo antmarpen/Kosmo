@@ -195,7 +195,7 @@ async def validate_start_inputs(start, input_values, rule_validation=None):
         contract = field.get("validation")
         if contract and isinstance(submitted, str):
             for level in (1, 2, 3):
-                if level == 3 and contract.get("rules"):
+                if level == 3 and contract.get("rules_code"):
                     if rule_validation:
                         failures = await rule_validation(name, submitted, contract)
                     else:

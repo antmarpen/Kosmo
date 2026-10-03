@@ -98,6 +98,26 @@ def test_submission_rejects_invalid_json_start_field_before_task_creation():
     assert repository.created == []
 
 
+def test_submission_runs_canonical_start_rules_code_before_task_creation():
+    repository = FakeRepository()
+    repository.active["definition"]["nodes"][0]["input_form"] = [
+        {"name": "settings", "type": "string", "required": True,
+         "validation": {"format": "json", "rules_code": "return False"}}
+    ]
+    calls = []
+
+    async def reject_rule(*args):
+        calls.append(args)
+        return [{"message_key": "validation.rules", "params": {"reason": "rule_failed"}}]
+
+    from app.domain.tasks.service import validate_start_inputs
+    errors = asyncio.run(validate_start_inputs(repository.active["definition"]["nodes"][0],
+                                               {"settings": "{}"}, reject_rule))
+    assert errors
+    assert calls
+    assert repository.created == []
+
+
 def test_task_list_serialization_exposes_only_safe_summary_fields():
     from fastapi.encoders import jsonable_encoder
 

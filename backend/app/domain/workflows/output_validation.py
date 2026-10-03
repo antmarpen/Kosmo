@@ -15,7 +15,7 @@ async def validate_content(
 ) -> list[dict]:
     """Evaluate parse/schema prerequisites and optionally run the sandboxed rule."""
     errors = evaluate_content(content, contract, level)
-    if errors or level != 3 or not contract.get("rules"):
+    if errors or level != 3 or not contract.get("rules_code"):
         return errors
 
     try:
@@ -27,7 +27,7 @@ async def validate_content(
 
     if rule_runner is None:
         raise RuntimeError("Sandbox rule runner is unavailable")
-    result = await rule_runner(contract["rules"], value, text)
+    result = await rule_runner(contract["rules_code"], value, text)
     if result.get("passed") is True and result.get("reason") == "passed":
         return []
     return [{"artifact": "candidate", "level": "rules", "message_key": "validation.rules",
