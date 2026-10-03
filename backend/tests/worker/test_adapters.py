@@ -467,12 +467,12 @@ def test_ai_activity_returns_structured_failure_when_agent_infrastructure_fails(
         raise RuntimeError("docker socket unavailable")
 
     monkeypatch.setattr(agent_module, "start_agent_session", unavailable)
-    async def no_provider_config(user_id):
+    async def no_provider_config(user_id, provider_type):
         return None
     monkeypatch.setattr(ai_node_module, "_load_provider_runtime_config", no_provider_config)
     result = asyncio.run(run_ai_node({
         "task_id": "task-1", "task_prompt": "work", "user_id": "user-1", "workspace": str(tmp_path),
-        "node": {"id": "ai-1", "outputs": [], "validation": {"levels": []}},
+        "node": {"id": "ai-1", "agent": {"runtime": "opencode"}, "outputs": [], "validation": {"levels": []}},
     }))
     assert result["state"] == "failed"
     assert result["error"]["code"] == "AGENT_RUNTIME_FAILED"
@@ -494,7 +494,7 @@ def test_missing_provider_config_turns_runtime_failure_into_auth_error_and_note(
         async def close(self):
             pass
 
-    async def no_config(user_id):
+    async def no_config(user_id, provider_type):
         return None
 
     async def start_session(*args, **kwargs):
@@ -513,7 +513,7 @@ def test_missing_provider_config_turns_runtime_failure_into_auth_error_and_note(
     monkeypatch.setattr(agent_module, "start_agent_session", start_session)
     result = asyncio.run(run_ai_node({
         "task_id": "task-1", "user_id": "owner-1", "task_prompt": "work", "workspace": str(tmp_path),
-        "node": {"id": "ai-1", "outputs": [], "validation": {"levels": []}},
+        "node": {"id": "ai-1", "agent": {"runtime": "opencode"}, "outputs": [], "validation": {"levels": []}},
     }))
     assert result["error"]["code"] == "PROVIDER_AUTH_MISSING"
     assert result["error"]["message_key"] == "errors.provider.auth_missing"

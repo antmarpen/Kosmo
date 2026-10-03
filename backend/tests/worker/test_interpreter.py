@@ -63,3 +63,24 @@ def test_resolve_declared_node_inputs_reports_missing_predecessor_output():
 
     with pytest.raises(KeyError, match="report.md"):
         resolve_declared_inputs(["report.md"], {"topic": "test"})
+
+
+def test_edge_input_resolution_excludes_unrelated_branches_and_rejects_duplicate_names():
+    from worker.interpreter import resolve_edge_inputs
+    nodes = [{"id": "start", "type": "start"}, {"id": "a", "type": "script"},
+             {"id": "b", "type": "script"}, {"id": "join", "type": "script", "inputs": ["shared"]}]
+    edges = [{"from": "start", "to": "a"}, {"from": "start", "to": "b"}, {"from": "a", "to": "join"}]
+    ref = {"storage_path": "/artifact/a"}
+    completed = {"a:0": {"outputs": {"shared": ref}}, "b:0": {"outputs": {"secret": ref}}}
+    assert resolve_edge_inputs(nodes, edges, nodes[-1], completed, {"prompt": "hello"}) == {"shared": ref}
+    edges.append({"from": "b", "to": "join"})
+    completed["b:0"]["outputs"] = {"shared": ref}
+    import pytest
+    with pytest.raises(ValueError, match="shared"):
+        resolve_edge_inputs(nodes, edges, nodes[-1], completed, {})
+
+
+def test_edge_input_resolution_uses_start_values_only_for_direct_start_edge():
+    from worker.interpreter import resolve_edge_inputs
+    nodes = [{"id": "start", "type": "start"}, {"id": "script", "type": "script", "inputs": ["topic"]}]
+    assert resolve_edge_inputs(nodes, [{"from": "start", "to": "script"}], nodes[1], {}, {"topic": "direct"}) == {"topic": "direct"}

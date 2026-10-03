@@ -6,7 +6,7 @@ from temporalio.exceptions import ActivityError
 
 from shared.execution import TaskExecutionInput
 from shared.checkpoint import is_execution_completed
-from worker.interpreter import resolve_declared_inputs
+from worker.interpreter import resolve_edge_inputs
 
 
 @workflow.defn
@@ -42,13 +42,12 @@ class TaskWorkflow:
         checkpoint = await workflow.execute_activity("reconcile_checkpoint", payload.task_id, start_to_close_timeout=timedelta(minutes=1))
         completed = checkpoint["completed"]
         order = await workflow.execute_activity("ordered_nodes", payload.definition, start_to_close_timeout=timedelta(minutes=1))
-        execution_context = dict(payload.input_values)
+        edges = payload.definition.get("edges", [])
         for node in order:
             if self._stop_requested:
                 await workflow.execute_activity("finish_task", (payload.task_id, "stopped"), start_to_close_timeout=timedelta(minutes=1))
                 return "stopped"
             if is_execution_completed({"completed": completed}, node["id"], 0):
-                execution_context.update(completed[f"{node['id']}:0"].get("outputs", {}))
                 continue
             node_execution_id = await workflow.execute_activity(
                 "begin_node", (payload.task_id, node["id"]), start_to_close_timeout=timedelta(minutes=1),
@@ -72,12 +71,13 @@ class TaskWorkflow:
                     self._waiting_for_input = True
                     try:
                         try:
-                            node_inputs = resolve_declared_inputs(node.get("inputs", []), execution_context)
-                        except KeyError as exc:
+                            node_inputs = resolve_edge_inputs(payload.definition["nodes"], edges, node, completed, payload.input_values)
+                        except (KeyError, ValueError) as exc:
+                            ambiguous = isinstance(exc, ValueError)
                             result = {
                                 "state": "failed", "outputs": {},
                                 "error": {
-                                    "code": "AGENT_INPUT_MISSING",
+                                    "code": "INPUT_AMBIGUOUS" if ambiguous else "INPUT_MISSING",
                                     "message_key": "errors.agent.input_missing",
                                     "params": {"inputs": str(exc)},
                                 },
@@ -105,7 +105,14 @@ class TaskWorkflow:
                         self._waiting_for_input = False
                         await workflow.execute_activity("release_agent", payload.task_id, start_to_close_timeout=timedelta(minutes=1))
                 else:
-                    result = await workflow.execute_activity("run_node", (payload.task_id, node, execution_context), start_to_close_timeout=timedelta(minutes=5))
+                    try:
+                        node_inputs = resolve_edge_inputs(payload.definition["nodes"], edges, node, completed, payload.input_values)
+                    except (KeyError, ValueError) as exc:
+                        code = "INPUT_AMBIGUOUS" if isinstance(exc, ValueError) else "INPUT_MISSING"
+                        key = "errors.agent.input_missing"
+                        result = {"state": "failed", "outputs": {}, "error": {"code": code, "message_key": key, "params": {"inputs": str(exc)}}}
+                    else:
+                        result = await workflow.execute_activity("run_node", (payload.task_id, node, node_inputs), start_to_close_timeout=timedelta(minutes=5))
             else:
                 result = {"state": "success", "error": None}
             await workflow.execute_activity("finish_node", (payload.task_id, node["id"], result), start_to_close_timeout=timedelta(minutes=1))
@@ -128,6 +135,5 @@ class TaskWorkflow:
                 start_to_close_timeout=timedelta(minutes=1),
             )
             completed = checkpoint["completed"]
-            execution_context.update(result.get("outputs", {}))
         await workflow.execute_activity("finish_task", (payload.task_id, "success"), start_to_close_timeout=timedelta(minutes=1))
         return "success"

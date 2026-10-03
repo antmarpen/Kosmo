@@ -36,6 +36,37 @@ def resolve_declared_inputs(names, context):
     return {name: context[name] for name in names}
 
 
+def resolve_edge_inputs(nodes, edges, node, completed, start_values):
+    """Resolve declared artifact references from direct predecessors only."""
+    by_id = {item["id"]: item for item in nodes}
+    producers = {}
+    for edge in edges:
+        source_id = edge.get("from", edge.get("from_node"))
+        if edge["to"] != node["id"]:
+            continue
+        source = by_id[source_id]
+        if source.get("type") == "start":
+            for name, value in start_values.items():
+                producers.setdefault(name, []).append(value)
+            continue
+        record = completed.get(f"{source_id}:0", {})
+        for name, ref in record.get("outputs", {}).items():
+            producers.setdefault(name, []).append(ref)
+    result = {}
+    missing = []
+    for name in node.get("inputs", []):
+        values = producers.get(name, [])
+        if len(values) > 1:
+            raise ValueError(f"Ambiguous input: {name}")
+        if not values:
+            missing.append(name)
+        else:
+            result[name] = values[0]
+    if missing:
+        raise KeyError(", ".join(missing))
+    return result
+
+
 def interpret(definition, context, run_node, completed=None):
     completed = completed or set()
     for node in topological_nodes(definition):

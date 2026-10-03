@@ -75,6 +75,24 @@ def test_ai_node_persists_validated_output_and_checkpoint(tmp_path):
     assert "/workspace/inputs/report.md" in adapter.prompts[0]
 
 
+def test_ai_executor_rejects_unsupported_runtime_with_keyed_error():
+    from worker.activities.ai_node import run_ai_node
+    result = asyncio.run(run_ai_node({"task_id": "task", "node": {"id": "ai", "agent": {"runtime": "claude"}, "outputs": []}}))
+    assert result["state"] == "failed"
+    assert result["error"] == {"code": "EXECUTOR_NOT_SUPPORTED", "message_key": "errors.executor.not_registered", "params": {"type": "claude"}}
+
+
+def test_ai_input_staging_accepts_direct_start_value_and_artifact_reference(tmp_path):
+    from worker.activities.agent import stage_agent_inputs
+    artifact = tmp_path / "source.md"
+    artifact.write_text("artifact body", encoding="utf-8")
+    env = stage_agent_inputs({"prompt": "direct value", "report.md": {"storage_path": str(artifact)}}, tmp_path / "workspace")
+    workspace = tmp_path / "workspace" / "inputs"
+    assert (workspace / "prompt").read_text(encoding="utf-8") == '"direct value"'
+    assert (workspace / "report.md").read_text(encoding="utf-8") == "artifact body"
+    assert env["KOSMO_INPUT_ARTIFACT_PROMPT"] == "/workspace/inputs/prompt"
+
+
 def test_ai_node_stops_after_three_failed_validation_cycles(tmp_path):
     adapter = FakeAdapter([{}, {}, {}])
     notes = []

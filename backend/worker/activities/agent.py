@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import socket
@@ -133,15 +134,18 @@ def stage_agent_inputs(inputs: dict[str, dict], workspace: str | Path) -> dict[s
         if not filename or filename in {".", ".."} or filename in used_names:
             raise ValueError("Agent input names must have unique safe file names")
         used_names.add(filename)
-        source = Path(artifact["storage_path"]).resolve()
-        if not source.is_file():
-            raise FileNotFoundError(f"Declared agent input is unavailable: {logical_name}")
         target = input_dir / filename
         if target.is_symlink():
             raise ValueError(f"Agent input destination is unsafe: {logical_name}")
         if target.exists():
             target.unlink()
-        shutil.copyfile(source, target)
+        if isinstance(artifact, dict) and artifact.get("storage_path"):
+            source = Path(artifact["storage_path"]).resolve()
+            if not source.is_file():
+                raise FileNotFoundError(f"Declared agent input is unavailable: {logical_name}")
+            shutil.copyfile(source, target)
+        else:
+            target.write_text(json.dumps(artifact, ensure_ascii=False, allow_nan=False), encoding="utf-8")
         target.chmod(0o444)
         env_name = "KOSMO_INPUT_ARTIFACT_" + logical_name.upper().replace(".", "_").replace("-", "_")
         environment[env_name] = f"/workspace/inputs/{filename}"

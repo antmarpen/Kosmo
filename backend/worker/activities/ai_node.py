@@ -99,6 +99,12 @@ async def run_ai_node(payload: dict) -> dict:
     )
     if recovered:
         return recovered
+    runtime = payload["node"].get("agent", {}).get("runtime")
+    if runtime != "opencode":
+        return {"state": "failed", "outputs": {}, "error": {
+            "code": "EXECUTOR_NOT_SUPPORTED", "message_key": "errors.executor.not_registered",
+            "params": {"type": runtime or ""},
+        }}
     from worker.activities.agent import start_agent_session, stage_agent_inputs
 
     task_id, node, task_prompt = payload["task_id"], payload["node"], payload.get("task_prompt", "")
@@ -148,7 +154,7 @@ async def run_ai_node(payload: dict) -> dict:
     adapter = None
     try:
         from worker.activities.agent import validator_mcp_server
-        runtime_config_files = await _load_provider_runtime_config(user_id) or {}
+        runtime_config_files = await _load_provider_runtime_config(user_id, runtime) or {}
         from app.core.config import settings
         runtime_environment = stage_agent_inputs(payload.get("inputs", {}), workspace)
         execution_id = payload.get("node_execution_id")
@@ -187,7 +193,7 @@ async def run_ai_node(payload: dict) -> dict:
             await adapter.close()
 
 
-async def _load_provider_runtime_config(user_id: str | None) -> dict[str, bytes] | None:
+async def _load_provider_runtime_config(user_id: str | None, provider_type: str = "opencode") -> dict[str, bytes] | None:
     if not user_id:
         return None
     from app.core.config import settings
@@ -203,7 +209,7 @@ async def _load_provider_runtime_config(user_id: str | None) -> dict[str, bytes]
         ))).all())
         return await ProviderConfigService(
             ProviderConfigRepository(db), settings.config_encryption_key,
-        ).resolve_files(user_id, "opencode", group_ids)
+        ).resolve_files(user_id, provider_type, group_ids)
 
 
 def _is_provider_auth_error(exc: Exception) -> bool:
