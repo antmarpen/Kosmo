@@ -308,3 +308,28 @@ Environment fixes required by the new deps: `jsonschema` (and the evaluator deps
   (768px/desktop/375px), then architecture review and documentator.
 - Environment notes: the worker does **not** hot-reload — restart it after
   worker-module changes; new backend deps require `uv sync` in the container.
+
+## Final review (2026-10-03) — CHANGES REQUIRED (AR3 remediation)
+
+The architect reproduced four validation-contract failures plus a Compose
+sandbox failure:
+
+- **AR3-01 (High)** runtime inspects `rules` while the schema/UI persist
+  `rules_code`, so configured Python rules are bypassed (zero runner calls).
+- **AR3-02 (High)** the rule sandbox bind-mounts worker-local `/tmp` paths and
+  fails from the Compose worker (must use the task-storage volume/subpath).
+- **AR3-03 (High)** boolean JSON Schemas (`false`/`true`) are not honored or
+  preserved.
+- **AR3-04 (High)** numeric/boolean Start fields are not validated (only string).
+- **AR3-05 (High)** sensitive input content travels through Temporal payloads and
+  validation diagnostics.
+- **AR3-06 (Medium)** `window.confirm`/static loading text in the validation
+  dialog; missing 768/1280/375 responsive browser evidence.
+
+Accepted positives: no Docker socket on the API; MCP authorization intact;
+legacy normalization deep-copies and does not rewrite history; the seed uses
+canonical contracts; the script-analysis lifecycle fix has a regression test;
+catalog parity 474/474. Operator asks for a fresh-process **task mapper**
+regression alongside the users-table fix.
+
+Status: AR3-01/02/03 IN PROGRESS; AR3-04/05/06 QUEUED.
