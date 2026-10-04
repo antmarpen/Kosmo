@@ -1,6 +1,6 @@
 # Workflow deletion — work-package execution record
 
-Status: Planned against approved spec `docs/specs/workflow-deletion.md` (2026-10-05). Update package status and record actual commands/results during execution.
+Status: **Implemented (2026-10-05)** — WP-DEL-01…05 delivered. Backend `DELETE /workflows/{id}` (lock + state/count checks, `delete_tasks`, post-commit traversal-safe storage cleanup) with `task_count`/`in_progress_task_count` in the workflow view; list Delete action + confirmation dialog; nested en/es. Backend host 482 passed / 79 skipped; deletion tests 4 passed in-container; frontend 510 passed, build green. Coordinator decisions: counts in the workflow DTO; authorization = `admin`/`builder` (workflows are shared, drafts per-author); workflow-row `FOR UPDATE` lock; best-effort post-commit cleanup accepted.
 
 ## Architecture and execution decisions
 
