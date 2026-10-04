@@ -23,6 +23,8 @@ i18next.addResourceBundle("en", "translation", {
     // R6 edit-mode keys; the coordinator applies them to the real catalogs.
     editTitle: "Edit provider configuration",
     editDescription: "Update the name, files, or availability. Saved files are kept unless you upload replacements.",
+    conversionRequired: "This saved provider uses the legacy format. Upload a v2 configuration and replace its saved credentials before continuing.",
+    unsupportedAuth: "This auth.json uses an unsupported credential method. Upload a v2 API-key credential array instead.",
   } },
 }, true, true);
 
@@ -45,10 +47,10 @@ vi.mock("./capabilities", async (importOriginal) => {
 
 import { ProviderWizard } from "./ProviderWizard";
 
-const validConfig = JSON.stringify({ provider: { openai: { options: {}, models: { "gpt-4.1": {} } } } });
+const validConfig = JSON.stringify({ providers: { openai: { options: {}, models: { "gpt-4.1": {} } } } });
 const validConfigObject = JSON.parse(validConfig);
-const authObject = { opencode: { type: "api", key: "k-1" } };
-const jsoncConfig = `{\n  // primary provider\n  "provider": { /* inline */ "openai": { "options": {}, "models": { "gpt-4.1": {} } }, },\n}`;
+const authObject = [{ id: "cred_1", integrationID: "openai", label: "API key", active: true, value: { type: "key", key: "k-1" } }];
+const jsoncConfig = `{\n  // primary provider\n  "providers": { /* inline */ "openai": { "options": {}, "models": { "gpt-4.1": {} } }, },\n}`;
 const dropzoneName = "Drag and drop your configuration file here, or browse to choose it";
 const authDropzoneName = "Drag and drop auth.json here, or browse to choose it";
 const verifySuccess = { ok: true, latency_ms: 420, verification_id: "ver-1", proof_expires_in_seconds: 120 };
@@ -82,7 +84,7 @@ function renderWizard() {
   return { onComplete };
 }
 
-const editRow = { id: "p-1", name: "Team gateway", provider_type: "opencode", visibility: "personal", group_id: null, auth_present: true };
+const editRow = { id: "p-1", name: "Team gateway", provider_type: "opencode", visibility: "personal", group_id: null, auth_present: true, format: "v2" };
 
 function renderEditWizard(row = editRow) {
   const onComplete = vi.fn();
@@ -593,8 +595,8 @@ describe("provider wizard edit mode", () => {
     // The provider type is fixed: the type step never renders.
     expect(screen.queryByRole("button", { name: /OpenCode/ })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Edit provider configuration" })).toBeInTheDocument();
-    expect(screen.getByText("Keeping the saved configuration file unless you upload a new one.")).toBeInTheDocument();
-    expect(screen.getByText("Keeping the saved credentials file unless you upload a new one.")).toBeInTheDocument();
+    expect(screen.getByText("The saved v2 configuration stays in place unless you upload a replacement.")).toBeInTheDocument();
+    expect(screen.getByText("The saved v2 credentials stay in place unless you upload a replacement.")).toBeInTheDocument();
   });
 
   it("saves a rename-only edit by id without resending the stored files", async () => {
@@ -617,6 +619,26 @@ describe("provider wizard edit mode", () => {
     expect(submitted.get("visibility")).toBe("personal");
     await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     expect(put).not.toHaveBeenCalled();
+  });
+
+  it("blocks keeping legacy files until every present file is replaced with v2", async () => {
+    renderEditWizard({ ...editRow, format: "v1" });
+    await screen.findByLabelText(/Configuration name/);
+    expect(screen.getByRole("alert")).toHaveTextContent("Upload a v2 configuration and replace its saved credentials");
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    await chooseConfig(validConfig);
+    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
+    await userEvent.upload(screen.getByLabelText(authDropzoneName), makeFile(JSON.stringify(authObject), "auth.json"));
+    expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+  });
+
+  it("shows unsupported OAuth credentials as unavailable and never renders the secret", async () => {
+    renderWizard();
+    await toUploadStep();
+    const oauth = [{ id: "oauth_1", integrationID: "openai", label: "OAuth", active: true, value: { type: "oauth", access: "secret-sentinel" } }];
+    await userEvent.upload(screen.getByLabelText(authDropzoneName), makeFile(JSON.stringify(oauth), "auth.json"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("unsupported credential method");
+    expect(screen.queryByText("secret-sentinel")).not.toBeInTheDocument();
   });
 
   it("reaches the connection step when only the credentials file is replaced and attests the stored configuration", async () => {

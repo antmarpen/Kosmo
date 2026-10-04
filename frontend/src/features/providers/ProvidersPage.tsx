@@ -11,7 +11,7 @@ import { ProviderIcon } from "./providerIcons";
 import { ProviderWizard } from "./ProviderWizard";
 import { VerifyConnectionDialog } from "./VerifyConnectionDialog";
 
-type ProviderMetadata = { id: string; name: string; provider_type: string; visibility: string; verification_status: string; owner_user_id: string; group_id: string | null; auth_present: boolean };
+type ProviderMetadata = { id: string; name: string; provider_type: string; visibility: string; verification_status: string; owner_user_id: string; group_id: string | null; auth_present: boolean; format?: string };
 /** The wizard either creates a configuration or edits one stored instance. */
 type WizardTarget = { mode: "create" } | { mode: "edit"; config: ProviderMetadata };
 

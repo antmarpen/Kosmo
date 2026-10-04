@@ -790,9 +790,7 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /** Auth */
-            auth?: {
-                [key: string]: unknown;
-            } | null;
+            auth?: components["schemas"]["JsonValue"][] | null;
         };
         /** CandidateModelVerification */
         CandidateModelVerification: {
@@ -803,9 +801,7 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /** Auth */
-            auth?: {
-                [key: string]: unknown;
-            } | null;
+            auth?: components["schemas"]["JsonValue"][] | null;
             /** Model */
             model: string;
         };
@@ -881,6 +877,7 @@ export interface components {
             /** Request Id */
             request_id: string | number;
         };
+        JsonValue: unknown;
         /** McpCreate */
         McpCreate: {
             /** Name */

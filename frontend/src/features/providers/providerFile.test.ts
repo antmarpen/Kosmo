@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { MAX_PROVIDER_FILE_BYTES, isSupportedConfigFile, parseConfigObject, readProviderFile } from "./providerFile";
+import { MAX_PROVIDER_FILE_BYTES, isSupportedConfigFile, parseAuthArray, parseConfigObject, readProviderFile } from "./providerFile";
 
 describe("config file support", () => {
   it.each(["opencode.json", "CONFIG.JSON", "auth.jsonc", "config.JSONC"])("accepts %s", (filename) => {
@@ -14,17 +14,21 @@ describe("config file support", () => {
 
 describe("parseConfigObject", () => {
   it("parses strict JSON objects", () => {
-    expect(parseConfigObject('{"provider":{"openai":{"options":{}}}}')).toEqual({ provider: { openai: { options: {} } } });
+    expect(parseConfigObject('{"providers":{"openai":{"options":{}}}}')).toEqual({ providers: { openai: { options: {} } } });
   });
 
   it("parses JSONC with line comments, block comments, and trailing commas", () => {
     const text = `{
       // primary provider
-      "provider": {
+      "providers": {
         "openai": { "options": {}, "models": { "gpt-4.1": {} } }, /* trailing comma below */
       },
     }`;
-    expect(parseConfigObject(text)).toEqual({ provider: { openai: { options: {}, models: { "gpt-4.1": {} } } } });
+    expect(parseConfigObject(text)).toEqual({ providers: { openai: { options: {}, models: { "gpt-4.1": {} } } } });
+  });
+
+  it("rejects legacy provider object documents", () => {
+    expect(parseConfigObject('{"provider":{"openai":{}}}')).toBeNull();
   });
 
   it.each([
@@ -38,10 +42,25 @@ describe("parseConfigObject", () => {
   });
 });
 
+describe("parseAuthArray", () => {
+  it("accepts v2 API-key credentials", () => {
+    expect(parseAuthArray('[{"id":"cred_1","integrationID":"openai","label":"API key","active":true,"value":{"type":"key","key":"secret"}}]'))
+      .toEqual([{ id: "cred_1", integrationID: "openai", label: "API key", active: true, value: { type: "key", key: "secret" } }]);
+  });
+
+  it.each([
+    ["object root", '{"openai":{"type":"api","key":"secret"}}'],
+    ["OAuth credential", '[{"id":"x","integrationID":"openai","label":"OAuth","active":true,"value":{"type":"oauth"}}]'],
+    ["malformed entry", '[{"value":{"type":"api","key":"secret"}}]'],
+  ])("rejects %s", (_name, text) => {
+    expect(parseAuthArray(text)).toBeNull();
+  });
+});
+
 describe("readProviderFile", () => {
   it("reads a .jsonc file into a parsed object", async () => {
-    const result = await readProviderFile(new File(['{ // comment\n"provider": {} }'], "opencode.jsonc"));
-    expect(result).toEqual({ ok: true, filename: "opencode.jsonc", text: '{ // comment\n"provider": {} }', value: { provider: {} } });
+    const result = await readProviderFile(new File(['{ // comment\n"providers": {} }'], "opencode.jsonc"));
+    expect(result).toEqual({ ok: true, filename: "opencode.jsonc", text: '{ // comment\n"providers": {} }', value: { providers: {} } });
   });
 
   it("rejects unsupported extensions without reading the file", async () => {

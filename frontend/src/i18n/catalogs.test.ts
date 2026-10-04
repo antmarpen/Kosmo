@@ -153,11 +153,17 @@ describe("translation catalogs", () => {
       expect.any(String),
     );
     expect(en.providers?.wizard?.configKept).toBe(
-      "Keeping the saved configuration file unless you upload a new one.",
+      "The saved v2 configuration stays in place unless you upload a replacement.",
     );
     expect(es.providers?.wizard?.configKept).toBe(
-      "Se conserva el archivo de configuración guardado a menos que subas uno nuevo.",
+      "La configuración v2 guardada se conserva a menos que subas un reemplazo.",
     );
+    expect(en.providers?.wizard?.unsupportedAuth).toEqual(expect.any(String));
+    expect(es.providers?.wizard?.unsupportedAuth).toEqual(expect.any(String));
+    expect(en.providers?.wizard?.invalidAuth).toEqual(expect.any(String));
+    expect(es.providers?.wizard?.invalidAuth).toEqual(expect.any(String));
+    expect(en.providers?.wizard?.conversionRequired).toEqual(expect.any(String));
+    expect(es.providers?.wizard?.conversionRequired).toEqual(expect.any(String));
     expect(en.providers?.wizard?.authKept).toEqual(expect.any(String));
     expect(es.providers?.wizard?.authKept).toEqual(expect.any(String));
     expect(en.providers?.delete?.title).toEqual(expect.any(String));

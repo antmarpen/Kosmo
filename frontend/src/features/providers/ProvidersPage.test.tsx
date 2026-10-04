@@ -20,7 +20,7 @@ vi.mock("@/features/auth/useCurrentUser", () => ({ useCurrentUser: () => ({ user
 
 import { ProvidersPage } from "./ProvidersPage";
 
-const validConfig = JSON.stringify({ provider: { openai: { options: {}, models: { "gpt-4.1": {} } } } });
+const validConfig = JSON.stringify({ providers: { openai: { options: {}, models: { "gpt-4.1": {} } } } });
 const dropzoneName = "Drag and drop your configuration file here, or browse to choose it";
 function makeFile(content: string, name = "opencode.json", type = "application/json") { return new File([content], name, { type }); }
 /** Selects a configuration through the file picker (the only upload path). */
@@ -144,7 +144,7 @@ describe("provider configuration", () => {
   });
 
   it("renders metadata-only provider entries with the user-entered name", async () => {
-    get.mockResolvedValue({ data: [{ id: "p-1", name: "Team gateway", provider_type: "opencode", visibility: "group", verification_status: "unknown", owner_user_id: "alex" }] });
+    get.mockResolvedValue({ data: [{ id: "p-1", name: "Team gateway", provider_type: "opencode", visibility: "group", verification_status: "unknown", owner_user_id: "alex", auth_present: false, format: "v2" }] });
     renderPage();
     const entry = await screen.findByRole("listitem");
     // The list shows the user-entered friendly name; the type stays separate.
@@ -156,7 +156,7 @@ describe("provider configuration", () => {
 });
 
 describe("provider row actions", () => {
-  const savedRow = { id: "p-1", name: "Team gateway", provider_type: "opencode", visibility: "group", verification_status: "unknown", owner_user_id: "alex" };
+  const savedRow = { id: "p-1", name: "Team gateway", provider_type: "opencode", visibility: "group", verification_status: "unknown", owner_user_id: "alex", auth_present: false, format: "v2" };
   /** Routes POST calls by URL suffix; values may be payloads or functions. */
   function postRoutes(routes: Record<string, unknown>) {
     post.mockImplementation(async (url: string) => {

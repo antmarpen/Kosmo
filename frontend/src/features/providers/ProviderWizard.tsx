@@ -8,11 +8,11 @@ import { KosmoErrorAlert, type KosmoError } from "@/components/KosmoErrorAlert";
 import { useCurrentUser } from "@/features/auth/useCurrentUser";
 import { toKosmoError } from "./apiError";
 import { canProceedWithProvider, providerCapabilities, type ProviderAuthMethod, type ProviderType } from "./capabilities";
-import { parseConfigObject, readProviderFile, serializeProviderConfig, type Config, type ProviderFileFailure } from "./providerFile";
+import { parseConfigObject, readProviderAuthFile, readProviderFile, serializeProviderConfig, type AuthCredential, type Config, type ProviderFileFailure } from "./providerFile";
 import { ProviderIcon } from "./providerIcons";
 
 type Violation = { message_key: string; params?: Record<string, unknown> };
-type AuthFile = { filename: string; value: Config };
+type AuthFile = { filename: string; value: AuthCredential[] };
 type DragZone = "config" | "auth" | null;
 /** Steps of the wizard in owner-specified order; `method` only exists for providers with several auth methods. */
 type WizardStep = "type" | "method" | "data" | "connection" | "save";
@@ -57,6 +57,10 @@ function fileFailureError(failure: ProviderFileFailure): KosmoError {
       return { code: "PROVIDER_FILE_REJECTED", message_key: "providers.wizard.fileReadFailed", params };
     case "invalid_json":
       return { code: "PROVIDER_FILE_INVALID", message_key: "providers.wizard.invalidJson", params };
+    case "invalid_auth":
+      return { code: "PROVIDER_AUTH_INVALID", message_key: "providers.wizard.invalidAuth", params };
+    case "unsupported_auth":
+      return { code: "PROVIDER_AUTH_UNSUPPORTED", message_key: "providers.wizard.unsupportedAuth", params };
   }
 }
 
@@ -82,6 +86,7 @@ export type EditableProviderConfig = {
   visibility: string;
   group_id: string | null;
   auth_present: boolean;
+  format?: string;
 };
 
 export function ProviderWizard({ onCancel, onComplete, editConfig }: {
@@ -140,6 +145,8 @@ export function ProviderWizard({ onCancel, onComplete, editConfig }: {
   // In edit mode the stored encrypted files are kept unless the user uploads
   // replacements on the data step; replacement is known before continuing.
   const filesReplaced = editMode && (selectedConfigFile !== null || auth !== null);
+  const conversionRequired = editMode && editConfig.format !== "v2"
+    && (selectedConfigFile === null || (editConfig.auth_present && auth === null));
 
   // The proof is time-bound server-side: when the remaining validity the API
   // reported runs out, the local verified state expires and a retest is
@@ -188,7 +195,7 @@ export function ProviderWizard({ onCancel, onComplete, editConfig }: {
       setFileError({ code: "PROVIDER_FILE_REJECTED", message_key: "providers.wizard.authNameRequired", params: { filename: file.name } });
       return;
     }
-    const result = await readProviderFile(file);
+    const result = await readProviderAuthFile(file);
     if (!result.ok) { setFileError(fileFailureError(result.failure)); return; }
     invalidateDiscovery();
     setAuth({ filename: result.filename, value: result.value });
@@ -379,7 +386,7 @@ export function ProviderWizard({ onCancel, onComplete, editConfig }: {
       : currentStep === "data" ? (editMode
           // Any replacement (either or both files) is allowed: the candidate
           // flow attests the stored pair overlaid with the replaced files.
-          ? isNameValid && !busy
+          ? isNameValid && !busy && !conversionRequired
           : isNameValid && !!configText.trim() && !busy)
       : currentStep === "connection" ? models.length > 0 && !!selectedModel && !busy
       : savedUnverified ? !busy && isNameValid
@@ -497,6 +504,7 @@ export function ProviderWizard({ onCancel, onComplete, editConfig }: {
             <Button type="button" variant="outline" size="xs" onClick={removeAuth}>{t("providers.wizard.authRemove")}</Button>
           </div>}
         </div>
+        {conversionRequired && <KosmoErrorAlert error={{ code: "PROVIDER_CONVERSION_REQUIRED", message_key: "providers.wizard.conversionRequired" }} />}
         {fileError && <KosmoErrorAlert error={fileError} />}
         {violations.length > 0 && <KosmoErrorAlert error={{ code: "PROVIDER_CONFIG_INVALID", message_key: "errors.provider.config_invalid", details: violations }} />}
       </CardContent></Card>}

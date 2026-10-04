@@ -82,6 +82,13 @@ describe("properties panel node contracts", () => {
     expect(screen.queryByText(/print|return/)).not.toBeInTheDocument();
     expect(screen.getByText(expected("outputs"))).toBeInTheDocument();
   });
+  it("blocks authoring an AI node whose agent reference is empty or unavailable", async () => {
+    const ai = createNode("ai", "n") as Extract<WorkflowNode, { type: "ai" }>;
+    const state = deserializeWorkflow({ schema_version: "v1", name: "test", nodes: [ai], edges: [] });
+    state.selection.nodeIds = ["n"];
+    render(<PropertiesPanel state={state} onUpdate={vi.fn()} />);
+    expect(await screen.findByText("This agent reference is unavailable. Select a visible agent to continue authoring.")).toBeInTheDocument();
+  });
   it("shows fixed HTTP response output", () => {
     renderType("http");
     expect(screen.getByText("response")).toBeInTheDocument();

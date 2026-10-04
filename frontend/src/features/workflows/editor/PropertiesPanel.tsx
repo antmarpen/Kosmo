@@ -9,6 +9,7 @@ import { OutputValidationDialog } from "./OutputValidationDialog";
 import { resolveOutputDescriptor } from "./outputContracts";
 import type { ValidationContract } from "./model";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AiAgentProperties } from "./AiAgentProperties";
 
 type Props = { state: WorkflowEditorState; onUpdate: (id: string, update: Partial<WorkflowNode>) => void; errors?: Record<string, unknown[]>; sheetOpen?: boolean };
 const inputClasses = "w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring";
@@ -81,6 +82,7 @@ export function PropertiesPanel({ state, onUpdate, errors = {}, sheetOpen = true
       {node.type === "start" && <FormFieldBuilder fields={form} onChange={(input_form) => update({ input_form })} onEditValidation={setEditingField} />}
       {node.type === "script" && <ScriptEditor label={t("editor.code")} value={node.code} onChange={(code) => update({ code })} />}
       {node.type === "ai" && <>
+        <AiAgentProperties node={node} onChange={(patch) => update(patch)} />
         <Field label={t("editor.prompt")} value={node.prompt_template} onChange={(prompt_template) => update({ prompt_template })} multiline />
       </>}
       {node.type === "http" && <><SelectField label={t("editor.method")} value={node.method} onChange={(method) => update({ method })}>{["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => <option key={method}>{method}</option>)}</SelectField><Field label={t("editor.url")} value={node.url} onChange={(url) => update({ url })} /></>}
