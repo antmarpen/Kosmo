@@ -44,8 +44,8 @@ from app.domain.provider_configs.repository import ProviderConfigRepository
 from app.domain.provider_configs.service import ProviderConfigService
 
 ENCRYPTION_KEY = "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc="
-FILES = (b'{"provider":{"x":{"options":{"apiKey":"instance-test-key"}}}}',
-         b'{"x":{"key":"instance-test-secret"}}')
+FILES = (b'{"providers":{"x":{"options":{"apiKey":"instance-test-key"}}}}',
+         b'[{"id":"cred_x","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"instance-test-secret"}}]')
 
 
 @pytest.fixture(scope="module")
@@ -98,6 +98,7 @@ def test_two_same_scope_instances_coexist_with_distinct_ids(session_factory, tes
             first = await service.create(test_user, "opencode", *FILES, display_name="Alpha")
             second = await service.create(test_user, "opencode", *FILES, display_name="Beta")
 
+            assert first["format"] == second["format"] == "v2"
             assert first["id"] != second["id"]
             rows = (await service.list_visible(test_user, "opencode"))
             assert {row["id"] for row in rows} == {first["id"], second["id"]}

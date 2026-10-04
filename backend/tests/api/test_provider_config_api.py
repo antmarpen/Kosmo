@@ -87,7 +87,7 @@ class MemoryRepository:
                               visibility=visibility, group_id=group_id,
                               config_ciphertext=config_ciphertext, auth_ciphertext=auth_ciphertext,
                               verification_status=verification_status, display_name=display_name,
-                              updated_at=self._next_updated_at())
+                              updated_at=self._next_updated_at(), format="v2")
         self.rows.append(row)
         return row
 
@@ -97,6 +97,7 @@ class MemoryRepository:
         # id, never duplicates it, and bumps the `updated_at` version marker.
         row.config_ciphertext = config_ciphertext
         row.auth_ciphertext = auth_ciphertext
+        row.format = "v2"
         row.verification_status = verification_status
         row.display_name = display_name
         row.visibility = visibility
@@ -169,8 +170,8 @@ def test_provider_config_upload_replace_metadata_and_delete_are_role_gated():
     client = TestClient(app)
 
     upload = client.put("/providers/opencode/config", data={"name": "Personal Config"}, files={
-        "opencode_json": ("opencode.json", b'{"model":"opencode/big-pickle","provider":{"opencode":{"options":{"apiKey":"embedded-test"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'{"opencode":{"key":"do-not-return"}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"providers":{},"model":"opencode/big-pickle","providers":{"opencode":{"options":{"apiKey":"embedded-test"}}}}', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"do-not-return"}}]', "application/json"),
     })
     assert upload.status_code == 200
     assert upload.json()["auth_present"] is True
@@ -187,10 +188,11 @@ def test_provider_config_upload_replace_metadata_and_delete_are_role_gated():
     # A second upload with a different name is a DISTINCT instance, not an
     # overwrite: both rows coexist with their own ids.
     second = client.put("/providers/opencode/config", data={"name": "Second Config"}, files={
-        "opencode_json": ("opencode.json", b'{"model":"opencode/ling-3.0-flash-fin-free","provider":{"opencode":{"options":{"apiKey":"embedded-test"}}}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"providers":{},"model":"opencode/ling-3.0-flash-fin-free","providers":{"opencode":{"options":{"apiKey":"embedded-test"}}}}', "application/json"),
+        "auth_json": UPLOAD_FILES["auth_json"],
     })
     assert second.status_code == 200
-    assert second.json()["auth_present"] is False
+    assert second.json()["auth_present"] is True
     listed = client.get("/providers/opencode/config").json()
     assert {row["name"] for row in listed} == {"Personal Config", "Second Config"}
     assert len({row["id"] for row in listed}) == 2
@@ -222,8 +224,9 @@ def test_upload_requires_a_user_entered_name_that_is_stored_listed_and_replaced(
     app.dependency_overrides[get_provider_config_service] = lambda: service
     client = TestClient(app)
     files = {"opencode_json": ("opencode.json",
-                               b'{"provider":{"opencode":{"options":{"apiKey":"embedded-test"}}}}',
-                               "application/json")}
+                                   b'{"providers":{"opencode":{"options":{"apiKey":"embedded-test"}}}}',
+                                   "application/json"),
+             "auth_json": UPLOAD_FILES["auth_json"]}
 
     # The name is mandatory: absent, empty, and whitespace-only values are all
     # rejected with the localized key — never defaulted to the provider type.
@@ -270,7 +273,7 @@ def test_builder_cannot_upload_global_configuration():
     app.dependency_overrides[get_provider_config_service] = lambda: service
     client = TestClient(app)
     result = client.put("/providers/opencode/config", data={"visibility": "global", "name": "Global Attempt"}, files={
-        "opencode_json": ("opencode.json", b'{"provider":{"opencode":{"options":{"apiKey":"x"}}}}', "application/json")
+        "opencode_json": ("opencode.json", b'{"providers":{"opencode":{"options":{"apiKey":"x"}}}}', "application/json")
     })
     assert result.status_code == 403
     client.close()
@@ -284,7 +287,7 @@ def test_builder_cannot_upload_to_group_they_do_not_belong_to():
     app.dependency_overrides[get_provider_config_service] = lambda: service
     client = TestClient(app)
     result = client.put("/providers/opencode/config", data={"visibility": "group", "group_id": "not-member", "name": "Group Attempt"}, files={
-        "opencode_json": ("opencode.json", b'{"provider":{"opencode":{"options":{"apiKey":"x"}}}}', "application/json")
+        "opencode_json": ("opencode.json", b'{"providers":{"opencode":{"options":{"apiKey":"x"}}}}', "application/json")
     })
     assert result.status_code == 403
     client.close()
@@ -298,12 +301,12 @@ def test_provider_config_list_exposes_only_personal_configs_owned_by_requester_a
     app.dependency_overrides[get_current_user] = lambda: admin
     app.dependency_overrides[get_provider_config_service] = lambda: service
     client = TestClient(app)
-    body = b'{"provider":{"opencode":{"options":{"apiKey":"private"}}}}'
+    body = b'{"providers":{"opencode":{"options":{"apiKey":"private"}}}}'
     assert client.put("/providers/opencode/config", data={"visibility": "global", "name": "Global Config"}, files={
-        "opencode_json": ("opencode.json", body, "application/json")
+        "opencode_json": ("opencode.json", body, "application/json"), "auth_json": UPLOAD_FILES["auth_json"]
     }).status_code == 200
     assert client.put("/providers/opencode/config", data={"name": "Personal Config"}, files={
-        "opencode_json": ("opencode.json", body, "application/json")
+        "opencode_json": ("opencode.json", body, "application/json"), "auth_json": UPLOAD_FILES["auth_json"]
     }).status_code == 200
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id="reader", role=SimpleNamespace(value="viewer"))
     rows = client.get("/providers/opencode/config").json()
@@ -320,7 +323,7 @@ class FakeProviderHandler:
 
     def validate_config(self, config, auth):
         self.config, self.auth = config, auth
-        providers = config.get("provider", {})
+        providers = config.get("providers", {})
         inline = any(provider.get("options", {}).get("apiKey") for provider in providers.values() if isinstance(provider, dict))
         return [] if auth or inline else [{"code": "auth_missing", "message_key": "errors.provider.auth_missing"}]
 
@@ -343,8 +346,8 @@ def test_provider_verify_lists_models_and_real_model_verify_is_scoped_and_struct
     app.dependency_overrides[get_provider_handler] = lambda: handler
     client = TestClient(app)
     uploaded = client.put("/providers/opencode/config", data={"name": "Verified Config"}, files={
-        "opencode_json": ("opencode.json", b'{"provider":{"opencode":{"options":{"apiKey":"fake"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'{"opencode":{"type":"api","key":"fake"}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"providers":{"opencode":{"options":{"apiKey":"fake"}}}}', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"fake"}}]', "application/json"),
     })
     assert uploaded.status_code == 200
 
@@ -352,7 +355,7 @@ def test_provider_verify_lists_models_and_real_model_verify_is_scoped_and_struct
     assert models.status_code == 200
     assert models.json() == {"valid": True, "violations": [],
                              "models": ["opencode/big-pickle", "opencode/ling-3.0-flash-fin-free"]}
-    verified = client.post("/providers/opencode/config/verify-model", json={"model": "opencode/big-pickle"})
+    verified = client.post("/providers/opencode/config/verify-model", json={"providers":{},"model": "opencode/big-pickle"})
     assert verified.json() == {"ok": True, "response_non_empty": True, "latency_ms": 25}
     assert handler.verify_calls == [("user-1", "opencode/big-pickle")]
     assert "fake" not in models.text and "fake" not in verified.text
@@ -369,11 +372,11 @@ def test_model_verify_reports_missing_auth_as_a_structured_error():
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id="user-1", role=SimpleNamespace(value="builder"))
     app.dependency_overrides[get_provider_config_service] = lambda: service
     app.dependency_overrides[get_provider_handler] = lambda: handler
-    asyncio.run(service.create("user-1", "opencode", b'{"provider":{"opencode":{}}}', None,
+    asyncio.run(service.create("user-1", "opencode", b'{"providers":{"opencode":{}}}', None,
                                 display_name="Verify Target"))
     client = TestClient(app)
 
-    response = client.post("/providers/opencode/config/verify-model", json={"model": "opencode/big-pickle"})
+    response = client.post("/providers/opencode/config/verify-model", json={"providers":{},"model": "opencode/big-pickle"})
 
     assert response.status_code == 422
     assert response.json()["message_key"] == "errors.provider.auth_missing"
@@ -381,8 +384,8 @@ def test_model_verify_reports_missing_auth_as_a_structured_error():
 
 
 UPLOAD_FILES = {
-    "opencode_json": ("opencode.json", b'{"provider":{"opencode":{"options":{"apiKey":"embedded-test"}}}}', "application/json"),
-    "auth_json": ("auth.json", b'{"opencode":{"type":"api","key":"embedded-test"}}', "application/json"),
+    "opencode_json": ("opencode.json", b'{"providers":{"opencode":{"options":{"apiKey":"embedded-test"}}}}', "application/json"),
+    "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"embedded-test"}}]', "application/json"),
 }
 
 
@@ -436,7 +439,7 @@ def test_saved_config_verification_targets_the_requested_configuration():
 
     # Verifying the group row updates only the group row's stored status.
     verified = client.post("/providers/opencode/config/verify-model",
-                           json={"model": "models-of-" + group_id, "config_id": group_id})
+                           json={"providers":{},"model": "models-of-" + group_id, "config_id": group_id})
     assert verified.status_code == 200
     assert verified.json()["ok"] is True
     statuses = {row.id: row.verification_status for row in repo.rows}
@@ -467,7 +470,7 @@ def test_saved_config_verification_rejects_unknown_and_invisible_config_ids():
     foreign = client.post("/providers/opencode/config/verify", json={"config_id": foreign_personal_id})
     other_group = client.post("/providers/opencode/config/verify", json={"config_id": foreign_group_id})
     verify_model_foreign = client.post("/providers/opencode/config/verify-model",
-                                       json={"model": "m", "config_id": foreign_personal_id})
+                                       json={"providers":{},"model": "m", "config_id": foreign_personal_id})
 
     assert unknown.status_code == 404
     assert unknown.json()["message_key"] == "errors.provider.config_not_found"
@@ -490,7 +493,7 @@ def test_verify_model_does_not_mark_a_replaced_configuration_as_verified():
             # runs: an update by id swaps the files and bumps `updated_at`.
             await service.scoped_save(
                 SimpleNamespace(id="user-1", role=SimpleNamespace(value="builder")),
-                "opencode", b'{"provider":{"opencode":{"options":{"apiKey":"replacement-key"}}}}',
+                "opencode", b'{"providers":{"opencode":{"options":{"apiKey":"replacement-key"}}}}',
                 None, "personal", None, display_name="Replaced Config", config_id=config_id)
             return {"ok": True, "response_non_empty": True, "latency_ms": 5}
 
@@ -503,7 +506,7 @@ def test_verify_model_does_not_mark_a_replaced_configuration_as_verified():
     config_id = repo.rows[0].id
 
     response = client.post("/providers/opencode/config/verify-model",
-                           json={"model": "opencode/big-pickle", "config_id": config_id})
+                           json={"providers":{},"model": "opencode/big-pickle", "config_id": config_id})
 
     assert response.status_code == 200
     assert response.json()["ok"] is True
@@ -542,7 +545,7 @@ def test_saved_config_probes_carry_only_the_config_id_reference(monkeypatch):
 
     listed = client.post("/providers/opencode/config/verify", json={"config_id": config_id})
     verified = client.post("/providers/opencode/config/verify-model",
-                           json={"model": "opencode/big-pickle", "config_id": config_id})
+                           json={"providers":{},"model": "opencode/big-pickle", "config_id": config_id})
 
     assert listed.json()["models"] == ["opencode/big-pickle"]
     assert verified.json()["ok"] is True
@@ -575,7 +578,7 @@ def test_upload_without_any_credentials_is_rejected_with_auth_missing():
     app.dependency_overrides[get_provider_handler] = lambda: handler
     client = TestClient(app)
     response = client.put("/providers/opencode/config", data={"name": "No Auth Config"}, files={
-        "opencode_json": ("opencode.json", b'{"mcp":{},"skills":[]}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"providers":{},"mcp":{},"skills":[]}', "application/json"),
     })
     assert response.status_code == 422
     assert response.json()["message_key"] == "errors.provider.config_invalid"
@@ -597,12 +600,12 @@ def test_upload_rejects_supplied_malformed_provider_section():
     app.dependency_overrides[get_provider_handler] = lambda: handler
     client = TestClient(app)
     response = client.put("/providers/opencode/config", data={"name": "Malformed Config"}, files={
-        "opencode_json": ("opencode.json", b'{"provider":"anthropic"}', "application/json"),
-        "auth_json": ("auth.json", b'{"anthropic":{"type":"api","key":"embedded-test"}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"providers":"anthropic"}', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"anthropic","label":"API key","active":true,"value":{"type":"api","key":"embedded-test"}}]', "application/json"),
     })
     assert response.status_code == 422
     keys = {detail["message_key"] for detail in response.json()["details"]}
-    assert keys == {"errors.provider.providers_missing"}
+    assert keys == {"errors.provider.providers_invalid"}
     client.close()
 
 
@@ -620,8 +623,8 @@ def test_native_opencode_config_with_separate_auth_upload_and_verify_succeed():
     app.dependency_overrides[get_provider_handler] = lambda: handler
     client = TestClient(app)
     upload = client.put("/providers/opencode/config", data={"name": "Native Config"}, files={
-        "opencode_json": ("opencode.json", b'{"$schema":"https://opencode.ai/config.json","model":"anthropic/claude-sonnet-4-5"}', "application/json"),
-        "auth_json": ("auth.json", b'{"anthropic":{"type":"api","key":"synthetic-native-key"}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"$schema":"https://opencode.ai/config.json","providers":{},"model":"anthropic/claude-sonnet-4-5"}', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"anthropic","label":"API key","active":true,"value":{"type":"api","key":"synthetic-native-key"}}]', "application/json"),
     })
     assert upload.status_code == 200
     assert upload.json()["auth_present"] is True
@@ -650,8 +653,8 @@ def test_invalid_update_is_rejected_without_overwriting_previous_config():
     )
     app.dependency_overrides[get_provider_handler] = lambda: handler
     client = TestClient(app)
-    original_config = b'{"model":"opencode/big-pickle","provider":{"opencode":{"options":{"apiKey":"embedded-test"}}}}'
-    original_auth = b'{"opencode":{"type":"api","key":"embedded-test"}}'
+    original_config = b'{"providers":{},"model":"opencode/big-pickle","providers":{"opencode":{"options":{"apiKey":"embedded-test"}}}}'
+    original_auth = UPLOAD_FILES["auth_json"][1]
     assert client.put("/providers/opencode/config", data={"name": "Original Config"}, files={
         "opencode_json": ("opencode.json", original_config, "application/json"),
         "auth_json": ("auth.json", original_auth, "application/json"),
@@ -660,7 +663,7 @@ def test_invalid_update_is_rejected_without_overwriting_previous_config():
     snapshot = [(row.id, row.config_ciphertext, row.updated_at) for row in repo.rows]
 
     invalid = client.patch("/providers/opencode/config", data={"config_id": config_id, "name": "Original Config"}, files={
-        "opencode_json": ("opencode.json", b'{"model":"opencode/big-pickle","provider":{"opencode":"oops"}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"providers":{},"model":"opencode/big-pickle","providers":{"opencode":"oops"}}', "application/json"),
         "auth_json": ("auth.json", original_auth, "application/json"),
     })
     assert invalid.status_code == 422
@@ -671,7 +674,7 @@ def test_invalid_update_is_rejected_without_overwriting_previous_config():
     # A rejected update leaves the stored row exactly as it was.
     assert [(row.id, row.config_ciphertext, row.updated_at) for row in repo.rows] == snapshot
     stored = asyncio.run(ProviderConfigService(repo, "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc=").read_files_by_id(config_id))
-    assert stored == {"opencode.json": original_config, "auth.json": original_auth}
+    assert stored == {"format":"v2", "opencode.json": original_config, "auth.json": original_auth}
     client.close()
 
 
@@ -701,7 +704,7 @@ def test_patch_updates_one_instance_by_id_and_keeps_the_other_untouched():
     assert (repo.rows[1].display_name, repo.rows[1].config_ciphertext,
             repo.rows[1].updated_at) == beta_before
     stored = asyncio.run(service.read_files_by_id(alpha_id))
-    assert stored == {"opencode.json": UPLOAD_FILES["opencode_json"][1],
+    assert stored == {"format":"v2", "opencode.json": UPLOAD_FILES["opencode_json"][1],
                       "auth.json": UPLOAD_FILES["auth_json"][1]}
     listed = client.get("/providers/opencode/config").json()
     assert {row["name"] for row in listed} == {"Alpha Renamed", "Beta Config"}
@@ -711,14 +714,14 @@ def test_patch_updates_one_instance_by_id_and_keeps_the_other_untouched():
     # auth file is preserved and the honest status without a proof is
     # unverified.
     replaced = client.patch("/providers/opencode/config", data={"config_id": alpha_id, "name": "Alpha Renamed"}, files={
-        "opencode_json": ("opencode.json", b'{"provider":{"opencode":{"options":{"apiKey":"new-embedded-key"}}}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"providers":{"opencode":{"options":{"apiKey":"new-embedded-key"}}}}', "application/json"),
     })
     assert replaced.status_code == 200
     assert replaced.json()["id"] == alpha_id
     assert replaced.json()["verification_status"] == "unverified"
     assert replaced.json()["auth_present"] is True
     stored = asyncio.run(service.read_files_by_id(alpha_id))
-    assert stored["opencode.json"] == b'{"provider":{"opencode":{"options":{"apiKey":"new-embedded-key"}}}}'
+    assert stored["opencode.json"] == b'{"providers":{"opencode":{"options":{"apiKey":"new-embedded-key"}}}}'
     assert stored["auth.json"] == UPLOAD_FILES["auth_json"][1]
     # The sibling instance never moved.
     assert (repo.rows[1].display_name, repo.rows[1].config_ciphertext,
@@ -802,8 +805,8 @@ def test_patch_with_matching_verification_id_records_verified(monkeypatch):
     saved = client.patch("/providers/opencode/config", data={
         "config_id": config_id, "name": "Original", "verification_id": verification_id,
     }, files={
-        "opencode_json": ("opencode.json", b'{"mcp":{},"provider":{"x":{"options":{"apiKey":"secret-key"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'{"x":{"key":"auth-secret","type":"api"}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"secret-key"}}}}', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"auth-secret"}}]', "application/json"),
     })
 
     assert saved.status_code == 200
@@ -930,7 +933,7 @@ def test_candidate_validation_never_persists_candidate_credentials():
     app.dependency_overrides[get_provider_config_service] = lambda: ProviderConfigService(repo, "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc=")
     app.dependency_overrides[get_provider_handler] = Handler
     client = TestClient(app)
-    body = {"config": {"provider": {"x": {"options": {"apiKey": "secret"}}}}, "auth": None}
+    body = {"config": {"providers": {"x": {"options": {"apiKey": "secret"}}}}, "auth": None}
     assert client.post("/providers/opencode/config/candidate/validate", json=body).json() == {"valid": True, "violations": []}
     invalid = client.post("/providers/opencode/config/candidate/validate", json={"config": {}, "auth": None})
     assert invalid.json()["valid"] is False and invalid.json()["violations"]
@@ -943,7 +946,7 @@ def test_candidate_models_and_verify_use_candidate_handler_methods_without_stora
     repo = MemoryRepository()
     class Handler(FakeProviderHandler):
         async def list_candidate_models(self, user_id, config, auth):
-            assert config["provider"]
+            assert config["providers"]
             return ["candidate/model"]
         async def verify_candidate_model(self, user_id, config, auth, model):
             return {"ok": model == "candidate/model", "response_non_empty": True, "latency_ms": 1}
@@ -951,15 +954,16 @@ def test_candidate_models_and_verify_use_candidate_handler_methods_without_stora
     app.dependency_overrides[get_provider_config_service] = lambda: ProviderConfigService(repo, "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc=")
     app.dependency_overrides[get_provider_handler] = Handler
     client = TestClient(app)
-    body = {"config": {"provider": {"x": {"options": {"apiKey": "secret"}}}}, "auth": None}
+    body = {"config": {"providers": {"x": {"options": {"apiKey": "secret"}}}}, "auth": None}
     assert client.post("/providers/opencode/config/candidate/models", json=body).json()["models"] == ["candidate/model"]
     assert client.post("/providers/opencode/config/candidate/verify-model", json={**body, "model": "candidate/model"}).json()["ok"]
     assert not repo.rows
     client.close()
 
 
-CANDIDATE_BODY = {"config": {"provider": {"x": {"options": {"apiKey": "secret-key"}}}},
-                  "auth": {"x": {"key": "auth-secret"}}}
+CANDIDATE_BODY = {"config": {"providers": {"x": {"options": {"apiKey": "secret-key"}}}},
+                  "auth": [{"id":"cred_1","integrationID":"x","label":"API key",
+                            "active":True,"value":{"type":"api","key":"auth-secret"}}]}
 
 
 def _candidate_client(monkeypatch, execute):
@@ -1075,7 +1079,7 @@ def test_verification_success_after_proof_expiry_returns_no_proof(monkeypatch):
 def test_failed_candidate_verification_returns_no_proof_and_discards_operation(monkeypatch):
     async def execute(self, activity_name, payload):
         return {"ok": False, "error": {"code": "PROVIDER_AUTH_MISSING",
-                "message_key": "errors.provider.auth_missing", "params": {"provider": "opencode"}}}
+                "message_key": "errors.provider.auth_missing", "params": {"providers": "opencode"}}}
 
     client, repo = _candidate_client(monkeypatch, execute)
     response = client.post("/providers/opencode/config/candidate/verify-model",
@@ -1089,8 +1093,9 @@ def test_failed_candidate_verification_returns_no_proof_and_discards_operation(m
     client.close()
 
 
-VERIFY_BODY = {"config": {"provider": {"x": {"options": {"apiKey": "secret-key"}}}, "mcp": {}},
-               "auth": {"x": {"type": "api", "key": "auth-secret"}}}
+VERIFY_BODY = {"config": {"providers": {"x": {"options": {"apiKey": "secret-key"}}}, "mcp": {}},
+               "auth": [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
+                         "value":{"type":"api","key":"auth-secret"}}]}
 
 
 def _ok_verification_execute(captured=None):
@@ -1110,8 +1115,8 @@ def test_upload_with_matching_verification_id_records_verified_and_consumes_it(m
     # The uploaded files carry the same parsed objects with reordered keys:
     # the proof matches configurations, not byte-for-byte payloads.
     saved = client.put("/providers/opencode/config", data={"verification_id": verification_id, "name": "Verified Config"}, files={
-        "opencode_json": ("opencode.json", b'{"mcp":{},"provider":{"x":{"options":{"apiKey":"secret-key"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'{"x":{"key":"auth-secret","type":"api"}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"secret-key"}}}}', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"auth-secret"}}]', "application/json"),
     })
 
     assert saved.status_code == 200
@@ -1129,8 +1134,8 @@ def test_upload_with_mismatched_verification_id_records_unverified_and_untrusts_
     verification_id = verified.json()["verification_id"]
 
     saved = client.put("/providers/opencode/config", data={"verification_id": verification_id, "name": "Mismatched Config"}, files={
-        "opencode_json": ("opencode.json", b'{"mcp":{},"provider":{"x":{"options":{"apiKey":"different-key"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'{"x":{"key":"auth-secret","type":"api"}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"different-key"}}}}', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"auth-secret"}}]', "application/json"),
     })
 
     assert saved.status_code == 200
@@ -1149,8 +1154,8 @@ def test_upload_with_missing_expired_or_absent_verification_id_records_unverifie
     verification_id = verified.json()["verification_id"]
     repo.candidate_operations[verification_id].expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     files = {
-        "opencode_json": ("opencode.json", b'{"mcp":{},"provider":{"x":{"options":{"apiKey":"secret-key"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'{"x":{"key":"auth-secret","type":"api"}}', "application/json"),
+        "opencode_json": ("opencode.json", b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"secret-key"}}}}', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"auth-secret"}}]', "application/json"),
     }
 
     expired = client.put("/providers/opencode/config", data={"verification_id": verification_id, "name": "Expired Proof Config"}, files=files)
@@ -1299,7 +1304,7 @@ def test_execute_runs_the_probe_workflow(monkeypatch):
     assert calls[0]["id"].startswith("provider-probe-")
 
 
-EDIT_CONFIG_BYTES = b'{"mcp":{},"provider":{"x":{"options":{"apiKey":"new-config-key"}}}}'
+EDIT_CONFIG_BYTES = b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"new-config-key"}}}}'
 EDIT_CONFIG_OBJECT = json.loads(EDIT_CONFIG_BYTES)
 STORED_CONFIG_OBJECT = json.loads(UPLOAD_FILES["opencode_json"][1])
 STORED_AUTH_OBJECT = json.loads(UPLOAD_FILES["auth_json"][1])
@@ -1340,7 +1345,7 @@ def test_edit_mode_candidate_verify_with_config_only_uses_the_stored_auth(monkey
     verification_id = verified.json()["verification_id"]
     # The operation carries the effective pair: uploaded config, stored auth.
     assert _operation_payload(service, verification_id) == {
-        "config": EDIT_CONFIG_OBJECT, "auth": STORED_AUTH_OBJECT}
+        "format":"v2", "config": EDIT_CONFIG_OBJECT, "auth": STORED_AUTH_OBJECT}
 
     saved = client.patch("/providers/opencode/config", data={
         "config_id": config_id, "name": "Stored Config", "verification_id": verification_id,
@@ -1359,7 +1364,8 @@ def test_edit_mode_candidate_verify_with_auth_only_uses_the_stored_config(monkey
     the save stores exactly that effective pair."""
     client, repo, service, config_id = _edit_target_client(monkeypatch, _ok_verification_execute())
 
-    rotated_auth = {"opencode": {"type": "api", "key": "rotated-key"}}
+    rotated_auth = [{"id":"cred_2","integrationID":"opencode","label":"API key","active":True,
+                     "value":{"type":"api","key":"rotated-key"}}]
     verified = client.post("/providers/opencode/config/candidate/verify-model",
                            json={"config_id": config_id, "auth": rotated_auth, "model": "candidate/model-a"})
 
@@ -1368,7 +1374,7 @@ def test_edit_mode_candidate_verify_with_auth_only_uses_the_stored_config(monkey
     verification_id = verified.json()["verification_id"]
     # The operation carries the effective pair: stored config, uploaded auth.
     assert _operation_payload(service, verification_id) == {
-        "config": STORED_CONFIG_OBJECT, "auth": rotated_auth}
+        "format":"v2", "config": STORED_CONFIG_OBJECT, "auth": rotated_auth}
 
     saved = client.patch("/providers/opencode/config", data={
         "config_id": config_id, "name": "Stored Config", "verification_id": verification_id,
@@ -1396,7 +1402,7 @@ def test_edit_mode_candidate_models_discovery_uses_the_effective_pair(monkeypatc
     # The discovery operation also attests the effective pair: uploaded
     # config over the stored auth.
     assert _operation_payload(service, operation.id) == {
-        "config": EDIT_CONFIG_OBJECT, "auth": STORED_AUTH_OBJECT}
+        "format":"v2", "config": EDIT_CONFIG_OBJECT, "auth": STORED_AUTH_OBJECT}
     client.close()
 
 
@@ -1479,7 +1485,7 @@ def test_edit_mode_save_with_a_pair_different_from_the_proof_records_unverified(
                            json={"config_id": config_id, "config": EDIT_CONFIG_OBJECT, "model": "candidate/model-a"})
     verification_id = verified.json()["verification_id"]
 
-    other_bytes = b'{"mcp":{},"provider":{"x":{"options":{"apiKey":"different-key"}}}}'
+    other_bytes = b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"different-key"}}}}'
     saved = client.patch("/providers/opencode/config", data={
         "config_id": config_id, "name": "Stored Config", "verification_id": verification_id,
     }, files={"opencode_json": ("opencode.json", other_bytes, "application/json")})

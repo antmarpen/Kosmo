@@ -60,10 +60,11 @@ from app.domain.provider_configs.service import ProviderConfigService
 from app.main import create_app
 
 ENCRYPTION_KEY = "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc="
-CONFIG_JSON = b'{"provider":{"x":{"options":{"apiKey":"update-conflict-key"}}}}'
-AUTH_JSON = b'{"x":{"key":"update-conflict-secret"}}'
-CONFIG = {"provider": {"x": {"options": {"apiKey": "update-conflict-key"}}}}
-AUTH = {"x": {"key": "update-conflict-secret"}}
+CONFIG_JSON = b'{"providers":{"x":{"options":{"apiKey":"update-conflict-key"}}}}'
+AUTH_JSON = b'[{"id":"cred_x","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"update-conflict-secret"}}]'
+CONFIG = {"providers": {"x": {"options": {"apiKey": "update-conflict-key"}}}}
+AUTH = [{"id":"cred_x","integrationID":"x","label":"API key","active":True,
+         "value":{"type":"api","key":"update-conflict-secret"}}]
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +335,7 @@ def test_failed_save_after_proof_redemption_leaves_the_row_unchanged_and_unverif
             assert row.display_name == "Original"
             assert row.verification_status == "unverified"
             assert await fresh.read_files_by_id(original["id"]) == {
-                "opencode.json": CONFIG_JSON, "auth.json": AUTH_JSON}
+                "format":"v2", "opencode.json": CONFIG_JSON, "auth.json": AUTH_JSON}
             # The racer's legitimate rename landed; the loser never duplicated it.
             holder_row = await fresh.repository.by_id(holder["id"])
             assert holder_row.display_name == "Shared Name"

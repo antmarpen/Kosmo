@@ -37,8 +37,9 @@ pytestmark = pytest.mark.skipif(
            "run inside the backend container — see module docstring",
 )
 
-CONFIG = {"provider": {"x": {"options": {"apiKey": "sentinel-boundary-key"}}}}
-AUTH = {"x": {"key": "sentinel-boundary-secret"}}
+CONFIG = {"providers": {"x": {"options": {"apiKey": "sentinel-boundary-key"}}}}
+AUTH = [{"id":"cred_x","integrationID":"x","label":"API key","active":True,
+        "value":{"type":"api","key":"sentinel-boundary-secret"}}]
 ENCRYPTION_KEY = "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc="
 
 
@@ -201,7 +202,7 @@ def test_candidate_payloads_stay_encrypted_at_rest_and_out_of_results(session_fa
             assert "sentinel-boundary-secret" not in stored
 
             consumed = await service.consume_candidate_operation(operation_id, user_id, "opencode")
-            assert consumed == {"config": CONFIG, "auth": AUTH}
+            assert consumed == {"format":"v2", "config": CONFIG, "auth": AUTH}
         finally:
             await _cleanup_user(session_factory, user_id)
 

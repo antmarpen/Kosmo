@@ -32,6 +32,8 @@ class ProviderConfig(Base):
     display_name: Mapped[str] = mapped_column(String(80), nullable=False)
     config_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
     auth_ciphertext: Mapped[str | None] = mapped_column(Text)
+    # v1 rows are marked by the additive 0023 migration; new writes use v2.
+    format: Mapped[str] = mapped_column(String(8), nullable=False, default="v2", server_default="v2")
     verification_status: Mapped[str] = mapped_column(String(16), nullable=False, default="unverified", server_default="unverified")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

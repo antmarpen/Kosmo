@@ -4,7 +4,7 @@ import json
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_roles
@@ -47,7 +47,7 @@ class CandidateConfig(BaseModel):
     # Both are optional so an edit may replace either file alone: the missing
     # one is overlaid from the stored encrypted files server-side.
     config: dict | None = None
-    auth: dict | None = None
+    auth: list[JsonValue] | None = None
 
 
 class CandidateModelVerification(CandidateConfig):
@@ -176,7 +176,7 @@ def _pair_validator(handler: OpenCodeProviderHandler):
     """
     def validate(config: bytes | None, auth: bytes | None):
         config_value = _json_object(config, "opencode.json") if config is not None else None
-        auth_value = _json_object(auth, "auth.json") if auth is not None else None
+        auth_value = _json_auth_array(auth, "auth.json") if auth is not None else None
         violations = handler.validate_config(config_value, auth_value)
         if violations:
             raise ValidationFailedError("errors.provider.config_invalid", details=[
@@ -350,6 +350,7 @@ async def _effective_candidate_pair(service: ProviderConfigService, user, body: 
     if body.config_id is None:
         if body.config is None:
             raise ValidationFailedError("errors.provider.config_invalid")
+        _ensure_candidate_size(body.config, body.auth)
         return body.config, body.auth
     row = await service.visible_row(user.id, body.config_id)
     # Edit-mode candidates overlay caller-supplied files on the stored
@@ -363,8 +364,20 @@ async def _effective_candidate_pair(service: ProviderConfigService, user, body: 
     stored = await _read_row_files(service, row)
     config = body.config if body.config is not None else _json_object(stored["opencode.json"], "opencode.json")
     auth = body.auth if body.auth is not None else (
-        _json_object(stored["auth.json"], "auth.json") if "auth.json" in stored else None)
+        _json_auth_array(stored["auth.json"], "auth.json") if "auth.json" in stored else None)
+    _ensure_candidate_size(config, auth)
     return config, auth
+
+
+def _ensure_candidate_size(config: dict, auth: list | None) -> None:
+    """Bound parsed candidate values without including them in diagnostics."""
+    try:
+        config_size = len(json.dumps(config, separators=(",", ":")).encode("utf-8"))
+        auth_size = len(json.dumps(auth, separators=(",", ":")).encode("utf-8")) if auth is not None else 0
+    except (TypeError, ValueError, UnicodeEncodeError):
+        raise ValidationFailedError("errors.provider.config_invalid") from None
+    if config_size > MAX_CONFIG_BYTES or auth_size > MAX_CONFIG_BYTES:
+        raise KosmoError("errors.provider.upload_too_large", http_status=413)
 
 
 @router.post("/opencode/config/verify")
@@ -377,7 +390,7 @@ async def verify_opencode_config(
     row = await _resolve_verification_target(service, user, body.config_id if body else None)
     files = await _read_row_files(service, row)
     config = _json_object(files["opencode.json"], "opencode.json")
-    auth = _json_object(files["auth.json"], "auth.json") if "auth.json" in files else None
+    auth = _json_auth_array(files["auth.json"], "auth.json") if "auth.json" in files else None
     violations = handler.validate_config(config, auth)
     if violations:
         return {"valid": False, "violations": violations, "models": []}
@@ -395,7 +408,7 @@ async def verify_opencode_model(
     row = await _resolve_verification_target(service, user, body.config_id)
     files = await _read_row_files(service, row)
     config = _json_object(files["opencode.json"], "opencode.json")
-    auth = _json_object(files["auth.json"], "auth.json") if "auth.json" in files else None
+    auth = _json_auth_array(files["auth.json"], "auth.json") if "auth.json" in files else None
     violations = handler.validate_config(config, auth)
     auth_missing = next((item for item in violations if item["code"] == "auth_missing"), None)
     if auth_missing:
@@ -445,4 +458,16 @@ def _json_object(contents: bytes | None, filename: str):
         raise ValidationFailedError("errors.provider.json_invalid", params={"filename": filename}) from None
     if not isinstance(result, dict):
         raise ValidationFailedError("errors.provider.json_object_required", params={"filename": filename})
+    return result
+
+
+def _json_auth_array(contents: bytes | None, filename: str):
+    if contents is None:
+        return None
+    try:
+        result = json.loads(contents)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ValidationFailedError("errors.provider.json_invalid", params={"filename": filename}) from None
+    if not isinstance(result, list):
+        raise ValidationFailedError("errors.provider.json_array_required", params={"filename": filename})
     return result

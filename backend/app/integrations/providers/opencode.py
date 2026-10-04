@@ -10,27 +10,24 @@ class OpenCodeProviderHandler:
         self.runtime = runtime
         self.verify_timeout_seconds = verify_timeout_seconds
 
-    def validate_config(self, config: dict, auth: dict | None) -> list[dict]:
+    def validate_config(self, config: dict, auth: list | None) -> list[dict]:
         violations = []
-        providers = config.get("provider")
-        if providers is not None and not isinstance(providers, dict):
-            violations.append(_violation("providers_missing", "The 'provider' entry must be an object of provider definitions."))
+        providers = config.get("providers")
+        if providers is None or not isinstance(providers, dict):
+            violations.append(_violation("providers_invalid", "The 'providers' entry must be an object of provider definitions."))
+        if "provider" in config:
+            violations.append(_violation("legacy_format_requires_conversion", "Legacy provider configuration requires conversion."))
         if not isinstance(providers, dict):
-            # Native OpenCode configurations may omit custom providers entirely
-            # and rely on built-in providers; their credentials come from
-            # auth.json or provider options, so an absent or empty provider map
-            # is acceptable.
+            # Keep inspecting supported fields to return a bounded, keyed set of
+            # diagnostics; malformed provider mappings are never normalized.
             providers = {}
-        inline_auth = False
         for provider_id, provider in providers.items():
             if not isinstance(provider_id, str) or not isinstance(provider, dict):
                 violations.append(_violation("provider_invalid", "Each provider entry must be an object."))
                 continue
             options = provider.get("options", {})
             if not isinstance(options, dict):
-                violations.append(_violation("provider_options_invalid", f"Provider '{provider_id}' options must be an object."))
-            elif isinstance(options.get("apiKey"), str) and options["apiKey"].strip():
-                inline_auth = True
+                violations.append(_violation("provider_options_invalid", "Provider options must be an object."))
             models = provider.get("models")
             if models is not None:
                 if not isinstance(models, dict):
@@ -43,22 +40,22 @@ class OpenCodeProviderHandler:
             violations.append(_violation("model_invalid", "The selected model must be a non-empty string."))
 
         if auth is not None:
-            if not isinstance(auth, dict):
-                violations.append(_violation("auth_invalid", "auth.json must contain a provider object."))
-            elif not any(_auth_entry_has_credentials(entry) for entry in auth.values()):
-                violations.append(_violation("auth_missing", "auth.json does not contain provider credentials."))
-        elif not inline_auth:
-            violations.append(_violation("auth_missing", "Add provider credentials in auth.json or provider options."))
+            if not isinstance(auth, list) or any(not _valid_v2_auth_entry(entry) for entry in auth):
+                violations.append(_violation("auth_invalid", "auth.json must contain supported credential entries."))
+            elif not any(entry["active"] and entry["value"]["key"].strip() for entry in auth):
+                violations.append(_violation("auth_missing", "auth.json does not contain active provider credentials."))
+        else:
+            violations.append(_violation("auth_missing", "Add provider credentials using the v2 auth file."))
         # MCP and skills are deliberately not validated by provider setup.
         return violations
 
     async def list_models(self, user_id: str, config_id: str | None = None) -> list[str]:
         return await self.runtime.list_models(user_id, config_id)
 
-    async def list_candidate_models(self, user_id: str, config: dict, auth: dict | None) -> list[str]:
+    async def list_candidate_models(self, user_id: str, config: dict, auth: list | None) -> list[str]:
         return await self.runtime.list_candidate_models(user_id, config, auth)
 
-    async def verify_candidate_model(self, user_id: str, config: dict, auth: dict | None, model: str) -> dict:
+    async def verify_candidate_model(self, user_id: str, config: dict, auth: list | None, model: str) -> dict:
         try:
             return await asyncio.wait_for(
                 self.runtime.verify_candidate_model(user_id, config, auth, model),
@@ -87,11 +84,16 @@ class OpenCodeProviderHandler:
                 "message_key": "errors.provider.verification_failed", "params": {}}}
 
 
-def _auth_entry_has_credentials(entry) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    return any(isinstance(entry.get(field), str) and entry[field].strip()
-               for field in ("key", "access", "token", "refresh"))
+def _valid_v2_auth_entry(entry) -> bool:
+    return (isinstance(entry, dict) and set(entry) == {"id", "integrationID", "label", "active", "value"}
+            and all(isinstance(entry.get(key), str) and bool(entry[key])
+                    for key in ("id", "integrationID", "label"))
+            and isinstance(entry.get("active"), bool)
+            and isinstance(entry.get("value"), dict)
+            and set(entry["value"]) == {"type", "key"}
+            and entry["value"].get("type") == "api"
+            and all(isinstance(entry["value"].get(key), str) and bool(entry["value"][key])
+                    for key in ("type", "key")))
 
 
 def _violation(code: str, message: str) -> dict:

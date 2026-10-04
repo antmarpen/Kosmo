@@ -90,8 +90,9 @@ class ProviderConfigRepository:
         """
         row = ProviderConfig(user_id=user_id, provider=provider, visibility=visibility,
                              group_id=group_id, config_ciphertext=config_ciphertext,
-                             auth_ciphertext=auth_ciphertext,
-                             verification_status=verification_status, display_name=display_name)
+                              auth_ciphertext=auth_ciphertext,
+                              verification_status=verification_status, display_name=display_name,
+                              format="v2")
         self.db.add(row)
         try:
             await self.db.commit()
@@ -118,6 +119,7 @@ class ProviderConfigRepository:
         """
         row.config_ciphertext = config_ciphertext
         row.auth_ciphertext = auth_ciphertext
+        row.format = "v2"
         row.verification_status = verification_status
         row.display_name = display_name
         row.visibility = visibility

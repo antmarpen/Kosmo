@@ -846,7 +846,7 @@ unless separately authorized by the coordinator.
   with AC-AMS-03/06 reference workflow integration.
 - Included / exclusions: destructive migration, seed update, obsolete fixture
   cleanup and cutover procedure; do not preserve embedded-agent definitions.
-- Files: proposed `backend/alembic/versions/0024_agent_reference_reset.py`,
+- Files: proposed `backend/alembic/versions/0025_agent_reference_reset.py`,
   `backend/scripts/seed.py`, proposed migration/seed tests under
   `backend/tests/domain/`; update this record with operational evidence only.
 - Changes / contracts: explicitly reset all workflow authoring/execution DB data:
@@ -863,8 +863,9 @@ unless separately authorized by the coordinator.
   both steps belong to the cutover, not an optional forgotten manual follow-up.
 - Dependencies / ownership: WP-02/05/06/10/16 and integrated preflight. Sole new
   reset migration/seed owner. Allocate migration head after WP-02, serialize.
-  WP-23 now owns proposed migration 0023; verify the actual Alembic head before
-  allocation. WP-23 provider conversion and WP-24/25 verification precede the
+  WP-22 owns additive format-marker migration 0023; WP-23 owns conversion
+  migration 0024; this reset migration shifts to 0025. WP-23 provider conversion
+  and WP-24/25 verification precede the
   target reset. Provider rows/ciphertexts/version tags must survive D8 unchanged.
 - Skills: `test-driven-development`, `python-testing-patterns`,
   `verification-before-completion`.
@@ -1227,7 +1228,9 @@ preserved. None of these new packages has been implemented by this re-plan.
   rows at runtime; preserve provider scope/recency/instance policy. New writes v2,
   edits with kept v1 files block pending conversion rather than mix formats.
 - Dependencies / ownership / order: WP-19 and assigned WP-20 RED. Own provider
-  domain/API/handler files, not Alembic (WP-23) or generated frontend (WP-11/25).
+  domain/API/handler files and additive format-marker migration 0023 (existing
+  rows v1, new writes v2); WP-23 owns conversion migration 0024 and tooling.
+  Do not edit generated frontend (WP-11/25).
   Serialize WP-23 model/repository fixes after this handoff.
 - Skills: `test-driven-development`, `fastapi-python`, `python-design-patterns`,
   `python-testing-patterns`, `verification-before-completion`.
@@ -1245,11 +1248,13 @@ preserved. None of these new packages has been implemented by this re-plan.
   AR3-05; AC-AMS-06/07 and AC-AMS-09 preservation prerequisite.
 - Included scope / exclusions: additive format schema migration + explicit encrypted
   conversion/preflight script; no workflow reset or production run without approval.
-- Files / patterns: proposed `backend/alembic/versions/0023_provider_runtime_format.py`,
+- Files / patterns: `backend/alembic/versions/0023_provider_runtime_format.py` (WP-22
+  additive marker); proposed conversion tooling/migration `0024` owned here,
   `backend/scripts/migrate_provider_runtime_v2.py`, WP-20 migration tests; use
   provider Fernet/repository conventions. Verify current head before naming.
-- Changes / contracts: migration marks existing rows v1, new rows explicitly v2;
-  no encryption key required by Alembic. Script dry-run reports IDs/counts and safe
+- Changes / contracts: consume WP-22's format column (existing rows v1, new rows
+  v2); conversion migration 0024/script mark successfully converted rows v2.
+  No encryption key required by Alembic. Script dry-run reports IDs/counts and safe
   failure categories only. Convert config/auth together under transaction/row
   concurrency guard; encrypt replacement bytes before write, mark v2 atomically,
   set verification unverified, preserve updated_at so scope recency does not change.
@@ -1258,7 +1263,8 @@ preserved. None of these new packages has been implemented by this re-plan.
   during maintenance; no old success proof may attest v2 credentials. No durable
   plaintext backup or ciphertext dumps in logs; rely on operator encrypted DB backup.
 - Dependencies / ownership / order: WP-22 then WP-20 assigned RED→GREEN. Sole
-  migration/script owner; WP-17 allocates next head after this package. Conversion
+  conversion migration/script owner (migration 0024); WP-17 reset migration shifts
+  to 0025. Conversion
   target run occurs only with traffic/probes/workers drained/stopped and backup
   restore verified. WP-24 consumes disposable conversion proof first.
 - Skills: `test-driven-development`, `python-design-patterns`,
@@ -1370,7 +1376,8 @@ preserved. None of these new packages has been implemented by this re-plan.
    WP-08 and its WP-20 adapter tests, and may run beside WP-23/24 (adapter versus
    activities). WP-05/06/07/11 and catalog screens need not wait for WP-19.
 9. WP-25 follows WP-22 plus WP-11 generated-client handoff; serialize locales with
-   WP-12…16. WP-23 owns migration 0023, WP-17 next head (proposed 0024). WP-24
+   WP-12…16. WP-22 owns migration 0023, WP-23 conversion is migration 0024,
+   and WP-17 reset is migration 0025. WP-24
    owns agent/AI/provider activity edits first, WP-10 later. WP-20 transfers test
    ownership by file; WP-08 cannot concurrently edit the same tests.
 10. Before target cutover, complete WP-23/24/25 proofs and WP-09/10 preflight on
@@ -1433,6 +1440,10 @@ the worker after worker module changes. No host/container availability was
 proven during this planning session.
 
 ## Status log (living record)
+
+- 2026-10-04 coordinator sequencing decision: WP-22 owns additive provider
+  format-marker migration 0023 (existing rows v1, new writes v2); WP-23 owns
+  encrypted conversion migration 0024; WP-17 reset migration shifts to 0025.
 
 - 2026-10-04 (session): WP-02/03/04/05/06 implemented and committed (`615b940`,
   `3d84586`, `585adae`, `9fe8abe`, `3698d6c`). WP-19 **resolved** (exact v2 auth

@@ -17,6 +17,7 @@ from worker.activities import provider_verify
 from worker.activities import agent as agent_module
 
 SENTINEL = "SENTINEL-SECRET-do-not-leak"
+AUTH_FILE = b'[{"id":"cred_test","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"synthetic"}}]'
 
 
 def _serialized(result) -> str:
@@ -27,7 +28,7 @@ def _serialized(result) -> str:
 
 def test_provider_verification_reports_missing_auth_without_starting_a_container(monkeypatch):
     async def config_files(user_id, config_id=None):
-        return {"opencode.json": b'{"provider":{"opencode":{"models":{}}}}'}
+        return {"opencode.json": b'{"providers":{"opencode":{"models":{}}}}'}
 
     monkeypatch.setattr(provider_verify, "_config_files", config_files)
     result = asyncio.run(provider_verify.verify_opencode_model({"user_id": "owner-1", "model": "opencode/big-pickle"}))
@@ -65,8 +66,10 @@ def test_saved_config_activities_resolve_files_for_the_targeted_configuration(mo
             self.closed = True
 
     files_by_config = {
-        "row-a": {"opencode.json": b'{"provider":{"a":{"options":{"apiKey":"k"}}}}'},
-        "row-b": {"opencode.json": b'{"provider":{"b":{"options":{"apiKey":"k"}}}}'},
+        "row-a": {"opencode.json": b'{"providers":{"a":{"options":{"apiKey":"k"}}}}',
+                   "auth.json": b'[{"id":"a","integrationID":"a","label":"API key","active":true,"value":{"type":"api","key":"k"}}]'},
+        "row-b": {"opencode.json": b'{"providers":{"b":{"options":{"apiKey":"k"}}}}',
+                   "auth.json": b'[{"id":"b","integrationID":"b","label":"API key","active":true,"value":{"type":"api","key":"k"}}]'},
     }
     resolved_for = []
     started_files = []
@@ -131,7 +134,7 @@ def test_model_list_activity_uses_acp_session_model_options(monkeypatch, tmp_pat
 
     adapter = FakeAdapter()
     async def config_files(user_id, config_id=None):
-        return {"opencode.json": b'{"provider":{"opencode":{"options":{"apiKey":"test"}}}}'}
+        return {"opencode.json": b'{"providers":{"opencode":{"models":{}}}}', "auth.json": AUTH_FILE}
     async def start_session(*args, **kwargs):
         return adapter
 
@@ -159,8 +162,9 @@ class CandidateOperationStore:
         return row
 
 
-CANDIDATE_CONFIG = {"provider": {"x": {"options": {"apiKey": "candidate-key"}}}}
-CANDIDATE_AUTH = {"x": {"key": "candidate-secret"}}
+CANDIDATE_CONFIG = {"providers": {"x": {"options": {"apiKey": "candidate-key"}}}}
+CANDIDATE_AUTH = [{"id":"cred_x","integrationID":"x","label":"API key","active":True,
+                   "value":{"type":"api","key":"candidate-secret"}}]
 
 
 def test_candidate_model_list_activity_consumes_operation_before_container(monkeypatch, tmp_path):
@@ -183,7 +187,7 @@ def test_candidate_model_list_activity_consumes_operation_before_container(monke
     adapter = FakeAdapter()
     calls = []
     store = CandidateOperationStore()
-    store.rows["op-1"] = {"config": CANDIDATE_CONFIG, "auth": CANDIDATE_AUTH}
+    store.rows["op-1"] = {"format":"v2", "config": CANDIDATE_CONFIG, "auth": CANDIDATE_AUTH}
 
     async def consume(operation_id, user_id):
         calls.append(("consume", operation_id, user_id))
@@ -239,7 +243,7 @@ def test_candidate_model_verification_consumes_before_container_and_propagates_r
     adapter = FakeAdapter()
     calls = []
     store = CandidateOperationStore()
-    store.rows["op-1"] = {"config": CANDIDATE_CONFIG, "auth": CANDIDATE_AUTH}
+    store.rows["op-1"] = {"format":"v2", "config": CANDIDATE_CONFIG, "auth": CANDIDATE_AUTH}
 
     async def consume(operation_id, user_id):
         calls.append(("consume", operation_id))
@@ -297,7 +301,7 @@ def test_candidate_verification_without_consumption_keeps_operation_as_proof(mon
     adapter = FakeAdapter()
     calls = []
     store = CandidateOperationStore()
-    store.rows["op-1"] = {"config": CANDIDATE_CONFIG, "auth": CANDIDATE_AUTH}
+    store.rows["op-1"] = {"format":"v2", "config": CANDIDATE_CONFIG, "auth": CANDIDATE_AUTH}
 
     async def consume(operation_id, user_id):
         calls.append("consume")
@@ -381,7 +385,7 @@ def test_candidate_verification_with_unknown_operation_returns_structured_error(
 
 def test_candidate_verification_without_usable_credentials_reports_auth_missing(monkeypatch):
     store = CandidateOperationStore()
-    store.rows["op-1"] = {"config": {"provider": {"x": {}}}, "auth": None}
+    store.rows["op-1"] = {"format":"v2", "config": {"providers": {"x": {}}}, "auth": None}
 
     async def consume(operation_id, user_id):
         return await store.consume(operation_id, user_id)
@@ -424,7 +428,7 @@ def test_verification_result_never_carries_simulated_agent_text(monkeypatch, tmp
     adapter = LeakyAdapter()
 
     async def config_files(user_id, config_id=None):
-        return {"opencode.json": b'{"provider":{"opencode":{"options":{"apiKey":"k"}}}}'}
+        return {"opencode.json": b'{"providers":{"opencode":{"models":{}}}}', "auth.json": AUTH_FILE}
 
     async def start_session(cfg, workspace, **kwargs):
         return adapter
@@ -464,7 +468,7 @@ def test_external_exception_text_never_reaches_activity_results(monkeypatch, tmp
             pass
 
     async def config_files(user_id, config_id=None):
-        return {"opencode.json": b'{"provider":{"opencode":{"options":{"apiKey":"k"}}}}'}
+        return {"opencode.json": b'{"providers":{"opencode":{"models":{}}}}', "auth.json": AUTH_FILE}
 
     async def start_session(cfg, workspace, **kwargs):
         return ExplodingAdapter()
@@ -487,7 +491,7 @@ def test_discovery_container_failure_normalizes_into_keyed_error(monkeypatch, tm
     error instead of letting the exception escape into Temporal."""
 
     async def config_files(user_id, config_id=None):
-        return {"opencode.json": b'{"provider":{"opencode":{"options":{"apiKey":"k"}}}}'}
+        return {"opencode.json": b'{"providers":{"opencode":{"models":{}}}}', "auth.json": AUTH_FILE}
 
     async def start_session(cfg, workspace, **kwargs):
         raise RuntimeError(f"container start failed: {SENTINEL}")

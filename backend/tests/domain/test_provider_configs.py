@@ -24,8 +24,9 @@ class ConfigRepository:
         # instance row; updates target one row by id and never duplicate it.
         self.row = ConfigRow(id=f"config-{len(self.rows) + 1}", user_id=user_id, provider=provider,
                              config_ciphertext=config_ciphertext, auth_ciphertext=auth_ciphertext,
-                             visibility=visibility, group_id=group_id, updated_at=None,
-                             verification_status=verification_status, display_name=display_name)
+                              visibility=visibility, group_id=group_id, updated_at=None,
+                              verification_status=verification_status, display_name=display_name,
+                              format="v2")
         self.rows.append(self.row)
         return self.row
 
@@ -33,6 +34,7 @@ class ConfigRepository:
                      display_name, visibility, group_id):
         row["config_ciphertext"] = config_ciphertext
         row["auth_ciphertext"] = auth_ciphertext
+        row["format"] = "v2"
         row["verification_status"] = verification_status
         row["display_name"] = display_name
         row["visibility"] = visibility
@@ -89,15 +91,15 @@ def test_provider_config_encrypts_files_at_rest_and_roundtrips():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        config = b'{"model":"opencode/big-pickle"}'
-        auth = b'{"opencode":{"key":"secret-value"}}'
+        config = b'{"providers":{},"model":"opencode/big-pickle"}'
+        auth = b'[{"id":"cred_test","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"secret-value"}}]'
         await service.create("user-1", "opencode", config, auth, display_name="Roundtrip Config")
 
         assert config.decode() not in repo.row["config_ciphertext"]
         assert auth.decode() not in repo.row["auth_ciphertext"]
         assert "secret-value" not in repo.row["auth_ciphertext"]
         assert await service.read_files("user-1", "opencode") == {
-            "opencode.json": config, "auth.json": auth,
+            "format": "v2", "opencode.json": config, "auth.json": auth,
         }
 
     asyncio.run(run())
@@ -107,7 +109,7 @@ def test_provider_config_metadata_and_delete_never_return_file_contents():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        await service.create("user-1", "opencode", b'{"model":"m"}', None,
+        await service.create("user-1", "opencode", b'{"providers":{},"model":"m"}', None,
                               display_name="Metadata Config")
         metadata = await service.metadata("user-1", "opencode")
 
@@ -118,7 +120,7 @@ def test_provider_config_metadata_and_delete_never_return_file_contents():
         assert await service.metadata("user-1", "opencode") == {
             "provider": "opencode", "configured": False,
             "config_present": False, "auth_present": False,
-            "updated_at": None,
+            "format": None, "updated_at": None, "verification_status": None,
         }
 
     asyncio.run(run())
@@ -128,11 +130,11 @@ def test_provider_config_resolution_prefers_personal_then_group_then_global():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        await service.create("admin", "opencode", b'{"model":"global"}', None,
+        await service.create("admin", "opencode", b'{"providers":{},"model":"global"}', None,
                               visibility="global", display_name="Global Config")
-        await service.create("admin", "opencode", b'{"model":"group"}', None,
+        await service.create("admin", "opencode", b'{"providers":{},"model":"group"}', None,
                               visibility="group", group_id="g1", display_name="Group Config")
-        await service.create("runner", "opencode", b'{"model":"personal"}', None,
+        await service.create("runner", "opencode", b'{"providers":{},"model":"personal"}', None,
                               display_name="Personal Config")
         files = await service.resolve_files("runner", "opencode", ["g1"])
         assert b'personal' in files["opencode.json"]
@@ -148,9 +150,9 @@ def test_multiple_group_configs_resolve_to_the_most_recently_updated():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        await service.create("owner-1", "opencode", b'{"model":"group-old"}', None,
+        await service.create("owner-1", "opencode", b'{"providers":{},"model":"group-old"}', None,
                              visibility="group", group_id="g1", display_name="Group Old")
-        await service.create("owner-2", "opencode", b'{"model":"group-new"}', None,
+        await service.create("owner-2", "opencode", b'{"providers":{},"model":"group-new"}', None,
                              visibility="group", group_id="g2", display_name="Group New")
         repo.rows[0]["updated_at"] = datetime(2026, 1, 1, tzinfo=timezone.utc)
         repo.rows[1]["updated_at"] = datetime(2026, 1, 2, tzinfo=timezone.utc)
@@ -165,9 +167,9 @@ def test_personal_fallback_resolves_to_the_most_recently_updated_instance():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        await service.create("user-1", "opencode", b'{"model":"older"}', None,
+        await service.create("user-1", "opencode", b'{"providers":{},"model":"older"}', None,
                              display_name="Older Personal")
-        await service.create("user-1", "opencode", b'{"model":"newer"}', None,
+        await service.create("user-1", "opencode", b'{"providers":{},"model":"newer"}', None,
                              display_name="Newer Personal")
         repo.rows[0]["updated_at"] = datetime(2026, 1, 1, tzinfo=timezone.utc)
         repo.rows[1]["updated_at"] = datetime(2026, 1, 2, tzinfo=timezone.utc)
@@ -184,9 +186,9 @@ def test_group_then_global_provider_config_resolution():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        await service.create("group-owner", "opencode", b'{"model":"group"}', None,
+        await service.create("group-owner", "opencode", b'{"providers":{},"model":"group"}', None,
                               visibility="group", group_id="team-1", display_name="Group Config")
-        await service.create("admin", "opencode", b'{"model":"global"}', None,
+        await service.create("admin", "opencode", b'{"providers":{},"model":"global"}', None,
                               visibility="global", display_name="Global Config")
         group_files = await service.resolve_files("member", "opencode", ["team-1"])
         assert b'group' in group_files["opencode.json"]
@@ -200,7 +202,7 @@ def test_list_visible_reports_verification_status_without_stored_model_metadata(
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        await service.create("user-1", "opencode", b'{"provider":{"a":{},"b":{}}}', None,
+        await service.create("user-1", "opencode", b'{"providers":{"a":{},"b":{}}}', None,
                               display_name="Listed Config")
         metadata = (await service.list_visible("user-1", "opencode"))[0]
         assert metadata["verification_status"] == "unverified"
@@ -220,7 +222,7 @@ def test_replace_stores_and_returns_the_user_entered_display_name():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        metadata = await service.create("user-1", "opencode", b'{"provider":{}}', None,
+        metadata = await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                          display_name="Team OpenCode Config")
 
         assert repo.row["display_name"] == "Team OpenCode Config"
@@ -248,14 +250,14 @@ def test_display_name_is_mandatory_trimmed_and_bounded():
 
         for rejected in ("", "   "):
             try:
-                await service.create("user-1", "opencode", b'{"provider":{}}', None,
+                await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                       display_name=rejected)
             except ValidationFailedError as exc:
                 assert exc.message_key == "errors.provider.name_invalid"
             else:
                 raise AssertionError("Empty or whitespace-only display names must be rejected")
         try:
-            await service.create("user-1", "opencode", b'{"provider":{}}', None,
+            await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                   display_name="x" * 81)
         except ValidationFailedError as exc:
             assert exc.message_key == "errors.provider.name_too_long"
@@ -263,7 +265,7 @@ def test_display_name_is_mandatory_trimmed_and_bounded():
             raise AssertionError("Display names over 80 characters must be rejected")
         assert repo.rows == []
 
-        await service.create("user-1", "opencode", b'{"provider":{}}', None,
+        await service.create("user-1", "opencode", b'{"providers":{}}', None,
                               display_name="  Padded Name  ")
         assert repo.row["display_name"] == "Padded Name"
         assert (await service.list_visible("user-1", "opencode"))[0]["name"] == "Padded Name"
@@ -275,9 +277,9 @@ def test_two_same_scope_instances_coexist_with_distinct_ids():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        first = await service.create("user-1", "opencode", b'{"provider":{}}', None,
+        first = await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                      display_name="Team Config")
-        second = await service.create("user-1", "opencode", b'{"provider":{}}', None,
+        second = await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                       display_name="Personal Config")
 
         assert len(repo.rows) == 2
@@ -296,12 +298,12 @@ def test_duplicate_display_name_same_owner_provider_is_rejected_case_insensitive
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        await service.create("user-1", "opencode", b'{"provider":{}}', None,
+        await service.create("user-1", "opencode", b'{"providers":{}}', None,
                              display_name="Team Config")
 
         for duplicate in ("Team Config", "team config", "  TEAM CONFIG  "):
             try:
-                await service.create("user-1", "opencode", b'{"provider":{}}', None,
+                await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                      display_name=duplicate)
             except ConflictError as exc:
                 assert exc.message_key == "errors.provider.name_duplicate"
@@ -309,9 +311,9 @@ def test_duplicate_display_name_same_owner_provider_is_rejected_case_insensitive
                 raise AssertionError("Duplicate display names must be rejected")
         assert len(repo.rows) == 1
         # The same name under a different provider or a different owner is fine.
-        await service.create("user-1", "other-provider", b'{"provider":{}}', None,
+        await service.create("user-1", "other-provider", b'{"providers":{}}', None,
                              display_name="Team Config")
-        await service.create("user-2", "opencode", b'{"provider":{}}', None,
+        await service.create("user-2", "opencode", b'{"providers":{}}', None,
                              display_name="team config")
         assert len(repo.rows) == 3
 
@@ -322,8 +324,9 @@ def test_update_by_id_keeps_the_id_and_preserves_files_until_replaced():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        created = await service.create("user-1", "opencode", b'{"provider":{"a":{}}}',
-                                       b'{"x":{"key":"secret"}}', display_name="Original Name")
+        auth = b'[{"id":"cred_test","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"secret"}}]'
+        created = await service.create("user-1", "opencode", b'{"providers":{"a":{}}}',
+                                       auth, display_name="Original Name")
         original = await service.read_files_by_id(created["id"])
         await service.set_verification_status(created["id"], "verified")
 
@@ -342,14 +345,14 @@ def test_update_by_id_keeps_the_id_and_preserves_files_until_replaced():
         # id is preserved, the untouched auth file is preserved, and the
         # status drops to unverified when no proof accompanies the change.
         replaced = await service.scoped_save(
-            _actor("user-1"), "opencode", b'{"provider":{"b":{}}}', None,
+            _actor("user-1"), "opencode", b'{"providers":{"b":{}}}', None,
             "personal", None, display_name="Renamed Only", config_id=created["id"])
         assert replaced["id"] == created["id"]
         assert replaced["auth_present"] is True
         assert replaced["verification_status"] == "unverified"
         files = await service.read_files_by_id(created["id"])
-        assert files["opencode.json"] == b'{"provider":{"b":{}}}'
-        assert files["auth.json"] == b'{"x":{"key":"secret"}}'
+        assert files["opencode.json"] == b'{"providers":{"b":{}}}'
+        assert files["auth.json"] == auth
         assert len(repo.rows) == 1
 
     asyncio.run(run())
@@ -361,9 +364,9 @@ def test_update_rejects_a_name_taken_by_a_sibling_instance():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        first = await service.create("user-1", "opencode", b'{"provider":{}}', None,
+        first = await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                      display_name="Alpha")
-        second = await service.create("user-1", "opencode", b'{"provider":{}}', None,
+        second = await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                       display_name="Beta")
         try:
             await service.scoped_save(_actor("user-1"), "opencode", None, None,
@@ -388,13 +391,13 @@ def test_replace_records_verification_status_and_rejects_unknown_values():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        metadata = await service.create("user-1", "opencode", b'{"provider":{}}', None,
+        metadata = await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                          verification_status="verified", display_name="Verified Config")
         assert metadata["verification_status"] == "verified"
         assert repo.row["verification_status"] == "verified"
         assert "selected_model" not in metadata and "model_count" not in metadata
         try:
-            await service.create("user-1", "opencode", b'{"provider":{}}', None,
+            await service.create("user-1", "opencode", b'{"providers":{}}', None,
                                   verification_status="attested", display_name="Verified Config")
         except ValueError:
             pass
@@ -477,8 +480,9 @@ def test_candidate_operation_roundtrip_is_encrypted_short_lived_and_single_use()
     async def run():
         repo = CandidateOperationRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        config = {"provider": {"x": {"options": {"apiKey": "secret-key"}}}}
-        auth = {"x": {"key": "auth-secret"}}
+        config = {"providers": {"x": {"models": {}}}}
+        auth = [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
+                 "value":{"type":"api","key":"auth-secret"}}]
 
         operation_id = await service.create_candidate_operation("user-1", "opencode", config, auth)
 
@@ -489,7 +493,7 @@ def test_candidate_operation_roundtrip_is_encrypted_short_lived_and_single_use()
         assert timedelta(seconds=0) < remaining <= timedelta(seconds=120)
 
         resolved = await service.consume_candidate_operation(operation_id, "user-1", "opencode")
-        assert resolved == {"config": config, "auth": auth}
+        assert resolved == {"format": "v2", "config": config, "auth": auth}
         assert operation_id not in repo.candidate_operations
 
     asyncio.run(run())
@@ -501,11 +505,11 @@ def test_candidate_operation_without_auth_roundtrips_none_and_scopes_to_owner():
 
         repo = CandidateOperationRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        config = {"provider": {"x": {"options": {"apiKey": "secret-key"}}}}
+        config = {"providers": {"x": {"models": {}}}}
 
         operation_id = await service.create_candidate_operation("user-1", "opencode", config, None)
         resolved = await service.consume_candidate_operation(operation_id, "user-1", "opencode")
-        assert resolved == {"config": config, "auth": None}
+        assert resolved == {"format": "v2", "config": config, "auth": None}
 
         other = await service.create_candidate_operation("user-1", "opencode", config, None)
         try:
@@ -534,7 +538,7 @@ def test_missing_or_expired_candidate_operation_reports_not_found_and_cleans_up(
             raise AssertionError("Missing candidate operations must report not found")
 
         operation_id = await service.create_candidate_operation(
-            "user-1", "opencode", {"provider": {"x": {"options": {"apiKey": "k"}}}}, None)
+            "user-1", "opencode", {"providers": {"x": {"options": {"apiKey": "k"}}}}, None)
         repo.candidate_operations[operation_id]["expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
         try:
             await service.consume_candidate_operation(operation_id, "user-1", "opencode")
@@ -552,9 +556,9 @@ def test_purge_expired_candidate_operations_removes_only_expired_rows():
         repo = CandidateOperationRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
         live = await service.create_candidate_operation(
-            "user-1", "opencode", {"provider": {"x": {"options": {"apiKey": "k"}}}}, None)
+            "user-1", "opencode", {"providers": {"x": {"options": {"apiKey": "k"}}}}, None)
         expired = await service.create_candidate_operation(
-            "user-2", "opencode", {"provider": {"x": {"options": {"apiKey": "k"}}}}, None)
+            "user-2", "opencode", {"providers": {"x": {"options": {"apiKey": "k"}}}}, None)
         repo.candidate_operations[expired]["expires_at"] = datetime.now(timezone.utc) - timedelta(seconds=1)
 
         removed = await service.purge_expired_candidate_operations()
@@ -572,12 +576,12 @@ def test_read_candidate_operation_resolves_without_consuming():
 
         repo = CandidateOperationRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        config = {"provider": {"x": {"options": {"apiKey": "secret-key"}}}}
+        config = {"providers": {"x": {"models": {}}}}
 
         operation_id = await service.create_candidate_operation("user-1", "opencode", config, None)
         first = await service.read_candidate_operation(operation_id, "user-1", "opencode")
         second = await service.read_candidate_operation(operation_id, "user-1", "opencode")
-        assert first == {"config": config, "auth": None}
+        assert first == {"format": "v2", "config": config, "auth": None}
         assert second == first
         # Non-consuming: verification may read the credentials while the row
         # stays redeemable as single-use proof.
@@ -605,17 +609,19 @@ def test_redeem_candidate_verification_accepts_matching_payload_and_consumes_it(
     async def run():
         repo = CandidateOperationRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        config = {"provider": {"x": {"options": {"apiKey": "secret-key"}}}}
-        auth = {"x": {"key": "auth-secret"}}
+        config = {"providers": {"x": {"models": {}}}}
+        auth = [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
+                 "value":{"type":"api","key":"auth-secret"}}]
 
         operation_id = await service.create_candidate_operation(
             "user-1", "opencode", config, auth, purpose="verification")
         remaining = await service.mark_candidate_operation_verified(operation_id)
         assert 0 < remaining <= 120
 
-        # Same parsed objects with different key order still match.
-        reordered_config = {"provider": {"x": {"options": {"apiKey": "secret-key"}}}}
-        reordered_auth = {"x": {"key": "auth-secret"}}
+        # Config object key order is irrelevant; credential array order is not.
+        reordered_config = {"providers": {"x": {"models": {}}}}
+        reordered_auth = [{"value":{"key":"auth-secret","type":"api"},"active":True,
+                           "label":"API key","integrationID":"x","id":"cred_1"}]
         assert await service.redeem_candidate_verification(
             operation_id, "user-1", "opencode", reordered_config, reordered_auth) is True
         # The proof is single-use: redemption consumed the operation.
@@ -630,8 +636,9 @@ def test_redeem_candidate_verification_rejects_mismatch_missing_foreign_and_expi
     async def run():
         repo = CandidateOperationRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        config = {"provider": {"x": {"options": {"apiKey": "secret-key"}}}}
-        auth = {"x": {"key": "auth-secret"}}
+        config = {"providers": {"x": {"models": {}}}}
+        auth = [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
+                 "value":{"type":"api","key":"auth-secret"}}]
 
         # Missing operations prove nothing.
         assert await service.redeem_candidate_verification(
@@ -642,7 +649,9 @@ def test_redeem_candidate_verification_rejects_mismatch_missing_foreign_and_expi
             "user-1", "opencode", config, auth, purpose="verification")
         await service.mark_candidate_operation_verified(mismatched)
         assert await service.redeem_candidate_verification(
-            mismatched, "user-1", "opencode", config, {"x": {"key": "other"}}) is False
+            mismatched, "user-1", "opencode", config,
+            [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
+              "value":{"type":"api","key":"other"}}]) is False
         assert mismatched not in repo.candidate_operations
 
         # Another actor's operation is neither redeemed nor revealed or deleted.
@@ -669,7 +678,7 @@ def test_discovery_purpose_and_unverified_operations_cannot_be_redeemed():
     async def run():
         repo = CandidateOperationRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        config = {"provider": {"x": {"options": {"apiKey": "secret-key"}}}}
+        config = {"providers": {"x": {"models": {}}}}
 
         # A discovery operation never proves a verification, even if some
         # success flag was set: only verification-purpose operations that
@@ -697,7 +706,7 @@ def test_marking_a_verified_operation_reports_remaining_validity_and_never_resur
     async def run():
         repo = CandidateOperationRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        config = {"provider": {"x": {"options": {"apiKey": "secret-key"}}}}
+        config = {"providers": {"x": {"options": {"apiKey": "secret-key"}}}}
 
         operation_id = await service.create_candidate_operation(
             "user-1", "opencode", config, None, purpose="verification")

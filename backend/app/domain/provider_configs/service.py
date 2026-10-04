@@ -13,6 +13,7 @@ class ProviderConfigUnavailable(Exception):
 
 CANDIDATE_OPERATION_TTL_SECONDS = 120
 MAX_DISPLAY_NAME_LENGTH = 80
+MAX_PROVIDER_FILE_BYTES = 1_000_000
 
 # The functional unique index backing the case-insensitive display-name rule
 # (ProviderConfig.__table_args__; created by migration 0019). Its constraint
@@ -78,9 +79,9 @@ class ProviderConfigService:
         if verification_status not in {"verified", "unverified"}:
             raise ValueError("Invalid provider configuration verification status")
         display_name = normalize_display_name(display_name)
-        self._validate_json(config, "opencode.json")
+        self._validate_config_file(config)
         if auth is not None:
-            self._validate_json(auth, "auth.json")
+            self._validate_auth_file(auth)
         await self._ensure_name_available(user_id, provider, display_name)
         fernet = self._fernet()
         config_ciphertext = fernet.encrypt(config).decode("ascii")
@@ -102,7 +103,7 @@ class ProviderConfigService:
         if await self.repository.name_taken(owner_id, provider, display_name, exclude_id=exclude_id):
             raise ConflictError("errors.provider.name_duplicate", params={"name": display_name})
 
-    async def resolve_files(self, user_id: str, provider: str, group_ids: list[str]) -> dict[str, bytes] | None:
+    async def resolve_files(self, user_id: str, provider: str, group_ids: list[str]) -> dict[str, bytes | str] | None:
         """Resolve the files an agent container will run with.
 
         Scope precedence stays personal > group > global. Several matching
@@ -118,13 +119,15 @@ class ProviderConfigService:
                          for scope_rows in (personal, groups, global_rows) if scope_rows), None)
         if selected is None:
             return None
+        self._require_v2_row(selected)
         fernet = self._fernet()
         try:
             config = fernet.decrypt(selected.config_ciphertext.encode("ascii"))
             auth = fernet.decrypt(selected.auth_ciphertext.encode("ascii")) if selected.auth_ciphertext else None
         except (InvalidToken, UnicodeEncodeError) as exc:
             raise ProviderConfigUnavailable("Provider configuration cannot be decrypted with the configured key") from exc
-        return {"opencode.json": config, **({"auth.json": auth} if auth is not None else {})}
+        return {"format": "v2", "opencode.json": config,
+                **({"auth.json": auth} if auth is not None else {})}
 
     @staticmethod
     def _most_recent(rows):
@@ -144,16 +147,17 @@ class ProviderConfigService:
         row = await self.repository.get(user_id, provider)
         if row is None:
             return {"provider": provider, "configured": False, "config_present": False,
-                    "auth_present": False, "updated_at": None}
+                    "auth_present": False, "format": None, "updated_at": None,
+                    "verification_status": None}
         return self._metadata(row)
 
-    async def read_files(self, user_id: str, provider: str) -> dict[str, bytes] | None:
+    async def read_files(self, user_id: str, provider: str) -> dict[str, bytes | str] | None:
         row = await self.repository.get(user_id, provider)
         if row is None:
             return None
         return self.read_row_files(row)
 
-    async def read_files_by_id(self, config_id: str) -> dict[str, bytes] | None:
+    async def read_files_by_id(self, config_id: str) -> dict[str, bytes | str] | None:
         """Decrypt exactly one stored configuration by id (worker-side hand-off).
 
         The id is an opaque reference, never a credential; unknown ids resolve
@@ -164,14 +168,51 @@ class ProviderConfigService:
             return None
         return self.read_row_files(row)
 
-    def read_row_files(self, row) -> dict[str, bytes]:
+    def read_row_files(self, row) -> dict[str, bytes | str]:
+        self._require_v2_row(row)
+        return {"format": "v2", **self._decrypt_row_files(row)}
+
+    def _decrypt_row_files(self, row) -> dict[str, bytes]:
         fernet = self._fernet()
         try:
             config = fernet.decrypt(row.config_ciphertext.encode("ascii"))
             auth = fernet.decrypt(row.auth_ciphertext.encode("ascii")) if row.auth_ciphertext else None
         except (InvalidToken, UnicodeEncodeError) as exc:
             raise ProviderConfigUnavailable("Provider configuration cannot be decrypted with the configured key") from exc
-        return {"opencode.json": config, **({"auth.json": auth} if auth is not None else {})}
+        return {"opencode.json": config,
+                **({"auth.json": auth} if auth is not None else {})}
+
+    @staticmethod
+    def _require_v2_row(row) -> None:
+        if getattr(row, "format", "v1") != "v2":
+            raise ValidationFailedError("errors.provider.reverification_required")
+
+    @staticmethod
+    def _validate_config_file(data: bytes) -> dict:
+        parsed = ProviderConfigService._validate_json(data, "opencode.json")
+        if "providers" not in parsed or not isinstance(parsed["providers"], dict):
+            raise ValueError("opencode.json providers must be an object")
+        if "provider" in parsed:
+            raise ValueError("Legacy provider configuration requires conversion")
+        return parsed
+
+    @staticmethod
+    def _validate_auth_file(data: bytes) -> list:
+        parsed = ProviderConfigService._validate_json(data, "auth.json")
+        if not isinstance(parsed, list):
+            raise ValueError("auth.json must contain a credential array")
+        for entry in parsed:
+            if (not isinstance(entry, dict) or set(entry) != {"id", "integrationID", "label", "active", "value"}
+                    or not all(isinstance(entry.get(key), str) and entry[key] for key in ("id", "integrationID", "label"))
+                    or not isinstance(entry.get("active"), bool)
+                    or not isinstance(entry.get("value"), dict)
+                    or set(entry["value"]) != {"type", "key"}
+                    or entry["value"].get("type") != "api"
+                    or not isinstance(entry["value"].get("key"), str) or not entry["value"]["key"]
+                    or not all(isinstance(entry["value"].get(key), str) and entry["value"][key]
+                               for key in ("type", "key"))):
+                raise ValueError("auth.json contains an unsupported credential entry")
+        return parsed
 
     async def visible_row(self, user_id: str, config_id: str):
         """Resolve one configuration by id under the list visibility model.
@@ -259,6 +300,8 @@ class ProviderConfigService:
             raise ValueError("Group visibility requires exactly one group")
         display_name = normalize_display_name(display_name)
         if config is None and auth is None:
+            if getattr(row, "format", "v1") != "v2":
+                raise ValidationFailedError("errors.provider.conversion_required")
             # No file replaced: keep the stored ciphertext and verification
             # status; a rename or scope move attests nothing new.
             await self._ensure_name_available(row.user_id, provider, display_name, exclude_id=row.id)
@@ -269,7 +312,10 @@ class ProviderConfigService:
         # At least one file is replaced: validate the EFFECTIVE pair (the one
         # that will be stored, uploaded files plus kept ones) so a rejected
         # update never overwrites anything, then re-attest it with the proof.
-        stored = self.read_row_files(row)
+        is_legacy = getattr(row, "format", "v1") != "v2"
+        if is_legacy and (config is None or auth is None):
+            raise ValidationFailedError("errors.provider.conversion_required")
+        stored = self._decrypt_row_files(row)
         effective_config = config if config is not None else stored["opencode.json"]
         effective_auth = auth if auth is not None else stored.get("auth.json")
         config_value, auth_value = self._validated_pair(effective_config, effective_auth, validate_pair)
@@ -324,10 +370,12 @@ class ProviderConfigService:
         """
         if validate_pair is not None:
             return validate_pair(config, auth)
-        self._validate_json(config, "opencode.json")
+        config_value = self._validate_config_file(config)
         if auth is not None:
-            self._validate_json(auth, "auth.json")
-        return self._parse_json_objects(config, auth)
+            auth_value = self._validate_auth_file(auth)
+        else:
+            auth_value = None
+        return config_value, auth_value
 
     async def list_visible(self, user_id: str, provider: str) -> list[dict]:
         group_ids = await self.repository.memberships(user_id)
@@ -339,7 +387,8 @@ class ProviderConfigService:
                  # Metadata only: identifiers and presence flags, never the
                  # stored files or any decrypted value.
                  "group_id": row.group_id,
-                 "auth_present": row.auth_ciphertext is not None} for row in rows]
+                 "auth_present": row.auth_ciphertext is not None,
+                 "format": getattr(row, "format", "v1")} for row in rows]
 
     async def set_verification_status(self, config_id: str, status: str,
                                       expected_updated_at=None) -> bool:
@@ -364,7 +413,7 @@ class ProviderConfigService:
             raise ProviderConfigUnavailable("KOSMO_CONFIG_ENCRYPTION_KEY is invalid") from exc
 
     async def create_candidate_operation(self, user_id: str, provider: str,
-                                         config: dict, auth: dict | None,
+                                         config: dict, auth: list | None,
                                          purpose: str = "discovery") -> str:
         """Encrypt candidate credentials for one short-lived worker hand-off.
 
@@ -377,7 +426,9 @@ class ProviderConfigService:
         if purpose not in {"discovery", "verification"}:
             raise ValueError("Invalid candidate operation purpose")
         fernet = self._fernet()
-        payload = json.dumps({"config": config, "auth": auth}).encode("utf-8")
+        self._validate_candidate(config, auth)
+        payload = json.dumps({"format": "v2", "config": config, "auth": auth},
+                             separators=(",", ":")).encode("utf-8")
         ciphertext = fernet.encrypt(payload).decode("ascii")
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=CANDIDATE_OPERATION_TTL_SECONDS)
         row = await self.repository.create_candidate_operation(user_id, provider, ciphertext, expires_at,
@@ -412,7 +463,7 @@ class ProviderConfigService:
         raise NotFoundError("errors.provider.config_not_found")
 
     async def redeem_candidate_verification(self, operation_id: str, user_id: str, provider: str,
-                                            config: dict | None, auth: dict | None) -> bool:
+                                             config: dict | None, auth: list | None) -> bool:
         """Redeem a single-use verification proof for an exact configuration.
 
         Redemption is one atomic conditional delete: it lands only for the
@@ -429,8 +480,10 @@ class ProviderConfigService:
             await self._cleanup_unredeemable(operation_id, user_id)
             return False
         payload = self._candidate_payload_ciphertext(claimed["payload_ciphertext"])
-        uploaded = {"config": config if isinstance(config, dict) else None,
-                    "auth": auth if isinstance(auth, dict) else None}
+        if payload.get("format") != "v2":
+            raise ValidationFailedError("errors.provider.reverification_required")
+        uploaded = {"format": "v2", "config": config if isinstance(config, dict) else None,
+                    "auth": auth if isinstance(auth, list) else None}
         return payload == uploaded
 
     async def _cleanup_unredeemable(self, operation_id: str, user_id: str) -> None:
@@ -454,9 +507,43 @@ class ProviderConfigService:
                 "Candidate operation payload cannot be decrypted with the configured key") from exc
         if not isinstance(payload, dict):
             raise ProviderConfigUnavailable("Candidate operation payload is malformed")
+        if payload.get("format") != "v2":
+            raise ValidationFailedError("errors.provider.reverification_required")
         config, auth = payload.get("config"), payload.get("auth")
-        return {"config": config if isinstance(config, dict) else {},
-                "auth": auth if isinstance(auth, dict) else None}
+        if not isinstance(config, dict) or (auth is not None and not isinstance(auth, list)):
+            raise ProviderConfigUnavailable("Candidate operation payload is malformed")
+        self._validate_candidate(config, auth)
+        return {"format": "v2", "config": config, "auth": auth}
+
+    @staticmethod
+    def _validate_candidate(config, auth):
+        if (not isinstance(config, dict) or "providers" not in config
+                or not isinstance(config["providers"], dict) or "provider" in config):
+            raise ValueError("Provider configuration is invalid")
+        try:
+            encoded = json.dumps(config, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError, UnicodeEncodeError):
+            raise ValueError("Provider configuration is invalid") from None
+        if len(encoded) > MAX_PROVIDER_FILE_BYTES:
+            raise ValueError("Provider configuration is too large")
+        if auth is not None:
+            if not isinstance(auth, list):
+                raise ValueError("Provider credentials are invalid")
+            try:
+                encoded_auth = json.dumps(auth, separators=(",", ":")).encode("utf-8")
+            except (TypeError, ValueError, UnicodeEncodeError):
+                raise ValueError("Provider credentials are invalid") from None
+            if len(encoded_auth) > MAX_PROVIDER_FILE_BYTES:
+                raise ValueError("Provider credentials are too large")
+            for item in auth:
+                if (not isinstance(item, dict) or set(item) != {"id", "integrationID", "label", "active", "value"}
+                        or not isinstance(item.get("value"), dict)
+                        or set(item["value"]) != {"type", "key"}
+                        or item["value"].get("type") != "api"
+                        or not all(isinstance(item.get(k), str) and item[k] for k in ("id", "integrationID", "label"))
+                        or not isinstance(item.get("active"), bool)
+                        or not all(isinstance(item["value"].get(k), str) and item["value"][k] for k in ("type", "key"))):
+                    raise ValueError("Provider credentials are invalid")
 
     async def read_candidate_operation(self, operation_id: str, user_id: str, provider: str) -> dict:
         """Resolve a candidate operation WITHOUT consuming it.
@@ -472,27 +559,18 @@ class ProviderConfigService:
             raise PermissionDeniedError("errors.provider.forbidden")
         return self._candidate_payload_ciphertext(row.payload_ciphertext)
 
-    @staticmethod
-    def _parse_json_objects(config: bytes, auth: bytes | None) -> tuple[dict | None, dict | None]:
-        try:
-            config_value = json.loads(config)
-            auth_value = json.loads(auth) if auth is not None else None
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            return None, None
-        return (config_value if isinstance(config_value, dict) else None,
-                auth_value if isinstance(auth_value, dict) else None)
-
     async def purge_expired_candidate_operations(self) -> int:
         return await self.repository.purge_expired_candidate_operations()
 
     @staticmethod
-    def _validate_json(data: bytes, filename: str) -> None:
+    def _validate_json(data: bytes, filename: str):
+        if len(data) > MAX_PROVIDER_FILE_BYTES:
+            raise ValueError("Provider file is too large")
         try:
             parsed = json.loads(data)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError(f"{filename} must contain valid JSON") from exc
-        if not isinstance(parsed, dict):
-            raise ValueError(f"{filename} must contain a JSON object")
+        return parsed
 
     @staticmethod
     def _metadata(row) -> dict:
@@ -500,6 +578,7 @@ class ProviderConfigService:
         return {"id": row.id,
                 "provider": row.provider, "configured": True, "config_present": True,
                 "auth_present": row.auth_ciphertext is not None,
+                "format": getattr(row, "format", "v1"),
                 "name": row.display_name,
                 "updated_at": updated.isoformat() if updated else None,
                 "verification_status": getattr(row, "verification_status", "unverified")}

@@ -38,8 +38,9 @@ from app.domain.provider_configs.service import ProviderConfigService
 from app.domain.provider_configs.models import ProviderCandidateOperation
 
 ENCRYPTION_KEY = "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc="
-TEST_CONFIG = {"provider": {"x": {"options": {"apiKey": "sentinel-concurrent-key"}}}}
-TEST_AUTH = {"x": {"key": "sentinel-concurrent-secret"}}
+TEST_CONFIG = {"providers": {"x": {"options": {"apiKey": "sentinel-concurrent-key"}}}}
+TEST_AUTH = [{"id":"cred_x","integrationID":"x","label":"API key","active":True,
+             "value":{"type":"api","key":"sentinel-concurrent-secret"}}]
 
 
 @pytest.fixture(scope="module")
@@ -219,7 +220,7 @@ def test_mismatched_credentials_consume_the_operation(session_factory, test_user
             # Different credentials: should return False.
             result = await svc.redeem_candidate_verification(
                 operation_id, test_user, "opencode",
-                {"provider": {"x": {"options": {"apiKey": "different-key"}}}},
+                {"providers": {"x": {"options": {"apiKey": "different-key"}}}},
                 TEST_AUTH)
             assert result is False
 

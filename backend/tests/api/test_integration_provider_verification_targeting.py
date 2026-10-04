@@ -83,8 +83,9 @@ def _service(session_factory) -> ProviderConfigService:
 def _files(key: str, secret: str) -> tuple[bytes, bytes]:
     """A distinct synthetic opencode.json/auth.json pair per row."""
     return (
-        json.dumps({"provider": {"opencode": {"options": {"apiKey": key}}}}).encode("utf-8"),
-        json.dumps({"opencode": {"type": "api", "key": secret}}).encode("utf-8"),
+        json.dumps({"providers": {"opencode": {"options": {"apiKey": key}}}}).encode("utf-8"),
+        json.dumps([{"id":"cred_opencode","integrationID":"opencode","label":"API key",
+                     "active":True,"value":{"type":"api","key":secret}}]).encode("utf-8"),
     )
 
 
@@ -226,21 +227,24 @@ def test_targeted_row_files_are_the_targeted_ones(session_factory):
 
                 personal = await resolved_files(seed["personal_id"], seed["owner_id"])
                 assert json.loads(personal["opencode.json"]) == \
-                    {"provider": {"opencode": {"options": {"apiKey": "sentinel-personal-key"}}}}
+                    {"providers": {"opencode": {"options": {"apiKey": "sentinel-personal-key"}}}}
                 assert json.loads(personal["auth.json"]) == \
-                    {"opencode": {"type": "api", "key": "sentinel-personal-secret"}}
+                    [{"id":"cred_opencode","integrationID":"opencode","label":"API key","active":True,
+                      "value":{"type":"api","key":"sentinel-personal-secret"}}]
 
                 group = await resolved_files(seed["group_row_id"], seed["member_id"])
                 assert json.loads(group["opencode.json"]) == \
-                    {"provider": {"opencode": {"options": {"apiKey": "sentinel-group-key"}}}}
+                    {"providers": {"opencode": {"options": {"apiKey": "sentinel-group-key"}}}}
                 assert json.loads(group["auth.json"]) == \
-                    {"opencode": {"type": "api", "key": "sentinel-group-secret"}}
+                    [{"id":"cred_opencode","integrationID":"opencode","label":"API key","active":True,
+                      "value":{"type":"api","key":"sentinel-group-secret"}}]
 
                 global_files = await resolved_files(seed["global_id"], seed["outsider_id"])
                 assert json.loads(global_files["opencode.json"]) == \
-                    {"provider": {"opencode": {"options": {"apiKey": "sentinel-global-key"}}}}
+                    {"providers": {"opencode": {"options": {"apiKey": "sentinel-global-key"}}}}
                 assert json.loads(global_files["auth.json"]) == \
-                    {"opencode": {"type": "api", "key": "sentinel-global-secret"}}
+                    [{"id":"cred_opencode","integrationID":"opencode","label":"API key","active":True,
+                      "value":{"type":"api","key":"sentinel-global-secret"}}]
 
                 combined = json.dumps(
                     [json.loads(files["opencode.json"]) for files in (personal, group, global_files)]
