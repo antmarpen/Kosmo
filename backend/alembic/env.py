@@ -20,8 +20,13 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
-# WP-03 wires SQLAlchemy model metadata here once domain models exist;
-# migrations are hand-written for now.
+# Import models explicitly so fresh API, worker, and migration processes register
+# every table referenced by SQLAlchemy foreign keys.
+from app.domain.identity import models as _identity_models  # noqa: F401,E402
+from app.domain.agents import models as _agent_models  # noqa: F401,E402
+from app.domain.mcp_servers import models as _mcp_models  # noqa: F401,E402
+from app.domain.skills import models as _skill_models  # noqa: F401,E402
+
 target_metadata = None
 
 

@@ -5,6 +5,15 @@ Contract: `docs/specs/agent-mcp-skills.md`, approved 2026-10-04.
 Owner of execution, delegation, integration and scope questions: coordinator.
 Architect planning only; no application code or database changes were made.
 
+## Coordinator decisions
+
+- **2026-10-04 — Catalog authorization parity CONFIRMED.** The three catalogs
+  mirror the provider-configuration policy exactly: any authenticated user may
+  create personal entries; group creation requires admin or a `group_manager`
+  membership role; global creation is admin-only; mutations are owner/admin under
+  the same target-scope checks. No builder-only gate and no deviation from the
+  shared provider policy.
+
 ## Evidence and precedence
 
 - Read the approved spec completely, `AGENTS.md`, `docs/context/project.md`,
@@ -274,6 +283,59 @@ unless separately authorized by the coordinator.
 - Risks / questions: ACP reasoning may be model-dependent; supplied prompt text
   proves delivery, not that an LLM will obey skills. Unsupported transport or
   inability to apply nondefault reasoning blocks dependent runtime work.
+
+#### WP-01 results
+
+- **Status: live initialization and model-option responses proven; reasoning,
+  MCP interoperability and prompt receipt remain blocked.** Probes launch an
+  ephemeral Docker container (the worker's execution model). No product adapter
+  or dependency changes were made.
+- **Image/version:** `docker run --rm kosmo-opencode:local --version` printed
+  `1.18.33`, matching the Dockerfile's `opencode-ai@1.18.33`. OpenCode is an
+  ephemeral worker-launched container, not a Compose service; the prior service
+  blocker was incorrect.
+- **Initialize:** `initialize` used `protocolVersion: 1`, clientInfo
+  `{name: "wp01-probe", version: "1"}`, and clientCapabilities
+  `{elicitation: {form: {}}}`. Live result: `protocolVersion: 1`;
+  `agentCapabilities: {loadSession: true, mcpCapabilities: {http: true, sse:
+  true}, promptCapabilities: {embeddedContext: true, image: true},
+  sessionCapabilities: {close: {}, fork: {}, list: {}, resume: {}}}`;
+  `authMethods: [{description: "Run `opencode auth login` in the terminal",
+  name: "Login with opencode", id: "opencode-login"}]`; `agentInfo:
+  {name: "OpenCode", version: "1.18.33"}`.
+- **Session options:** `session/new` with `{cwd: "/workspace", mcpServers: []}`
+  returned model (select, current `opencode/big-pickle`) and mode (select,
+  current `build`, values `build`, `plan`). Model values advertised:
+  `opencode/big-pickle`, `opencode/fledge-alpha-free`,
+  `opencode/ling-3.0-flash-fin-free`, `opencode/ling-3.1-flash-free`,
+  `opencode/longcat-2.5-preview-free`, `opencode/mimo-v2.6-flash-free`,
+  `opencode/muse-spark-1.3-contributor-free`,
+  `opencode/nemotron-3-ultra-free`, `opencode/nemotron-3.5-lightning-free`,
+  `opencode/space-bunny-free`. Selecting the advertised current model with
+  `session/set_config_option` (`configId: "model"`) returned unchanged
+  `configOptions`. No reasoning option appeared; its ID/value set and
+  non-default application are **blocked/unverified** for this runtime/config.
+- **MCP fixtures:** A live request included a local stdio fixture (`node -e
+  "process.stdin.resume()"`, args and synthetic env) and a local HTTP fixture
+  (`http://host.docker.internal:18765/mcp`, synthetic header). Command
+  `python "$env:TEMP\\wp01_mcp_probe.py"` timed out after 30 seconds waiting for
+  the `session/new` response (`asyncio.TimeoutError`, no response frame). Thus
+  neither acceptance nor rejection/wire mapping is proven. `mcpCapabilities.http`
+  alone does not prove delivery.
+- **Skill receipt:** offline adapter test only confirms the synthetic delimited
+  skill text is serialized in first `session/prompt` using a recording transport.
+  Live receipt is **unverified**; no real model prompt was sent without
+  credentials, and no LLM-obedience claim is made.
+- **Commands/evidence:** `docker run --rm --entrypoint opencode
+  kosmo-opencode:local acp --help` confirmed ACP CLI. Python asyncio probes ran
+  `docker run --rm -i --entrypoint opencode kosmo-opencode:local acp` and
+  captured initialize, session/new, then model set-config responses above.
+  `uv run --project backend --directory backend pytest
+  tests/worker/test_catalog_runtime_probe.py` passed 1 offline test. Fixture
+  timeout is recorded above. No credentials were used.
+- **Remaining blockers:** no advertised reasoning option in observed options;
+  MCP fixture session creation timed out; live prompt receipt was not tested.
+  Treat those legs as unverified, not successful delivery.
 
 ### WP-02 — Catalog persistence and migration
 - Type / owner: development / Developer (`developer`).
