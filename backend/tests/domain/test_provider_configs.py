@@ -92,7 +92,7 @@ def test_provider_config_encrypts_files_at_rest_and_roundtrips():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
         config = b'{"providers":{},"model":"opencode/big-pickle"}'
-        auth = b'[{"id":"cred_test","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"secret-value"}}]'
+        auth = b'[{"id":"cred_test","integrationID":"opencode","label":"API key","active":true,"value":{"type":"key","key":"secret-value"}}]'
         await service.create("user-1", "opencode", config, auth, display_name="Roundtrip Config")
 
         assert config.decode() not in repo.row["config_ciphertext"]
@@ -324,7 +324,7 @@ def test_update_by_id_keeps_the_id_and_preserves_files_until_replaced():
     async def run():
         repo = ConfigRepository()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
-        auth = b'[{"id":"cred_test","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"secret"}}]'
+        auth = b'[{"id":"cred_test","integrationID":"x","label":"API key","active":true,"value":{"type":"key","key":"secret"}}]'
         created = await service.create("user-1", "opencode", b'{"providers":{"a":{}}}',
                                        auth, display_name="Original Name")
         original = await service.read_files_by_id(created["id"])
@@ -482,7 +482,7 @@ def test_candidate_operation_roundtrip_is_encrypted_short_lived_and_single_use()
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
         config = {"providers": {"x": {"models": {}}}}
         auth = [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
-                 "value":{"type":"api","key":"auth-secret"}}]
+                 "value":{"type":"key","key":"auth-secret"}}]
 
         operation_id = await service.create_candidate_operation("user-1", "opencode", config, auth)
 
@@ -611,7 +611,7 @@ def test_redeem_candidate_verification_accepts_matching_payload_and_consumes_it(
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
         config = {"providers": {"x": {"models": {}}}}
         auth = [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
-                 "value":{"type":"api","key":"auth-secret"}}]
+                 "value":{"type":"key","key":"auth-secret"}}]
 
         operation_id = await service.create_candidate_operation(
             "user-1", "opencode", config, auth, purpose="verification")
@@ -620,7 +620,7 @@ def test_redeem_candidate_verification_accepts_matching_payload_and_consumes_it(
 
         # Config object key order is irrelevant; credential array order is not.
         reordered_config = {"providers": {"x": {"models": {}}}}
-        reordered_auth = [{"value":{"key":"auth-secret","type":"api"},"active":True,
+        reordered_auth = [{"value":{"key":"auth-secret","type":"key"},"active":True,
                            "label":"API key","integrationID":"x","id":"cred_1"}]
         assert await service.redeem_candidate_verification(
             operation_id, "user-1", "opencode", reordered_config, reordered_auth) is True
@@ -638,7 +638,7 @@ def test_redeem_candidate_verification_rejects_mismatch_missing_foreign_and_expi
         service = ProviderConfigService(repo, Fernet.generate_key().decode())
         config = {"providers": {"x": {"models": {}}}}
         auth = [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
-                 "value":{"type":"api","key":"auth-secret"}}]
+                 "value":{"type":"key","key":"auth-secret"}}]
 
         # Missing operations prove nothing.
         assert await service.redeem_candidate_verification(
@@ -651,7 +651,7 @@ def test_redeem_candidate_verification_rejects_mismatch_missing_foreign_and_expi
         assert await service.redeem_candidate_verification(
             mismatched, "user-1", "opencode", config,
             [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
-              "value":{"type":"api","key":"other"}}]) is False
+              "value":{"type":"key","key":"other"}}]) is False
         assert mismatched not in repo.candidate_operations
 
         # Another actor's operation is neither redeemed nor revealed or deleted.

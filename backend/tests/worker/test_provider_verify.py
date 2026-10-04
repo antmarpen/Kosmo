@@ -17,7 +17,7 @@ from worker.activities import provider_verify
 from worker.activities import agent as agent_module
 
 SENTINEL = "SENTINEL-SECRET-do-not-leak"
-AUTH_FILE = b'[{"id":"cred_test","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"synthetic"}}]'
+AUTH_FILE = b'[{"id":"cred_test","integrationID":"opencode","label":"API key","active":true,"value":{"type":"key","key":"synthetic"}}]'
 
 
 def _serialized(result) -> str:
@@ -67,9 +67,9 @@ def test_saved_config_activities_resolve_files_for_the_targeted_configuration(mo
 
     files_by_config = {
         "row-a": {"opencode.json": b'{"providers":{"a":{"options":{"apiKey":"k"}}}}',
-                   "auth.json": b'[{"id":"a","integrationID":"a","label":"API key","active":true,"value":{"type":"api","key":"k"}}]'},
+                   "auth.json": b'[{"id":"a","integrationID":"a","label":"API key","active":true,"value":{"type":"key","key":"k"}}]'},
         "row-b": {"opencode.json": b'{"providers":{"b":{"options":{"apiKey":"k"}}}}',
-                   "auth.json": b'[{"id":"b","integrationID":"b","label":"API key","active":true,"value":{"type":"api","key":"k"}}]'},
+                   "auth.json": b'[{"id":"b","integrationID":"b","label":"API key","active":true,"value":{"type":"key","key":"k"}}]'},
     }
     resolved_for = []
     started_files = []
@@ -164,7 +164,7 @@ class CandidateOperationStore:
 
 CANDIDATE_CONFIG = {"providers": {"x": {"options": {"apiKey": "candidate-key"}}}}
 CANDIDATE_AUTH = [{"id":"cred_x","integrationID":"x","label":"API key","active":True,
-                   "value":{"type":"api","key":"candidate-secret"}}]
+                   "value":{"type":"key","key":"candidate-secret"}}]
 
 
 def test_candidate_model_list_activity_consumes_operation_before_container(monkeypatch, tmp_path):
@@ -208,6 +208,7 @@ def test_candidate_model_list_activity_consumes_operation_before_container(monke
     assert result == {"models": ["candidate/model-a", "candidate/model-b"]}
     assert calls == [("consume", "op-1", "owner-1"), ("container", {"model": "default"})]
     assert adapter.runtime_files == {
+        "format": "v2",
         "opencode.json": json.dumps(CANDIDATE_CONFIG).encode("utf-8"),
         "auth.json": json.dumps(CANDIDATE_AUTH).encode("utf-8"),
     }
@@ -270,6 +271,7 @@ def test_candidate_model_verification_consumes_before_container_and_propagates_r
     assert calls[0] == ("consume", "op-1")
     assert calls[1] == ("container", {"model": "candidate/model-a"})
     assert adapter.runtime_files == {
+        "format": "v2",
         "opencode.json": json.dumps(CANDIDATE_CONFIG).encode("utf-8"),
         "auth.json": json.dumps(CANDIDATE_AUTH).encode("utf-8"),
     }
@@ -399,6 +401,43 @@ def test_candidate_verification_without_usable_credentials_reports_auth_missing(
         "code": "PROVIDER_AUTH_MISSING", "message_key": "errors.provider.auth_missing",
         "params": {"provider": "opencode"},
     }}
+
+
+def test_candidate_runtime_bundle_marks_native_v2_format():
+    resolved = {"format": "v2", "config": CANDIDATE_CONFIG, "auth": CANDIDATE_AUTH}
+
+    files = provider_verify._candidate_files(resolved)
+
+    assert files["format"] == "v2"
+    assert json.loads(files["opencode.json"]) == CANDIDATE_CONFIG
+    assert json.loads(files["auth.json"]) == CANDIDATE_AUTH
+
+
+def test_unavailable_configured_model_blocks_provider_prompt(monkeypatch, tmp_path):
+    class MissingModelAdapter:
+        prompted = False
+        async def start_session(self, cfg):
+            raise ValueError("Configured model is not available in the OpenCode ACP session")
+        async def send_prompt(self, prompt):
+            self.prompted = True
+        async def close(self):
+            pass
+
+    adapter = MissingModelAdapter()
+    async def config_files(user_id, config_id=None):
+        return {"format": "v2", "opencode.json": b'{"providers":{}}', "auth.json": AUTH_FILE}
+    async def start_session(*args, **kwargs):
+        return adapter
+
+    monkeypatch.setattr(provider_verify, "_config_files", config_files)
+    monkeypatch.setattr(agent_module, "start_agent_session", start_session)
+    monkeypatch.setattr(agent_module, "TASK_STORAGE_ROOT", tmp_path)
+    result = asyncio.run(provider_verify.verify_opencode_model(
+        {"user_id": "owner-1", "model": "private/missing"}))
+
+    assert result["ok"] is False
+    assert result["error"]["message_key"] == "errors.provider.verification_failed"
+    assert adapter.prompted is False
 
 
 def test_verification_result_never_carries_simulated_agent_text(monkeypatch, tmp_path):

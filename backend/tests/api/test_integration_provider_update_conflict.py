@@ -61,10 +61,10 @@ from app.main import create_app
 
 ENCRYPTION_KEY = "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc="
 CONFIG_JSON = b'{"providers":{"x":{"options":{"apiKey":"update-conflict-key"}}}}'
-AUTH_JSON = b'[{"id":"cred_x","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"update-conflict-secret"}}]'
+AUTH_JSON = b'[{"id":"cred_x","integrationID":"x","label":"API key","active":true,"value":{"type":"key","key":"update-conflict-secret"}}]'
 CONFIG = {"providers": {"x": {"options": {"apiKey": "update-conflict-key"}}}}
 AUTH = [{"id":"cred_x","integrationID":"x","label":"API key","active":True,
-         "value":{"type":"api","key":"update-conflict-secret"}}]
+         "value":{"type":"key","key":"update-conflict-secret"}}]
 
 
 # ---------------------------------------------------------------------------

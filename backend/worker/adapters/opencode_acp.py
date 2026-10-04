@@ -100,7 +100,7 @@ class OpenCodeACPAdapter:
             if model_option is None:
                 raise RuntimeError("OpenCode ACP session does not advertise model selection")
             allowed = {option.get("value") for option in (model_option.get("options") or [])}
-            if allowed and model not in allowed:
+            if model not in allowed:
                 raise ValueError("Configured model is not available in the OpenCode ACP session")
             await self._transport.request("session/set_config_option", {
                 "sessionId": self._session_id, "configId": model_option["id"], "value": model,

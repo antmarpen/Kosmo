@@ -45,7 +45,7 @@ from app.domain.provider_configs.service import ProviderConfigService
 
 ENCRYPTION_KEY = "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc="
 FILES = (b'{"providers":{"x":{"options":{"apiKey":"instance-test-key"}}}}',
-         b'[{"id":"cred_x","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"instance-test-secret"}}]')
+         b'[{"id":"cred_x","integrationID":"x","label":"API key","active":true,"value":{"type":"key","key":"instance-test-secret"}}]')
 
 
 @pytest.fixture(scope="module")

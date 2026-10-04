@@ -39,7 +39,7 @@ pytestmark = pytest.mark.skipif(
 
 CONFIG = {"providers": {"x": {"options": {"apiKey": "sentinel-boundary-key"}}}}
 AUTH = [{"id":"cred_x","integrationID":"x","label":"API key","active":True,
-        "value":{"type":"api","key":"sentinel-boundary-secret"}}]
+        "value":{"type":"key","key":"sentinel-boundary-secret"}}]
 ENCRYPTION_KEY = "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc="
 
 

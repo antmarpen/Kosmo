@@ -12,7 +12,7 @@ from shared.errors import ValidationFailedError
 
 def test_auth_parser_preserves_wp19_array_shape_and_rejects_object_without_echo():
     credentials = [{"id":"cred_x","integrationID":"nan","label":"API key","active":True,
-                   "value":{"type":"api","key":"synthetic-api-secret"}}]
+                   "value":{"type":"key","key":"synthetic-api-secret"}}]
     assert _json_auth_array(json.dumps(credentials).encode(), "auth.json") == credentials
     with pytest.raises(ValidationFailedError) as error:
         _json_auth_array(b'{"nan":{"type":"api","key":"synthetic-api-secret"}}', "auth.json")

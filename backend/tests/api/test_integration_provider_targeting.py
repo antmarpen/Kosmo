@@ -40,7 +40,7 @@ from app.domain.provider_configs.models import ProviderCandidateOperation
 ENCRYPTION_KEY = "p9N0DDs9ZxgKYBEYEBEQzsSk0kjV3xCuQx0TLTPrgrc="
 TEST_CONFIG = {"providers": {"x": {"options": {"apiKey": "sentinel-concurrent-key"}}}}
 TEST_AUTH = [{"id":"cred_x","integrationID":"x","label":"API key","active":True,
-             "value":{"type":"api","key":"sentinel-concurrent-secret"}}]
+             "value":{"type":"key","key":"sentinel-concurrent-secret"}}]
 
 
 @pytest.fixture(scope="module")

@@ -85,7 +85,7 @@ def _files(key: str, secret: str) -> tuple[bytes, bytes]:
     return (
         json.dumps({"providers": {"opencode": {"options": {"apiKey": key}}}}).encode("utf-8"),
         json.dumps([{"id":"cred_opencode","integrationID":"opencode","label":"API key",
-                     "active":True,"value":{"type":"api","key":secret}}]).encode("utf-8"),
+                     "active":True,"value":{"type":"key","key":secret}}]).encode("utf-8"),
     )
 
 
@@ -230,21 +230,21 @@ def test_targeted_row_files_are_the_targeted_ones(session_factory):
                     {"providers": {"opencode": {"options": {"apiKey": "sentinel-personal-key"}}}}
                 assert json.loads(personal["auth.json"]) == \
                     [{"id":"cred_opencode","integrationID":"opencode","label":"API key","active":True,
-                      "value":{"type":"api","key":"sentinel-personal-secret"}}]
+                      "value":{"type":"key","key":"sentinel-personal-secret"}}]
 
                 group = await resolved_files(seed["group_row_id"], seed["member_id"])
                 assert json.loads(group["opencode.json"]) == \
                     {"providers": {"opencode": {"options": {"apiKey": "sentinel-group-key"}}}}
                 assert json.loads(group["auth.json"]) == \
                     [{"id":"cred_opencode","integrationID":"opencode","label":"API key","active":True,
-                      "value":{"type":"api","key":"sentinel-group-secret"}}]
+                      "value":{"type":"key","key":"sentinel-group-secret"}}]
 
                 global_files = await resolved_files(seed["global_id"], seed["outsider_id"])
                 assert json.loads(global_files["opencode.json"]) == \
                     {"providers": {"opencode": {"options": {"apiKey": "sentinel-global-key"}}}}
                 assert json.loads(global_files["auth.json"]) == \
                     [{"id":"cred_opencode","integrationID":"opencode","label":"API key","active":True,
-                      "value":{"type":"api","key":"sentinel-global-secret"}}]
+                      "value":{"type":"key","key":"sentinel-global-secret"}}]
 
                 combined = json.dumps(
                     [json.loads(files["opencode.json"]) for files in (personal, group, global_files)]

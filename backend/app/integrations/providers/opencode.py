@@ -91,7 +91,7 @@ def _valid_v2_auth_entry(entry) -> bool:
             and isinstance(entry.get("active"), bool)
             and isinstance(entry.get("value"), dict)
             and set(entry["value"]) == {"type", "key"}
-            and entry["value"].get("type") == "api"
+            and entry["value"].get("type") == "key"
             and all(isinstance(entry["value"].get(key), str) and bool(entry["value"][key])
                     for key in ("type", "key")))
 

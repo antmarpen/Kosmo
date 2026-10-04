@@ -195,6 +195,12 @@ async def run_ai_node(payload: dict) -> dict:
         )
         return await orchestrate_ai_node(node, adapter, Path(workspace), task_id, persist, note, checkpoint, request_input)
     except Exception as exc:
+        from worker.activities.agent import ProviderBootstrapError
+        if isinstance(exc, ProviderBootstrapError):
+            logger.warning("AI node provider bootstrap failed", extra={"task_id": task_id, "node_id": node["id"]})
+            return {"state": "failed", "outputs": {}, "error": {
+                "code": exc.code, "message_key": exc.message_key, "params": {},
+            }}
         logger.exception("AI node infrastructure failure", extra={"task_id": task_id, "node_id": node["id"]})
         # Return a language-independent failure rather than letting infrastructure
         # exceptions trigger Temporal's unbounded default activity retry policy.

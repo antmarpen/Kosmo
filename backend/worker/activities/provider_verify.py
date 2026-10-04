@@ -75,8 +75,9 @@ async def _load_candidate_operation(operation_id: str, user_id: str) -> dict:
         ).read_candidate_operation(operation_id, user_id, CANDIDATE_PROVIDER)
 
 
-def _candidate_files(resolved: dict) -> dict[str, bytes]:
-    files = {"opencode.json": json.dumps(resolved["config"]).encode("utf-8")}
+def _candidate_files(resolved: dict) -> dict[str, bytes | str]:
+    files = {"format": resolved.get("format", "v2"),
+             "opencode.json": json.dumps(resolved["config"]).encode("utf-8")}
     if resolved.get("auth"):
         files["auth.json"] = json.dumps(resolved["auth"]).encode("utf-8")
     return files
@@ -180,7 +181,7 @@ async def _verify_candidate_model(payload: dict) -> dict:
     return await _verify_model_with_container(_candidate_files(resolved), payload["model"])
 
 
-async def _discover_models(files: dict[str, bytes]) -> dict:
+async def _discover_models(files: dict[str, bytes | str]) -> dict:
     from worker.activities.agent import start_agent_session, TASK_STORAGE_ROOT
 
     workspace = TASK_STORAGE_ROOT / "provider-verification" / uuid.uuid4().hex
@@ -198,7 +199,7 @@ async def _discover_models(files: dict[str, bytes]) -> dict:
         _remove_workspace(workspace)
 
 
-async def _verify_model_with_container(files: dict[str, bytes], model: str) -> dict:
+async def _verify_model_with_container(files: dict[str, bytes | str], model: str) -> dict:
     from worker.activities.agent import start_agent_session, TASK_STORAGE_ROOT
 
     workspace = TASK_STORAGE_ROOT / "provider-verification" / uuid.uuid4().hex

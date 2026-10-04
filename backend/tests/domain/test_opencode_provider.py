@@ -11,10 +11,10 @@ VALID_CONFIG = {
     "skills": {"ignored": True},
 }
 VALID_AUTH = [{"id":"cred_opencode","integrationID":"opencode","label":"API key","active":True,
-               "value":{"type":"api","key":"synthetic-test-key"}}]
+               "value":{"type":"key","key":"synthetic-test-key"}}]
 NATIVE_CONFIG = {"$schema": "https://opencode.ai/config.json", "providers": {}, "model": "anthropic/claude-sonnet-4-5"}
 NATIVE_AUTH_API = [{"id":"cred_anthropic","integrationID":"anthropic","label":"API key","active":True,
-                    "value":{"type":"api","key":"synthetic-native-key"}}]
+                    "value":{"type":"key","key":"synthetic-native-key"}}]
 NATIVE_AUTH_OAUTH = [{"id":"cred_anthropic","integrationID":"anthropic","label":"OAuth","active":True,
                       "value":{"type":"oauth","key":"synthetic-access"}}]
 
@@ -55,7 +55,7 @@ def test_native_config_without_custom_provider_map_validates_with_separate_auth(
     assert {item["code"] for item in handler.validate_config(NATIVE_CONFIG, NATIVE_AUTH_OAUTH)} == {"auth_invalid"}
     assert handler.validate_config({**NATIVE_CONFIG, "providers": {}}, NATIVE_AUTH_API) == []
     multi_provider_auth = NATIVE_AUTH_API + [{"id":"cred_openai","integrationID":"openai","label":"API key",
-                                              "active":True,"value":{"type":"api","key":"synthetic-openai"}}]
+                                              "active":True,"value":{"type":"key","key":"synthetic-openai"}}]
     assert handler.validate_config(NATIVE_CONFIG, multi_provider_auth) == []
 
 
@@ -68,7 +68,7 @@ def test_native_config_without_custom_provider_map_still_requires_credentials():
     assert {item["code"] for item in empty_auth} == {"auth_missing"}
 
     credential_less = handler.validate_config(NATIVE_CONFIG, [{"id":"cred_anthropic","integrationID":"anthropic",
-        "label":"API key","active":True,"value":{"type":"api","key":""}}])
+        "label":"API key","active":True,"value":{"type":"key","key":""}}])
     assert {item["code"] for item in credential_less} == {"auth_invalid"}
 
 
@@ -99,7 +99,7 @@ def test_violations_are_structured_without_credential_material_or_file_reads(mon
     violations = handler.validate_config(
         {"providers": {"anthropic": "oops", "openai": {"options": {"apiKey": secret}, "models": ["x"]}}},
         [{"id":"cred_secret","integrationID":"anthropic","label":"API key","active":True,
-          "value":{"type":"api","key":secret}}],
+          "value":{"type":"key","key":secret}}],
     )
     assert {item["code"] for item in violations} == {"provider_invalid", "models_invalid"}
     for item in violations:

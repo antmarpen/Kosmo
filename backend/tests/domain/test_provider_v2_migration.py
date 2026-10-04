@@ -17,7 +17,7 @@ def test_conversion_adds_providers_and_maps_v1_api_auth():
     assert entries[0]["integrationID"] == "nan"
     assert entries[0]["label"] == "API key"
     assert entries[0]["active"] is True
-    assert entries[0]["value"] == {"type": "api", "key": "separate"}
+    assert entries[0]["value"] == {"type": "key", "key": "separate"}
     assert entries[0]["id"].startswith("cred_")
 
 

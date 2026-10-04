@@ -207,7 +207,7 @@ class ProviderConfigService:
                     or not isinstance(entry.get("active"), bool)
                     or not isinstance(entry.get("value"), dict)
                     or set(entry["value"]) != {"type", "key"}
-                    or entry["value"].get("type") != "api"
+                    or entry["value"].get("type") != "key"
                     or not isinstance(entry["value"].get("key"), str) or not entry["value"]["key"]
                     or not all(isinstance(entry["value"].get(key), str) and entry["value"][key]
                                for key in ("type", "key"))):
@@ -539,7 +539,7 @@ class ProviderConfigService:
                 if (not isinstance(item, dict) or set(item) != {"id", "integrationID", "label", "active", "value"}
                         or not isinstance(item.get("value"), dict)
                         or set(item["value"]) != {"type", "key"}
-                        or item["value"].get("type") != "api"
+                        or item["value"].get("type") != "key"
                         or not all(isinstance(item.get(k), str) and item[k] for k in ("id", "integrationID", "label"))
                         or not isinstance(item.get("active"), bool)
                         or not all(isinstance(item["value"].get(k), str) and item["value"][k] for k in ("type", "key"))):

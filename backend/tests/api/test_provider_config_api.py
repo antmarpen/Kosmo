@@ -171,7 +171,7 @@ def test_provider_config_upload_replace_metadata_and_delete_are_role_gated():
 
     upload = client.put("/providers/opencode/config", data={"name": "Personal Config"}, files={
         "opencode_json": ("opencode.json", b'{"providers":{},"model":"opencode/big-pickle","providers":{"opencode":{"options":{"apiKey":"embedded-test"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"do-not-return"}}]', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"opencode","label":"API key","active":true,"value":{"type":"key","key":"do-not-return"}}]', "application/json"),
     })
     assert upload.status_code == 200
     assert upload.json()["auth_present"] is True
@@ -347,7 +347,7 @@ def test_provider_verify_lists_models_and_real_model_verify_is_scoped_and_struct
     client = TestClient(app)
     uploaded = client.put("/providers/opencode/config", data={"name": "Verified Config"}, files={
         "opencode_json": ("opencode.json", b'{"providers":{"opencode":{"options":{"apiKey":"fake"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"fake"}}]', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"opencode","label":"API key","active":true,"value":{"type":"key","key":"fake"}}]', "application/json"),
     })
     assert uploaded.status_code == 200
 
@@ -385,7 +385,7 @@ def test_model_verify_reports_missing_auth_as_a_structured_error():
 
 UPLOAD_FILES = {
     "opencode_json": ("opencode.json", b'{"providers":{"opencode":{"options":{"apiKey":"embedded-test"}}}}', "application/json"),
-    "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"opencode","label":"API key","active":true,"value":{"type":"api","key":"embedded-test"}}]', "application/json"),
+    "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"opencode","label":"API key","active":true,"value":{"type":"key","key":"embedded-test"}}]', "application/json"),
 }
 
 
@@ -601,7 +601,7 @@ def test_upload_rejects_supplied_malformed_provider_section():
     client = TestClient(app)
     response = client.put("/providers/opencode/config", data={"name": "Malformed Config"}, files={
         "opencode_json": ("opencode.json", b'{"providers":"anthropic"}', "application/json"),
-        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"anthropic","label":"API key","active":true,"value":{"type":"api","key":"embedded-test"}}]', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"anthropic","label":"API key","active":true,"value":{"type":"key","key":"embedded-test"}}]', "application/json"),
     })
     assert response.status_code == 422
     keys = {detail["message_key"] for detail in response.json()["details"]}
@@ -624,7 +624,7 @@ def test_native_opencode_config_with_separate_auth_upload_and_verify_succeed():
     client = TestClient(app)
     upload = client.put("/providers/opencode/config", data={"name": "Native Config"}, files={
         "opencode_json": ("opencode.json", b'{"$schema":"https://opencode.ai/config.json","providers":{},"model":"anthropic/claude-sonnet-4-5"}', "application/json"),
-        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"anthropic","label":"API key","active":true,"value":{"type":"api","key":"synthetic-native-key"}}]', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"anthropic","label":"API key","active":true,"value":{"type":"key","key":"synthetic-native-key"}}]', "application/json"),
     })
     assert upload.status_code == 200
     assert upload.json()["auth_present"] is True
@@ -806,7 +806,7 @@ def test_patch_with_matching_verification_id_records_verified(monkeypatch):
         "config_id": config_id, "name": "Original", "verification_id": verification_id,
     }, files={
         "opencode_json": ("opencode.json", b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"secret-key"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"auth-secret"}}]', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"key","key":"auth-secret"}}]', "application/json"),
     })
 
     assert saved.status_code == 200
@@ -963,7 +963,7 @@ def test_candidate_models_and_verify_use_candidate_handler_methods_without_stora
 
 CANDIDATE_BODY = {"config": {"providers": {"x": {"options": {"apiKey": "secret-key"}}}},
                   "auth": [{"id":"cred_1","integrationID":"x","label":"API key",
-                            "active":True,"value":{"type":"api","key":"auth-secret"}}]}
+                            "active":True,"value":{"type":"key","key":"auth-secret"}}]}
 
 
 def _candidate_client(monkeypatch, execute):
@@ -1095,7 +1095,7 @@ def test_failed_candidate_verification_returns_no_proof_and_discards_operation(m
 
 VERIFY_BODY = {"config": {"providers": {"x": {"options": {"apiKey": "secret-key"}}}, "mcp": {}},
                "auth": [{"id":"cred_1","integrationID":"x","label":"API key","active":True,
-                         "value":{"type":"api","key":"auth-secret"}}]}
+                         "value":{"type":"key","key":"auth-secret"}}]}
 
 
 def _ok_verification_execute(captured=None):
@@ -1116,7 +1116,7 @@ def test_upload_with_matching_verification_id_records_verified_and_consumes_it(m
     # the proof matches configurations, not byte-for-byte payloads.
     saved = client.put("/providers/opencode/config", data={"verification_id": verification_id, "name": "Verified Config"}, files={
         "opencode_json": ("opencode.json", b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"secret-key"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"auth-secret"}}]', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"key","key":"auth-secret"}}]', "application/json"),
     })
 
     assert saved.status_code == 200
@@ -1135,7 +1135,7 @@ def test_upload_with_mismatched_verification_id_records_unverified_and_untrusts_
 
     saved = client.put("/providers/opencode/config", data={"verification_id": verification_id, "name": "Mismatched Config"}, files={
         "opencode_json": ("opencode.json", b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"different-key"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"auth-secret"}}]', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"key","key":"auth-secret"}}]', "application/json"),
     })
 
     assert saved.status_code == 200
@@ -1155,7 +1155,7 @@ def test_upload_with_missing_expired_or_absent_verification_id_records_unverifie
     repo.candidate_operations[verification_id].expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     files = {
         "opencode_json": ("opencode.json", b'{"mcp":{},"providers":{"x":{"options":{"apiKey":"secret-key"}}}}', "application/json"),
-        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"api","key":"auth-secret"}}]', "application/json"),
+        "auth_json": ("auth.json", b'[{"id":"cred_1","integrationID":"x","label":"API key","active":true,"value":{"type":"key","key":"auth-secret"}}]', "application/json"),
     }
 
     expired = client.put("/providers/opencode/config", data={"verification_id": verification_id, "name": "Expired Proof Config"}, files=files)
@@ -1365,7 +1365,7 @@ def test_edit_mode_candidate_verify_with_auth_only_uses_the_stored_config(monkey
     client, repo, service, config_id = _edit_target_client(monkeypatch, _ok_verification_execute())
 
     rotated_auth = [{"id":"cred_2","integrationID":"opencode","label":"API key","active":True,
-                     "value":{"type":"api","key":"rotated-key"}}]
+                     "value":{"type":"key","key":"rotated-key"}}]
     verified = client.post("/providers/opencode/config/candidate/verify-model",
                            json={"config_id": config_id, "auth": rotated_auth, "model": "candidate/model-a"})
 

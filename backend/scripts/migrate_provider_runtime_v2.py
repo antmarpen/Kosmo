@@ -52,7 +52,7 @@ def convert_files(config_bytes: bytes, auth_bytes: bytes | None, row_id: str) ->
             raise ConversionError("unsupported_auth_type")
         auth_entries.append({"id": f"cred_{uuid.uuid4().hex}", "integrationID": integration_id,
                              "label": "API key", "active": True,
-                             "value": {"type": "api", "key": credential["key"]}})
+                             "value": {"type": "key", "key": credential["key"]}})
 
     # A v1 inline apiKey is converted only if it does not collide with a
     # separate auth credential for the same integration.
@@ -74,7 +74,7 @@ def convert_files(config_bytes: bytes, auth_bytes: bytes | None, row_id: str) ->
         definition["options"] = options
         auth_entries.append({"id": f"cred_{uuid.uuid4().hex}", "integrationID": integration_id,
                              "label": "API key", "active": True,
-                             "value": {"type": "api", "key": inline}})
+                             "value": {"type": "key", "key": inline}})
 
     encoded_config = json.dumps(config, separators=(",", ":")).encode()
     encoded_auth = json.dumps(auth_entries, separators=(",", ":")).encode() if auth_entries else None

@@ -322,6 +322,8 @@ def test_agent_session_injects_config_files_into_container_before_acp_start(monk
             return {"Id": f"exec-{len(self.calls)}"}
 
         def exec_start(self, exec_id, **kwargs):
+            if kwargs.get("detach"):
+                return None
             sock = FakeDuplexSocket()
             self.sockets.append(sock)
             return sock
@@ -375,7 +377,8 @@ def test_agent_session_injects_config_files_into_container_before_acp_start(monk
         managed = await start_agent_session(
             {"model": "default"}, str(tmp_path / "task" / "agent"), docker_client=client,
             transport_factory=lambda _sock: ScriptedTransport(),
-            runtime_config_files={"opencode.json": b'{"model":"opencode/big-pickle"}', "auth.json": b'{"token":"private"}'},
+            runtime_config_files={"format": "v2", "opencode.json": b'{"providers":{}}',
+                                  "auth.json": b'[{"id":"cred","integrationID":"p","label":"API key","active":true,"value":{"type":"key","key":"private"}}]'},
         )
         mounts = {mount["Target"]: mount for mount in client.containers.options["mounts"]}
         assert "/home/opencode/.config/opencode" in client.containers.options["tmpfs"]
@@ -385,15 +388,18 @@ def test_agent_session_injects_config_files_into_container_before_acp_start(monk
         assert "/home/opencode/.local/state" in client.containers.options["tmpfs"]
         assert "/home/opencode/.cache" in client.containers.options["tmpfs"]
         assert "/home/opencode/.config/opencode" not in mounts
-        assert client.api.sockets[0].written == b'{"model":"opencode/big-pickle"}'
-        assert client.api.sockets[1].written == b'{"token":"private"}'
+        assert client.api.sockets[0].written == b'{"providers":{}}'
+        assert b'"key":"private"' in client.api.sockets[1].written
         assert all("private" not in " ".join(call[0]) for call in client.api.calls)
-        assert all(call[1]["user"] == "10001:10001" for call in client.api.calls[:2])
+        assert all(call[1]["user"] == "10001:10001" for call in client.api.calls)
+        assert client.api.calls[2][0] == ["opencode", "--version"]
+        assert client.api.calls[3][0][:3] == ["opencode", "auth", "import"]
+        assert client.api.calls[4][0][:2] == ["rm", "-f"]
         await managed.close()
 
     asyncio.run(exercise())
     assert "OPENCODE_API_KEY" not in client.containers.options["environment"]
-    assert client.api.calls[-1][1]["user"] == "10001:10001"
+    assert client.api.calls[-1][0] == ["opencode", "acp"]
 
 
 def test_stage_agent_inputs_copies_readonly_files_and_exports_existing_input_convention(tmp_path):
@@ -431,6 +437,15 @@ def test_default_model_explicitly_selects_advertised_current_model():
         adapter = OpenCodeACPAdapter(transport, output_dir="/host/path", session_cwd="/workspace")
         await adapter.start_session({"model": "default"})
         assert transport.sent[-1] == ("session/set_config_option", {"sessionId": "session-1", "configId": "model", "value": "provider/current"})
+    asyncio.run(run())
+
+
+def test_explicit_model_is_rejected_when_auth_import_did_not_make_it_available():
+    async def run():
+        transport = ScriptedTransport()
+        transport.config_options = [{"id": "model", "currentValue": "other/model", "options": []}]
+        with pytest.raises(ValueError, match="Configured model is not available"):
+            await OpenCodeACPAdapter(transport).start_session({"model": "private/model"})
     asyncio.run(run())
 
 

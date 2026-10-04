@@ -1036,12 +1036,14 @@ preserved. None of these new packages has been implemented by this re-plan.
   ```json
   [
     {"id": "cred_<opaque>", "integrationID": "<provider id>", "label": "API key",
-     "active": true, "value": {"type": "api", "key": "<secret>"}}
+     "active": true, "value": {"type": "key", "key": "<secret>"}}
   ]
   ```
 
   Array-rooted; unauthenticated export is `[]`. `integrationID` is the provider
-  id (e.g. `nan`, `openai`); `value` is the v1 credential shape `{type, key}`
+  id (e.g. `nan`, `openai`); `value.type = "key"` carries API-key
+  credentials as `{type: "key", key}`. OpenCode v2 also defines an `oauth`
+  discriminator, but OAuth entries are unsupported here and must be rejected.
   nested under `value`; `id`/`label`/`active` are metadata.
 
 - **Write/bootstrap invocation:** `opencode auth import <file|stdin>` reads the
@@ -1219,7 +1221,8 @@ preserved. None of these new packages has been implemented by this re-plan.
   `app/integrations/providers/{base,opencode}.py`, `app/api/routes/provider_configs.py`,
   WP-20 assigned tests; proposed small provider-format parser/normalizer if useful.
 - Changes / contracts: object config with `providers`, array auth validated against
-  WP-19; bound sizes and safe errors with no candidate-value echo. Preserve native
+  WP-19 (`value.type = "key"` for supported API-key entries; OAuth's `oauth`
+  variant is unsupported and rejected); bound sizes and safe errors with no candidate-value echo. Preserve native
   array through candidate encrypt/decrypt/read/redeem and parsed exact-pair equality
   (array order preserved unless WP-19 proves canonical semantics). Include v2
   format in encrypted candidate payload/proof comparison; reject legacy payloads
@@ -1444,6 +1447,11 @@ proven during this planning session.
 - 2026-10-04 coordinator sequencing decision: WP-22 owns additive provider
   format-marker migration 0023 (existing rows v1, new writes v2); WP-23 owns
   encrypted conversion migration 0024; WP-17 reset migration shifts to 0025.
+
+- 2026-10-04 correction: v2 `Credential.Value` API-key discriminator is `key`,
+  not v1 `api`; direct v2 binary probe accepted `{"type":"key",...}` via
+  `opencode auth import` (1 credential imported) and rejected `api` as
+  `Expected Credential.Value`.
 
 - 2026-10-04 (session): WP-02/03/04/05/06 implemented and committed (`615b940`,
   `3d84586`, `585adae`, `9fe8abe`, `3698d6c`). WP-19 **resolved** (exact v2 auth

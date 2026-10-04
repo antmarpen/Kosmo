@@ -45,7 +45,7 @@ class CandidateRow(dict):
 
 
 AUTH = [{"id": "cred_x", "integrationID": "nan", "label": "API key",
-         "active": True, "value": {"type": "api", "key": "synthetic-sentinel"}}]
+         "active": True, "value": {"type": "key", "key": "synthetic-sentinel"}}]
 CONFIG = {"providers": {"nan": {"npm": "@ai-sdk/openai-compatible",
                                    "options": {"baseURL": "https://example.invalid"}}}}
 

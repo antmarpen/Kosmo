@@ -7,6 +7,8 @@ import json
 import os
 import shutil
 import socket
+import time
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -28,7 +30,7 @@ async def start_agent_session(
     docker_client=None,
     transport_factory: Callable | None = None,
     runtime_environment: dict[str, str] | None = None,
-    runtime_config_files: dict[str, bytes] | None = None,
+    runtime_config_files: dict[str, bytes | str] | None = None,
     mcp_servers: list[dict[str, Any]] | None = None,
 ):
     """Start an ACP exec socket inside a fresh, task-scoped agent container."""
@@ -152,36 +154,84 @@ def stage_agent_inputs(inputs: dict[str, dict], workspace: str | Path) -> dict[s
     return environment
 
 
-def _inject_runtime_files(client, container, files: dict[str, bytes]) -> None:
+def _inject_runtime_files(client, container, files: dict[str, bytes | str]) -> None:
     if not files:
         return
-    if set(files) - {"opencode.json", "auth.json"} or "opencode.json" not in files:
-        raise ValueError("OpenCode runtime config requires opencode.json and allows auth.json")
+    if (files.get("format") != "v2" or set(files) - {"format", "opencode.json", "auth.json"}
+            or "opencode.json" not in files):
+        raise ValueError("OpenCode runtime bundle must use the v2 format")
     destinations = {
         "opencode.json": "/home/opencode/.config/opencode/opencode.json",
-        "auth.json": "/home/opencode/.local/share/opencode/auth.json",
     }
-    for filename, content in files.items():
-        target = destinations[filename]
-        exec_config = client.api.exec_create(
-            container.id,
-            ["sh", "-c", "umask 077; cat > \"$1\" && chmod 0400 \"$1\"", "sh", target],
-            stdin=True, stdout=True, stderr=True, tty=False, user="10001:10001",
-        )
-        stream = client.api.exec_start(exec_config["Id"], socket=True, tty=False)
-        sock = getattr(stream, "_sock", stream)
+    for filename, target in destinations.items():
+        content = files[filename]
+        _write_container_file(client, container, target, content, "0400")
+    auth = files.get("auth.json")
+    if auth is not None:
+        # OpenCode v2 accepts the native auth-export array through its supported
+        # import command. Never plant auth.json into the persistent store path.
+        target = f"/tmp/kosmo-auth-import-{uuid.uuid4().hex}.json"
         try:
-            _socket_sendall(sock, content)
-            sock.shutdown(socket.SHUT_WR)
-            while sock.recv(4096):
-                pass
+            _write_container_file(client, container, target, auth, "0600")
+            _run_container_command(client, container, ["opencode", "--version"])
+            _run_container_command(client, container, ["opencode", "auth", "import", target])
+        except Exception as exc:
+            raise ProviderBootstrapError() from exc
         finally:
-            response = getattr(stream, "_response", None)
-            if response is not None:
-                response.close()
-            stream.close()
-        if client.api.exec_inspect(exec_config["Id"]).get("ExitCode") != 0:
-            raise RuntimeError(f"Could not inject OpenCode config file {filename}")
+            try:
+                _run_container_command(client, container, ["rm", "-f", target], timeout=5)
+            except Exception:
+                # Container removal remains the final cleanup boundary.
+                pass
+
+
+class ProviderBootstrapError(RuntimeError):
+    """A safe, stable failure raised before ACP starts when auth import fails."""
+
+    code = "PROVIDER_AUTH_BOOTSTRAP_FAILED"
+    message_key = "errors.provider.auth_bootstrap_failed"
+
+    def __init__(self):
+        super().__init__(self.message_key)
+
+
+def _write_container_file(client, container, target: str, content: bytes, mode: str) -> None:
+    exec_config = client.api.exec_create(
+        container.id,
+        ["sh", "-c", "umask 077; cat > \"$1\" && chmod \"$2\" \"$1\"", "sh", target, mode],
+        stdin=True, stdout=True, stderr=False, tty=False, user="10001:10001",
+    )
+    stream = client.api.exec_start(exec_config["Id"], socket=True, tty=False)
+    sock = getattr(stream, "_sock", stream)
+    try:
+        _socket_sendall(sock, content)
+        sock.shutdown(socket.SHUT_WR)
+        while sock.recv(4096):
+            pass
+    finally:
+        response = getattr(stream, "_response", None)
+        if response is not None:
+            response.close()
+        stream.close()
+    if client.api.exec_inspect(exec_config["Id"]).get("ExitCode") != 0:
+        raise RuntimeError("Could not inject OpenCode runtime file")
+
+
+def _run_container_command(client, container, command: list[str], timeout: float = 30) -> None:
+    exec_config = client.api.exec_create(
+        container.id, command, stdout=False, stderr=False, stdin=False,
+        tty=False, user="10001:10001",
+    )
+    client.api.exec_start(exec_config["Id"], detach=True, tty=False)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = client.api.exec_inspect(exec_config["Id"])
+        if not result.get("Running"):
+            if result.get("ExitCode") != 0:
+                raise RuntimeError("OpenCode auth command failed")
+            return
+        time.sleep(0.1)
+    raise TimeoutError("OpenCode auth command timed out")
 
 
 def _socket_sendall(sock, payload: bytes) -> None:
