@@ -19,6 +19,12 @@ class ScriptedTransport:
             return {"sessionId": "session-1", "configOptions": getattr(self, "config_options", [
                 {"id": "model", "currentValue": "provider/current", "options": [{"value": "provider/current"}]}
             ])}
+        if method == "session/set_config_option":
+            options = getattr(self, "config_options", [])
+            for option in options:
+                if option.get("id") == params["configId"]:
+                    option["currentValue"] = params["value"]
+            return {"configOptions": options}
         if method == "session/prompt":
             return {"stopReason": "end_turn"}
         return {}
@@ -456,6 +462,88 @@ def test_default_model_fails_when_current_model_is_missing_or_unusable(current_v
         transport.config_options = [{"id": "model", "currentValue": current_value, "options": options}]
         with pytest.raises(ValueError, match="workflow.agent.model_default_unavailable"):
             await OpenCodeACPAdapter(transport).start_session({"model": "default"})
+    asyncio.run(run())
+
+
+def test_requested_effort_uses_advertised_option_after_model_selection():
+    async def run():
+        transport = ScriptedTransport()
+        transport.config_options = [
+            {"id": "model", "currentValue": "p/m", "options": [{"value": "p/m"}]},
+        ]
+        model_response = {"configOptions": [
+            {"id": "model", "currentValue": "p/m", "options": [{"value": "p/m"}]},
+            {"id": "effort", "category": "thought_level", "type": "select", "currentValue": "default",
+             "options": [{"value": "low"}, {"value": "default"}]},
+        ]}
+        async def request(method, params):
+            result = await original(method, params)
+            if method == "session/set_config_option" and params["configId"] == "model":
+                return model_response
+            if method == "session/set_config_option" and params["configId"] == "effort":
+                return {"configOptions": [{"id": "effort", "category": "thought_level", "type": "select", "currentValue": params["value"],
+                                           "options": [{"value": "low"}, {"value": "default"}]}]}
+            return result
+        original = transport.request
+        transport.request = request
+        await OpenCodeACPAdapter(transport).start_session({"model": "p/m", "reasoning_effort": "low"})
+        selections = [(p["configId"], p["value"]) for m, p in transport.sent if m == "session/set_config_option"]
+        assert selections == [("model", "p/m"), ("effort", "low")]
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("requested,options", [("low", []), ("bogus", [{"value": "low"}]), ("low", [{"value": "low"}, {"value": "low"}])])
+def test_requested_effort_without_unique_advertised_value_blocks(requested, options):
+    async def run():
+        transport = ScriptedTransport()
+        transport.config_options = [
+            {"id": "model", "currentValue": "p/m", "options": [{"value": "p/m"}]},
+            {"id": "effort", "category": "thought_level", "type": "select", "currentValue": "default", "options": options},
+        ]
+        with pytest.raises(ValueError, match="workflow.agent.reasoning_effort_unsupported"):
+            await OpenCodeACPAdapter(transport).start_session({"model": "default", "reasoning_effort": requested})
+    asyncio.run(run())
+
+
+def test_requested_effort_blocks_when_advertisement_is_ambiguous():
+    async def run():
+        transport = ScriptedTransport()
+        transport.config_options = [
+            {"id": "model", "currentValue": "p/m", "options": [{"value": "p/m"}]},
+            {"id": "effort-a", "category": "thought_level", "type": "select", "options": [{"value": "low"}]},
+            {"id": "effort-b", "category": "thought_level", "type": "select", "options": [{"value": "low"}]},
+        ]
+        with pytest.raises(ValueError, match="workflow.agent.reasoning_effort_unsupported"):
+            await OpenCodeACPAdapter(transport).start_session({"model": "default", "reasoning_effort": "low"})
+    asyncio.run(run())
+
+
+def test_explicit_default_effort_is_applied_and_mode_is_not_sent():
+    async def run():
+        transport = ScriptedTransport()
+        transport.config_options = [
+            {"id": "model", "currentValue": "p/m", "options": [{"value": "p/m"}]},
+            {"id": "effort", "category": "thought_level", "type": "select", "currentValue": "low", "options": [{"value": "default"}, {"value": "low"}]},
+            {"id": "mode", "currentValue": "build", "options": [{"value": "build"}, {"value": "plan"}]},
+        ]
+        await OpenCodeACPAdapter(transport).start_session({"model": "default", "reasoning_effort": "default"})
+        calls = [p["configId"] for m, p in transport.sent if m == "session/set_config_option"]
+        assert calls == ["model", "effort"]
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("transport,expected", [
+    ({"type": "stdio", "command": "node", "args": ["mcp.js"], "env": [{"name": "TOKEN", "value": "x"}]},
+     {"type": "stdio", "name": "catalog-123", "command": "node", "args": ["mcp.js"], "env": [{"name": "TOKEN", "value": "x"}]}),
+    ({"type": "http", "url": "https://example.test/mcp", "headers": [{"name": "X-Key", "value": "x"}]},
+     {"type": "http", "name": "catalog-123", "url": "https://example.test/mcp", "headers": [{"name": "X-Key", "value": "x"}]}),
+])
+def test_catalog_mcp_transport_is_converted_to_acp_union(transport, expected):
+    async def run():
+        adapter = OpenCodeACPAdapter(ScriptedTransport(), mcp_servers=[{"id": "123", "name": "sample", "transport": transport}])
+        await adapter.start_session({"model": "default"})
+        params = next(p for m, p in adapter._transport.sent if m == "session/new")
+        assert expected in params["mcpServers"]
     asyncio.run(run())
 
 

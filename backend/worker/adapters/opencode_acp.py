@@ -35,6 +35,55 @@ class ACPResponseError(RuntimeError):
         super().__init__(self.message)
 
 
+_EFFORT_UNSUPPORTED = "workflow.agent.reasoning_effort_unsupported"
+_MCP_UNSUPPORTED = "errors.mcp_server.transport_unsupported"
+
+
+def _catalog_mcp_to_acp(server: Any) -> dict[str, Any]:
+    """Convert a resolved catalog entry; already-wire-format platform servers pass through."""
+    get = server.get if isinstance(server, dict) else lambda key, default=None: getattr(server, key, default)
+    transport = get("transport")
+    if not isinstance(transport, dict):
+        if get("id") is not None:
+            raise ValueError(_MCP_UNSUPPORTED)
+        return server
+    server_id = get("id")
+    name = f"catalog-{server_id}" if server_id else get("name")
+    kind = transport.get("type")
+    if not isinstance(name, str) or not name or kind not in {"stdio", "http"}:
+        raise ValueError(_MCP_UNSUPPORTED)
+    result = {"type": kind, "name": name}
+    fields = ("command", "args") if kind == "stdio" else ("url",)
+    for field in fields:
+        if field not in transport:
+            raise ValueError(_MCP_UNSUPPORTED)
+        result[field] = transport[field]
+    collection = "env" if kind == "stdio" else "headers"
+    entries = transport.get(collection, [])
+    resolved = get(collection, ())
+    if resolved:
+        values = dict(resolved)
+        result[collection] = [{"name": item["name"], "value": values[item["name"]]}
+                              for item in entries]
+    else:
+        result[collection] = [{"name": item["name"], "value": item["value"]}
+                              for item in entries if "value" in item]
+        if len(result[collection]) != len(entries):
+            raise ValueError(_MCP_UNSUPPORTED)
+    return result
+
+
+def _option_values(option: dict[str, Any]) -> list[str]:
+    values = [item.get("value") for item in option.get("options", []) if isinstance(item, dict)]
+    return [value for value in values if isinstance(value, str)]
+
+
+def _option(options: Any, *, category: str, option_type: str | None = None) -> dict[str, Any] | None:
+    matches = [item for item in options if isinstance(item, dict) and item.get("category") == category
+               and (option_type is None or item.get("type") == option_type)] if isinstance(options, list) else []
+    return matches[0] if len(matches) == 1 else None
+
+
 def normalize_frame(frame: dict[str, Any]) -> list[AgentEvent]:
     method, params = frame.get("method"), frame.get("params", {})
     if method == "session/request_permission":
@@ -75,17 +124,23 @@ class OpenCodeACPAdapter:
         self._available_models: list[str] = []
 
     async def start_session(self, cfg: Any) -> SessionHandle:
-        await self._transport.request("initialize", {
+        capabilities = await self._transport.request("initialize", {
             "protocolVersion": 1,
             "clientInfo": {"name": "kosmo", "version": "1"},
             "clientCapabilities": {"elicitation": {"form": {}}},
         })
-        result = await self._transport.request("session/new", {"cwd": self._session_cwd, "mcpServers": self._mcp_servers})
+        requested_servers = [_catalog_mcp_to_acp(server) for server in self._mcp_servers]
+        if any(server.get("type") == "http" for server in requested_servers):
+            mcp_capabilities = capabilities.get("agentCapabilities", {}).get("mcpCapabilities", {})
+            if mcp_capabilities.get("http") is False:
+                raise ValueError(_MCP_UNSUPPORTED)
+        result = await self._transport.request("session/new", {"cwd": self._session_cwd, "mcpServers": requested_servers})
         self._session_id = result["sessionId"]
         model_option = next((option for option in result.get("configOptions", []) if option.get("id") == "model"), None)
         self._available_models = [option["value"] for option in (model_option or {}).get("options", [])
                                   if isinstance(option, dict) and isinstance(option.get("value"), str)]
         model = cfg.get("model", "default") if isinstance(cfg, dict) else "default"
+        model_result: dict[str, Any] = {}
         if not isinstance(model, str) or not model.strip() or model == "default":
             if model_option is None:
                 raise ValueError("workflow.agent.model_default_unavailable")
@@ -93,7 +148,7 @@ class OpenCodeACPAdapter:
             allowed = {option.get("value") for option in (model_option.get("options") or []) if isinstance(option, dict)}
             if not isinstance(model, str) or not model.strip() or model not in allowed:
                 raise ValueError("workflow.agent.model_default_unavailable")
-            await self._transport.request("session/set_config_option", {
+            model_result = await self._transport.request("session/set_config_option", {
                 "sessionId": self._session_id, "configId": model_option["id"], "value": model,
             })
         else:
@@ -102,9 +157,26 @@ class OpenCodeACPAdapter:
             allowed = {option.get("value") for option in (model_option.get("options") or [])}
             if model not in allowed:
                 raise ValueError("Configured model is not available in the OpenCode ACP session")
-            await self._transport.request("session/set_config_option", {
+            model_result = await self._transport.request("session/set_config_option", {
                 "sessionId": self._session_id, "configId": model_option["id"], "value": model,
             })
+        effort = cfg.get("reasoning_effort") if isinstance(cfg, dict) else None
+        if effort is not None:
+            options = model_result.get("configOptions", [])
+            effort_option = _option(options, category="thought_level", option_type="select")
+            allowed = _option_values(effort_option) if effort_option else []
+            if (effort_option is None or not isinstance(effort, str) or allowed.count(effort) != 1):
+                raise ValueError(_EFFORT_UNSUPPORTED)
+            try:
+                updated = await self._transport.request("session/set_config_option", {
+                    "sessionId": self._session_id, "configId": effort_option["id"], "value": effort,
+                })
+            except Exception:
+                raise ValueError(_EFFORT_UNSUPPORTED) from None
+            updated_options = updated.get("configOptions", [])
+            confirmed = _option(updated_options, category="thought_level", option_type="select")
+            if confirmed is None or confirmed.get("id") != effort_option.get("id") or confirmed.get("currentValue") != effort:
+                raise ValueError(_EFFORT_UNSUPPORTED)
         return SessionHandle(self._session_id)
 
     def list_models(self) -> list[str]:
