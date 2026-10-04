@@ -56,7 +56,7 @@ def test_rejects_non_finite_json_values(tmp_path):
 
 
 def test_rejects_escaping_or_symlink_output_paths(tmp_path):
-    descriptor, output = _descriptor(tmp_path, "return result")
+    descriptor, output = _descriptor(tmp_path, "result = 'value'\nreturn result")
     try:
         (output / "result").symlink_to(tmp_path / "outside")
     except OSError:
