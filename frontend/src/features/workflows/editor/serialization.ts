@@ -8,7 +8,13 @@ export function serializeWorkflow(state: WorkflowEditorState): WorkflowDefinitio
     ids.add(node.id);
   }
   const definition = structuredClone(state.definition);
-  for (const node of definition.nodes) if (node.type === "ai") delete (node as unknown as { validation?: unknown }).validation;
+  for (const node of definition.nodes) if (node.type === "ai") {
+    delete (node as unknown as { validation?: unknown }).validation;
+    for (const key of ["agent_id", "model", "reasoning_effort", "added_mcp_ids", "removed_mcp_ids", "added_skill_ids", "removed_skill_ids"] as const) {
+      const value = node[key];
+      if (value == null || (Array.isArray(value) && value.length === 0)) delete node[key];
+    }
+  }
   return definition;
 }
 

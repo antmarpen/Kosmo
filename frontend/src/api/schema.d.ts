@@ -4,6 +4,43 @@
  */
 
 export interface paths {
+    "/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agents */
+        get: operations["list_agents_agents_get"];
+        put?: never;
+        /** Create Agent */
+        post: operations["create_agent_agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent */
+        get: operations["get_agent_agents__agent_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Agent */
+        delete: operations["delete_agent_agents__agent_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Agent */
+        patch: operations["update_agent_agents__agent_id__patch"];
+        trace?: never;
+    };
     "/tasks/{task_id}/artifacts": {
         parameters: {
             query?: never;
@@ -191,6 +228,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mcp-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Mcp Servers */
+        get: operations["list_mcp_servers_mcp_servers_get"];
+        put?: never;
+        /** Create Mcp Server */
+        post: operations["create_mcp_server_mcp_servers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp-servers/{server_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Mcp Server */
+        get: operations["get_mcp_server_mcp_servers__server_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Mcp Server */
+        delete: operations["delete_mcp_server_mcp_servers__server_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Mcp Server */
+        patch: operations["update_mcp_server_mcp_servers__server_id__patch"];
+        trace?: never;
+    };
     "/providers/opencode/config/candidate/validate": {
         parameters: {
             query?: never;
@@ -294,6 +368,43 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Skills */
+        get: operations["list_skills_skills_get"];
+        put?: never;
+        /** Create Skill */
+        post: operations["create_skill_skills_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/{skill_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Skill */
+        get: operations["get_skill_skills__skill_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Skill */
+        delete: operations["delete_skill_skills__skill_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Skill */
+        patch: operations["update_skill_skills__skill_id__patch"];
         trace?: never;
     };
     "/tasks": {
@@ -554,6 +665,57 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** AgentCreate */
+        AgentCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Visibility
+             * @default personal
+             */
+            visibility: string;
+            /** Group Id */
+            group_id?: string | null;
+            /**
+             * Runtime
+             * @default opencode
+             */
+            runtime: string;
+            /** Model */
+            model: string;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+            /** Mcp Ids */
+            mcp_ids?: string[];
+            /** Skill Ids */
+            skill_ids?: string[];
+        };
+        /** AgentPatch */
+        AgentPatch: {
+            /** Name */
+            name?: string | null;
+            /** Visibility */
+            visibility?: string | null;
+            /** Group Id */
+            group_id?: string | null;
+            /** Runtime */
+            runtime?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
+            /** Instructions */
+            instructions?: string | null;
+            /** Mcp Ids */
+            mcp_ids?: string[] | null;
+            /** Skill Ids */
+            skill_ids?: string[] | null;
+        };
         /** Body_replace_opencode_config_providers_opencode_config_put */
         Body_replace_opencode_config_providers_opencode_config_put: {
             /** Opencode Json */
@@ -640,10 +802,36 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** EntryWrite */
+        EntryWrite: {
+            /** Name */
+            name: string;
+            /** Secret */
+            secret: boolean;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "replace" | "keep" | "remove";
+            /** Value */
+            value?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HttpTransport */
+        HttpTransport: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "http";
+            /** Url */
+            url: string;
+            /** Headers */
+            headers?: components["schemas"]["EntryWrite"][];
         };
         /** HumanInput */
         HumanInput: {
@@ -653,6 +841,32 @@ export interface components {
             node_execution_id: string;
             /** Request Id */
             request_id: string | number;
+        };
+        /** McpCreate */
+        McpCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Visibility
+             * @default personal
+             * @enum {string}
+             */
+            visibility: "personal" | "group" | "global";
+            /** Group Id */
+            group_id?: string | null;
+            /** Transport */
+            transport: components["schemas"]["StdioTransport"] | components["schemas"]["HttpTransport"];
+        };
+        /** McpPatch */
+        McpPatch: {
+            /** Name */
+            name?: string | null;
+            /** Visibility */
+            visibility?: ("personal" | "group" | "global") | null;
+            /** Group Id */
+            group_id?: string | null;
+            /** Transport */
+            transport?: (components["schemas"]["StdioTransport"] | components["schemas"]["HttpTransport"]) | null;
         };
         /** ModelVerificationRequest */
         ModelVerificationRequest: {
@@ -698,6 +912,55 @@ export interface components {
             outputs: string[];
             /** Issues */
             issues: components["schemas"]["ScriptAnalysisIssue"][];
+        };
+        /** SkillCreate */
+        SkillCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Visibility
+             * @default personal
+             */
+            visibility: string;
+            /** Group Id */
+            group_id?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Instructions
+             * @default
+             */
+            instructions: string;
+        };
+        /** SkillPatch */
+        SkillPatch: {
+            /** Name */
+            name?: string | null;
+            /** Visibility */
+            visibility?: string | null;
+            /** Group Id */
+            group_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Instructions */
+            instructions?: string | null;
+        };
+        /** StdioTransport */
+        StdioTransport: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "stdio";
+            /** Command */
+            command: string;
+            /** Args */
+            args: string[];
+            /** Env */
+            env?: components["schemas"]["EntryWrite"][];
         };
         /** TaskCreated */
         TaskCreated: {
@@ -867,6 +1130,154 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_agents_agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_agent_agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_agents__agent_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_agents__agent_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_agent_agents__agent_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_artifacts_tasks__task_id__artifacts_get: {
         parameters: {
             query?: never;
@@ -1188,6 +1599,154 @@ export interface operations {
             };
         };
     };
+    list_mcp_servers_mcp_servers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_mcp_server_mcp_servers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mcp_server_mcp_servers__server_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mcp_server_mcp_servers__server_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_mcp_server_mcp_servers__server_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     validate_candidate_providers_opencode_config_candidate_validate_post: {
         parameters: {
             query?: never;
@@ -1447,6 +2006,154 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ModelVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_skills_skills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    create_skill_skills_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_skill_skills__skill_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_skill_skills__skill_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_skill_skills__skill_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillPatch"];
             };
         };
         responses: {

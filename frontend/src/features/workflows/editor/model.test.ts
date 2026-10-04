@@ -5,7 +5,7 @@ const nodes: WorkflowNode[] = [
   { type: "start", id: "start", input_form: [] },
   { type: "script", id: "script", code: "", inputs: [], outputs: [] },
   { type: "http", id: "http", method: "GET", url: "", inputs: [], outputs: ["response"] },
-  { type: "ai", id: "ai", agent: { runtime: "opencode", model: "", instructions: "" }, prompt_template: "", inputs: [], outputs: ["artifact"], output_validation: { artifact: { format: "json", json_schema: { type: "object" }, rules_code: "return True" } }, max_validation_cycles: 3 },
+  { type: "ai", id: "ai", agent_id: "agent-uuid", prompt_template: "", inputs: [], outputs: ["artifact"], output_validation: { artifact: { format: "json", json_schema: { type: "object" }, rules_code: "return True" } }, max_validation_cycles: 3 },
   { type: "decision", id: "decision", selected_next_node_id: "" },
   { type: "workflow", id: "workflow", workflow_id: "", inputs: [] },
   { type: "end", id: "end", inputs: [] },
@@ -25,6 +25,13 @@ describe("workflow editor model", () => {
   it("round-trips all seven schema node variants", () => {
     const original = state([...nodes]);
     expect(serializeWorkflow(deserializeWorkflow(original.definition, original.layout))).toEqual(original.definition);
+  });
+  it("serializes AI nodes as reference-only canonical JSON while preserving phase and output contracts", () => {
+    const ai = { type: "ai" as const, id: "ai", agent_id: "agent", model: "chosen", added_mcp_ids: [], prompt_template: "p", inputs: [], outputs: ["out"], output_validation: { out: { format: "markdown" as const } }, max_validation_cycles: 3 };
+    const original = state([nodes[0], ai, nodes[6]]);
+    original.definition.phases = [{ id: "phase" }];
+    expect(serializeWorkflow(original).nodes[1]).toEqual({ type: "ai", id: "ai", agent_id: "agent", model: "chosen", prompt_template: "p", inputs: [], outputs: ["out"], output_validation: { out: { format: "markdown" } }, max_validation_cycles: 3 });
+    expect(serializeWorkflow(original).phases).toEqual([{ id: "phase" }]);
   });
   it("normalizes graph-derived inputs on load, preserves phases, and preserves ordered producer outputs", () => {
     const definition = { ...state([nodes[0], { ...(nodes[1] as Extract<WorkflowNode, { type: "script" }>), inputs: ["stale"], outputs: ["a", "b"] }, { ...(nodes[2] as Extract<WorkflowNode, { type: "http" }>), inputs: ["stale"] }, nodes[6]], [{ from: "start", to: "script" }, { from: "script", to: "end" }, { from: "start", to: "end" }]).definition, phases: [{ id: "phase-1" }] };

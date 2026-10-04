@@ -96,7 +96,7 @@ describe("client-side validation never throws on structurally broken state", () 
     let result!: ReturnType<typeof validateWorkflow>;
     expect(() => { result = validateWorkflow(broken); }).not.toThrow();
     expect(result.nodeErrors["ai-1"]).toEqual(expect.arrayContaining([
-      expect.objectContaining({ message_key: "workflowEditor.validation.modelRequired" }),
+      expect.objectContaining({ message_key: "workflowEditor.validation.agentRequired" }),
     ]));
   });
 });

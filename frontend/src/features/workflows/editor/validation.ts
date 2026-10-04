@@ -101,7 +101,7 @@ function validateNode(node: WorkflowNode, add: (id: string, issue: ValidationIss
       validateOutputContracts(node, node.outputs, add);
       break;
     case "ai": {
-      if (!str(record(node.agent).model).trim()) add(node.id, { message_key: "workflowEditor.validation.modelRequired" });
+      if (!str(node.agent_id).trim()) add(node.id, { message_key: "workflowEditor.validation.agentRequired" });
       if (!str(node.prompt_template).trim()) add(node.id, { message_key: "workflowEditor.validation.promptRequired" });
       validateIdentifiers(node, strings(node.inputs), "input", add);
       validateIdentifiers(node, strings(node.outputs), "output", add);

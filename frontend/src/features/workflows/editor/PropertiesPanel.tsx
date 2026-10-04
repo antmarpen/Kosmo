@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { type FormField, type WorkflowEditorState, type WorkflowNode } from "./model";
 import { ScriptEditor } from "./ScriptEditor";
-import { ProviderModelSelect } from "./ProviderModelSelect";
 import { OutputValidationDialog } from "./OutputValidationDialog";
 import { resolveOutputDescriptor } from "./outputContracts";
 import type { ValidationContract } from "./model";
@@ -82,8 +81,6 @@ export function PropertiesPanel({ state, onUpdate, errors = {}, sheetOpen = true
       {node.type === "start" && <FormFieldBuilder fields={form} onChange={(input_form) => update({ input_form })} onEditValidation={setEditingField} />}
       {node.type === "script" && <ScriptEditor label={t("editor.code")} value={node.code} onChange={(code) => update({ code })} />}
       {node.type === "ai" && <>
-        <ProviderModelSelect runtime={node.agent.runtime} model={node.agent.model} onChange={(runtime, model) => update({ agent: { ...node.agent, runtime, model } })} />
-        <Field label={t("editor.instructions")} value={node.agent.instructions} onChange={(instructions) => update({ agent: { ...node.agent, instructions } })} multiline />
         <Field label={t("editor.prompt")} value={node.prompt_template} onChange={(prompt_template) => update({ prompt_template })} multiline />
       </>}
       {node.type === "http" && <><SelectField label={t("editor.method")} value={node.method} onChange={(method) => update({ method })}>{["GET", "POST", "PUT", "PATCH", "DELETE"].map((method) => <option key={method}>{method}</option>)}</SelectField><Field label={t("editor.url")} value={node.url} onChange={(url) => update({ url })} /></>}
