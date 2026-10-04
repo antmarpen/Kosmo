@@ -33,6 +33,41 @@ describe("workflow editor model", () => {
     expect(serializeWorkflow(original).nodes[1]).toEqual({ type: "ai", id: "ai", agent_id: "agent", model: "chosen", prompt_template: "p", inputs: [], outputs: ["out"], output_validation: { out: { format: "markdown" } }, max_validation_cycles: 3 });
     expect(serializeWorkflow(original).phases).toEqual([{ id: "phase" }]);
   });
+  it("round-trips only explicit AI scalar and resource deltas, never inherited agent values", () => {
+    const definition = {
+      schema_version: "v1" as const,
+      name: "Live reference",
+      nodes: [
+        nodes[0],
+        {
+          type: "ai" as const,
+          id: "ai",
+          agent_id: "agent-reference",
+          model: "override-model",
+          reasoning_effort: "high" as const,
+          added_mcp_ids: ["added-mcp"],
+          removed_mcp_ids: ["removed-mcp"],
+          added_skill_ids: ["added-skill"],
+          removed_skill_ids: ["removed-skill"],
+          prompt_template: "Do the work",
+          inputs: [],
+          outputs: [],
+          max_validation_cycles: 3,
+        },
+        nodes[6],
+      ],
+      edges: [],
+    };
+    const saved = serializeWorkflow(deserializeWorkflow(definition));
+    expect(saved.nodes[1]).toEqual(definition.nodes[1]);
+    expect(saved.nodes[1]).not.toHaveProperty("instructions");
+    expect(saved.nodes[1]).not.toHaveProperty("default_model");
+    expect(saved.nodes[1]).not.toHaveProperty("mcp_ids");
+    expect(saved.nodes[1]).not.toHaveProperty("skill_ids");
+
+    const reopened = serializeWorkflow(deserializeWorkflow(saved));
+    expect(reopened.nodes[1]).toEqual(definition.nodes[1]);
+  });
   it("normalizes graph-derived inputs on load, preserves phases, and preserves ordered producer outputs", () => {
     const definition = { ...state([nodes[0], { ...(nodes[1] as Extract<WorkflowNode, { type: "script" }>), inputs: ["stale"], outputs: ["a", "b"] }, { ...(nodes[2] as Extract<WorkflowNode, { type: "http" }>), inputs: ["stale"] }, nodes[6]], [{ from: "start", to: "script" }, { from: "script", to: "end" }, { from: "start", to: "end" }]).definition, phases: [{ id: "phase-1" }] };
     const loaded = deserializeWorkflow(definition);

@@ -52,4 +52,13 @@ test("the AI agent selector accepts a keyboard choice and previews agent Markdow
   const preview = page.getByRole("dialog");
   await expect(preview).toBeVisible();
   await expect(preview).toContainText("Summarize the report accurately");
+  await page.getByRole("button", { name: /close|cerrar/i }).click();
+
+  for (const width of [375, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator('.react-flow__node[data-id="summarize"]')).toBeVisible();
+    await expect(page.getByRole("combobox", { name: /agent|agente/i })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    expect(overflow, `workflow editor must not overflow horizontally at ${width}px`).toBe(false);
+  }
 });
