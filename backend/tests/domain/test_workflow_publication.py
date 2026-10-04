@@ -453,7 +453,7 @@ def test_workflow_list_and_detail_expose_publication_revision():
 def test_seed_reference_workflow_definition_has_required_shape():
     from scripts.seed import reference_workflow_definition
 
-    seed = reference_workflow_definition()
+    seed = reference_workflow_definition("12345678-1234-5678-1234-567812345678")
     assert seed.name == "reference-security-analysis"
     assert [node.type for node in seed.nodes] == ["start", "script", "ai", "end"]
     assert seed.nodes[2].outputs == ["summary.md"]
@@ -462,8 +462,7 @@ def test_seed_reference_workflow_definition_has_required_shape():
     assert seed.nodes[1].output_validation["data"].format == "json"
     assert seed.nodes[1].output_validation["data"].json_schema["type"] == "object"
     assert seed.nodes[2].output_validation["summary.md"].model_dump(exclude_none=True) == {"format": "markdown"}
-    assert seed.nodes[2].agent.runtime == "opencode"
-    assert seed.nodes[2].agent.model == "default"
+    assert str(seed.nodes[2].agent_id) == "12345678-1234-5678-1234-567812345678"
     assert seed.nodes[2].inputs == ["report", "data"]
 
 
@@ -471,8 +470,8 @@ def test_seed_is_idempotent_when_reference_workflow_already_exists():
     from scripts.seed import ensure_reference_workflow
 
     repository = FakeRepository()
-    asyncio.run(ensure_reference_workflow(repository))
-    asyncio.run(ensure_reference_workflow(repository))
+    asyncio.run(ensure_reference_workflow(repository, "12345678-1234-5678-1234-567812345678"))
+    asyncio.run(ensure_reference_workflow(repository, "12345678-1234-5678-1234-567812345678"))
     assert len(repository.versions["reference-security-analysis"]) == 1
     stored_contract = repository.versions["reference-security-analysis"][0]["definition"]["nodes"][2]["output_validation"]["summary.md"]
     assert stored_contract["format"] == "markdown"
@@ -482,10 +481,10 @@ def test_seed_is_idempotent_when_reference_workflow_already_exists():
 def test_explicit_reference_upgrade_publishes_without_activation():
     from scripts.seed import ensure_reference_workflow, upgrade_reference_workflow
     repository = FakeRepository()
-    asyncio.run(ensure_reference_workflow(repository))
+    asyncio.run(ensure_reference_workflow(repository, "12345678-1234-5678-1234-567812345678"))
     original = repository.versions["reference-security-analysis"][0]["definition"]
     asyncio.run(upgrade_reference_workflow(repository))
-    asyncio.run(ensure_reference_workflow(repository))
+    asyncio.run(ensure_reference_workflow(repository, "12345678-1234-5678-1234-567812345678"))
     versions = repository.versions["reference-security-analysis"]
     assert len(versions) == 2
     assert versions[0]["definition"] == original
