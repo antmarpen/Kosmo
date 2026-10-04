@@ -32,13 +32,18 @@ def _safe_json(data: bytes):
 
 def convert_files(config_bytes: bytes, auth_bytes: bytes | None, row_id: str) -> tuple[bytes, bytes | None]:
     config = _safe_json(config_bytes)
-    if not isinstance(config, dict) or "provider" not in config or "providers" in config:
+    if not isinstance(config, dict):
         raise ConversionError("unsupported_config")
-    provider_map = config.pop("provider")
+    if "providers" in config:
+        provider_map = config.get("providers")
+    elif "provider" in config:
+        provider_map = config.pop("provider")
+        if set(config) - {"model", "$schema"}:
+            raise ConversionError("unknown_config_fields")
+    else:
+        raise ConversionError("unsupported_config")
     if not isinstance(provider_map, dict) or not provider_map:
         raise ConversionError("unsupported_config")
-    if set(config) - {"model", "$schema"}:
-        raise ConversionError("unknown_config_fields")
     config["providers"] = provider_map
 
     auth_object = {} if auth_bytes is None else _safe_json(auth_bytes)
@@ -48,11 +53,24 @@ def convert_files(config_bytes: bytes, auth_bytes: bytes | None, row_id: str) ->
     for integration_id, credential in auth_object.items():
         if not isinstance(integration_id, str) or not isinstance(credential, dict):
             raise ConversionError("unsupported_auth")
-        if set(credential) != {"type", "key"} or credential.get("type") != "api" or not isinstance(credential.get("key"), str) or not credential["key"]:
+        kind = credential.get("type")
+        if kind == "api":
+            key = credential.get("key")
+            if not isinstance(key, str) or not key:
+                raise ConversionError("unsupported_auth_type")
+            value = {"type": "key", "key": key}
+        elif kind == "oauth":
+            access, refresh, expires = credential.get("access"), credential.get("refresh"), credential.get("expires")
+            if not all(isinstance(item, str) and item for item in (access, refresh)) or not isinstance(expires, (int, float)):
+                raise ConversionError("unsupported_auth_type")
+            metadata = {key: item for key, item in credential.items()
+                        if key not in {"type", "access", "refresh", "expires", "methodID"}}
+            value = {"type": "oauth", "methodID": credential.get("methodID") or integration_id,
+                     "refresh": refresh, "access": access, "expires": int(expires), "metadata": metadata}
+        else:
             raise ConversionError("unsupported_auth_type")
         auth_entries.append({"id": f"cred_{uuid.uuid4().hex}", "integrationID": integration_id,
-                             "label": "API key", "active": True,
-                             "value": {"type": "key", "key": credential["key"]}})
+                             "label": "API key", "active": True, "value": value})
 
     # A v1 inline apiKey is converted only if it does not collide with a
     # separate auth credential for the same integration.
