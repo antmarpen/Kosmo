@@ -1,7 +1,6 @@
 # Agent, MCP server, and skill catalogs — work packages (execution record)
 
-Status: **In progress** (2026-10-04). WP-02/03/04 committed; WP-01 resolved
-on the approved v2 path. Remaining packages, including WP-19…25, are planned.
+Status: **Implemented** (2026-10-04). All packages (WP-01...WP-25) completed. Residuals documented in implementation record.
 Contract: `docs/specs/agent-mcp-skills.md`, approved 2026-10-04.
 Owner of execution, delegation, integration and scope questions: coordinator.
 Architect planning only; no application code or database changes were made.

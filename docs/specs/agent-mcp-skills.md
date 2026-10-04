@@ -1,6 +1,6 @@
 # Agent, MCP server, and skill catalogs + AI node selection
 
-Status: **Approved** (owner approved 2026-10-04)
+Status: **Implemented** (2026-10-04)
 Owner: product owner
 Related: `docs/product-vision.md` §2–3, `docs/context/project.md`,
 `docs/specs/phase-2-workflow-editor.md`.
@@ -194,3 +194,10 @@ select and consume them.
   (D8); blocking localized error when the referenced agent/MCP is missing or
   invisible (D9). OQ3 (skill delivery) and OQ4 (MCP transport fields) remain
   implementation investigations for the architect.
+
+## Implementation Notes
+- **Architecture Approval:** Implementation followed the architecture approved by the owner on 2026-10-04.
+- **Accepted Residuals:**
+  - **WP-R2:** End-to-end Temporal history/replay assertion for MCP/provider secrets not built (covered by AR3-05 + WP-10 + WP-24).
+  - **WP-R3:** Partial coverage for central-edit/live-execution and long-name browser interaction.
+
