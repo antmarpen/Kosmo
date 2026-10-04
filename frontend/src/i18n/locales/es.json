@@ -709,7 +709,17 @@
       "dateUnavailable": "Fecha no disponible",
       "edit": "Editar",
       "run": "Ejecutar",
-      "runUnavailable": "Sin versión activa. Publica una versión para ejecutar este flujo."
+      "runUnavailable": "Sin versión activa. Publica una versión para ejecutar este flujo.",
+      "delete": "Eliminar"
+    },
+    "delete": {
+      "dialogTitle": "Eliminar flujo de trabajo",
+      "dialogDescription": "Elimina \"{{name}}\". Esta acción no se puede deshacer.",
+      "deleteTasksLabel_one": "Eliminar también su {{count}} tarea",
+      "deleteTasksLabel_other": "Eliminar también sus {{count}} tareas",
+      "inProgress_one": "Este flujo tiene {{count}} tarea en curso. Párala o espera antes de eliminarlo.",
+      "inProgress_other": "Este flujo tiene {{count}} tareas en curso. Páralas o espera antes de eliminarlo.",
+      "action": "Eliminar"
     },
     "new": {
       "action": "Crear flujo de trabajo",

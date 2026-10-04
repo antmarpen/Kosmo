@@ -559,7 +559,11 @@ export interface paths {
         get: operations["get_workflow_workflows__workflow_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Workflow
+         * @description Delete a workflow; with `delete_tasks` also delete its tasks (blocked while a task runs).
+         */
+        delete: operations["delete_workflow_workflows__workflow_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -824,6 +828,17 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /**
+         * DeleteWorkflowRequest
+         * @description Options for deleting a workflow.
+         */
+        DeleteWorkflowRequest: {
+            /**
+             * Delete Tasks
+             * @default false
+             */
+            delete_tasks: boolean;
         };
         /** EntryWrite */
         EntryWrite: {
@@ -1141,6 +1156,16 @@ export interface components {
              * @default 0
              */
             draft_count: number;
+            /**
+             * Task Count
+             * @default 0
+             */
+            task_count: number;
+            /**
+             * In Progress Task Count
+             * @default 0
+             */
+            in_progress_task_count: number;
             /** Draft Id */
             draft_id: string;
             /** Draft Revision */
@@ -1200,6 +1225,16 @@ export interface components {
              * @default 0
              */
             draft_count: number;
+            /**
+             * Task Count
+             * @default 0
+             */
+            task_count: number;
+            /**
+             * In Progress Task Count
+             * @default 0
+             */
+            in_progress_task_count: number;
         };
         /** WorkflowVersionResponse */
         WorkflowVersionResponse: {
@@ -2613,6 +2648,39 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WorkflowResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workflow_workflows__workflow_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeleteWorkflowRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

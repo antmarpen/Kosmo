@@ -709,7 +709,17 @@
       "dateUnavailable": "Date unavailable",
       "edit": "Edit",
       "run": "Run",
-      "runUnavailable": "No active version. Publish a version to run this workflow."
+      "runUnavailable": "No active version. Publish a version to run this workflow.",
+      "delete": "Delete"
+    },
+    "delete": {
+      "dialogTitle": "Delete workflow",
+      "dialogDescription": "Delete \"{{name}}\". This cannot be undone.",
+      "deleteTasksLabel_one": "Also delete its {{count}} task",
+      "deleteTasksLabel_other": "Also delete its {{count}} tasks",
+      "inProgress_one": "This workflow has {{count}} task in progress. Stop it or wait before deleting.",
+      "inProgress_other": "This workflow has {{count}} tasks in progress. Stop them or wait before deleting.",
+      "action": "Delete"
     },
     "new": {
       "action": "Create workflow",

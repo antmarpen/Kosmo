@@ -6,8 +6,8 @@ import i18next from "i18next";
 
 import { ICON_NAMES } from "@/components/ui/icon-names";
 
-const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
-vi.mock("@/api/auth", () => ({ api: { GET: get, POST: post } }));
+const { get, post, del } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), del: vi.fn() }));
+vi.mock("@/api/auth", () => ({ api: { GET: get, POST: post, DELETE: del } }));
 
 import { WorkflowListPage } from "./WorkflowListPage";
 
@@ -64,6 +64,7 @@ describe("workflow list", () => {
     vi.clearAllMocks();
     get.mockResolvedValue({ data: [] });
     post.mockResolvedValue({ data: createdWorkflow });
+    del.mockResolvedValue({ response: { status: 204 } });
   });
 
   it("renders workflow metadata and active/publish status", async () => {
@@ -122,7 +123,8 @@ describe("workflow list", () => {
     // Every action stays a link, with no nested button inside (the version-less
     // row's Run action is a disabled link, not a button).
     expect(within(actions).getAllByRole("link")).toHaveLength(2);
-    expect(within(actions).queryAllByRole("button")).toHaveLength(0);
+    // The delete action is a button (not a link); Run stays a (disabled) link.
+    expect(within(actions).queryAllByRole("button")).toHaveLength(1);
 
     await userEvent.click(edit);
     expect(screen.getByTestId("location")).toHaveTextContent("/workflows/wf-1/edit");
@@ -251,5 +253,49 @@ describe("workflow list", () => {
     get.mockResolvedValue({ error: { code: "PERMISSION_DENIED", message_key: "errors.permission.denied", params: {}, details: [] } });
     renderPage();
     expect(await screen.findByRole("alert")).toHaveTextContent("Permission denied.");
+  });
+
+  it("deletes a workflow without tasks", async () => {
+    get.mockResolvedValue({ data: [{ id: "wf-1", name: "Review", active_version: null, task_count: 0, in_progress_task_count: 0 }] });
+    renderPage();
+    const row = await screen.findByRole("listitem", { name: /Review/ });
+    await userEvent.click(within(row).getByRole("button", { name: catalogText("workflows.list.delete") }));
+
+    const dialog = await screen.findByRole("dialog");
+    const confirm = within(dialog).getByRole("button", { name: catalogText("workflows.delete.action") });
+    expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+
+    expect(del).toHaveBeenCalledWith("/workflows/{workflow_id}", expect.objectContaining({
+      params: { path: { workflow_id: "wf-1" } }, body: { delete_tasks: false } }));
+  });
+
+  it("requires 'also delete tasks' before deleting a workflow with tasks", async () => {
+    get.mockResolvedValue({ data: [{ id: "wf-1", name: "Review", active_version: null, task_count: 3, in_progress_task_count: 0 }] });
+    renderPage();
+    const row = await screen.findByRole("listitem", { name: /Review/ });
+    await userEvent.click(within(row).getByRole("button", { name: catalogText("workflows.list.delete") }));
+
+    const dialog = await screen.findByRole("dialog");
+    const confirm = within(dialog).getByRole("button", { name: catalogText("workflows.delete.action") });
+    expect(confirm).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("checkbox"));
+    expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+
+    expect(del).toHaveBeenCalledWith("/workflows/{workflow_id}", expect.objectContaining({
+      params: { path: { workflow_id: "wf-1" } }, body: { delete_tasks: true } }));
+  });
+
+  it("blocks deleting a workflow that has tasks in progress", async () => {
+    get.mockResolvedValue({ data: [{ id: "wf-1", name: "Review", active_version: null, task_count: 2, in_progress_task_count: 2 }] });
+    renderPage();
+    const row = await screen.findByRole("listitem", { name: /Review/ });
+    await userEvent.click(within(row).getByRole("button", { name: catalogText("workflows.list.delete") }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(catalogText("workflows.delete.inProgress", { count: 2 }))).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: catalogText("workflows.delete.action") })).toBeDisabled();
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
   });
 });

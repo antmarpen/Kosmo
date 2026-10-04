@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/auth";
-import { RowActionLink, RowActions } from "@/components/RowActions";
+import { RowActionButton, RowActionLink, RowActions } from "@/components/RowActions";
 import { KosmoErrorAlert, type KosmoError } from "@/components/KosmoErrorAlert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -49,6 +49,38 @@ export function WorkflowListPage() {
   // restores the opener on close.
   const nameRef = useRef<HTMLInputElement>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
+
+  // Delete dialog state. The workflow row already carries task counts, so the
+  // dialog decides whether tasks exist or are in progress without extra calls.
+  const [deleteTarget, setDeleteTarget] = useState<Workflow | null>(null);
+  const [deleteTasks, setDeleteTasks] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<KosmoError | null>(null);
+
+  const openDelete = (workflow: Workflow) => {
+    setDeleteTarget(workflow);
+    setDeleteTasks(false);
+    setDeleteError(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const result = await api.DELETE("/workflows/{workflow_id}", {
+        params: { path: { workflow_id: deleteTarget.id } },
+        body: { delete_tasks: deleteTasks },
+      });
+      if (result.error) throw result.error;
+      setDeleteTarget(null);
+      await load();
+    } catch (cause) {
+      setDeleteError(toKosmoError(cause));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -136,6 +168,7 @@ export function WorkflowListPage() {
                   <Link to={`/tasks/new?workflowId=${encodeURIComponent(workflow.id)}`} />
                 </RowActionLink>
               )}
+              <RowActionButton icon="delete" label={t("workflows.list.delete" as never)} onClick={() => openDelete(workflow)} />
             </RowActions>
           </li>;
         })}
@@ -184,6 +217,47 @@ export function WorkflowListPage() {
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
+      <DialogContent
+        closeDisabled={deleting}
+        onEscapeKeyDown={(event) => { if (deleting) event.preventDefault(); }}
+        onInteractOutside={(event) => { if (deleting) event.preventDefault(); }}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("workflows.delete.dialogTitle" as never)}</DialogTitle>
+          <DialogDescription>{t("workflows.delete.dialogDescription", { name: deleteTarget?.name ?? "" })}</DialogDescription>
+        </DialogHeader>
+        {deleteTarget && deleteTarget.in_progress_task_count > 0 ? (
+          <p className="text-sm text-muted-foreground">{t("workflows.delete.inProgress", { count: deleteTarget.in_progress_task_count })}</p>
+        ) : deleteTarget && deleteTarget.task_count > 0 ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={deleteTasks}
+              onChange={(event) => setDeleteTasks(event.target.checked)}
+              disabled={deleting}
+            />
+            <span>{t("workflows.delete.deleteTasksLabel", { count: deleteTarget.task_count })}</span>
+          </label>
+        ) : null}
+        {deleteError && <KosmoErrorAlert error={deleteError} />}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            variant="destructive"
+            loading={deleting}
+            disabled={!deleteTarget || deleteTarget.in_progress_task_count > 0 || (deleteTarget.task_count > 0 && !deleteTasks)}
+            onClick={() => void confirmDelete()}
+          >
+            {t("workflows.delete.action" as never)}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   </section>;
