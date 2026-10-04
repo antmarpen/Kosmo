@@ -286,56 +286,154 @@ unless separately authorized by the coordinator.
 
 #### WP-01 results
 
-- **Status: live initialization and model-option responses proven; reasoning,
-  MCP interoperability and prompt receipt remain blocked.** Probes launch an
-  ephemeral Docker container (the worker's execution model). No product adapter
-  or dependency changes were made.
-- **Image/version:** `docker run --rm kosmo-opencode:local --version` printed
-  `1.18.33`, matching the Dockerfile's `opencode-ai@1.18.33`. OpenCode is an
-  ephemeral worker-launched container, not a Compose service; the prior service
-  blocker was incorrect.
-- **Initialize:** `initialize` used `protocolVersion: 1`, clientInfo
-  `{name: "wp01-probe", version: "1"}`, and clientCapabilities
-  `{elicitation: {form: {}}}`. Live result: `protocolVersion: 1`;
-  `agentCapabilities: {loadSession: true, mcpCapabilities: {http: true, sse:
-  true}, promptCapabilities: {embeddedContext: true, image: true},
-  sessionCapabilities: {close: {}, fork: {}, list: {}, resume: {}}}`;
-  `authMethods: [{description: "Run `opencode auth login` in the terminal",
-  name: "Login with opencode", id: "opencode-login"}]`; `agentInfo:
-  {name: "OpenCode", version: "1.18.33"}`.
-- **Session options:** `session/new` with `{cwd: "/workspace", mcpServers: []}`
-  returned model (select, current `opencode/big-pickle`) and mode (select,
-  current `build`, values `build`, `plan`). Model values advertised:
+- **Status:** Live ACP initialization, model-dependent effort selection and
+  application, live skill prompt receipt, and HTTP MCP handshake are proven on
+  scratch OpenCode 2.0.22. The v1 pin did not advertise effort in its observed
+  default session. Stdio fixture handshake remains unproven.
+- **Part A — source/version/release check:** `backend/docker/opencode/Dockerfile`
+  installs official npm package `opencode-ai@1.18.33` globally, not a GitHub
+  binary. Ran `npm view opencode-ai version` and `npm view opencode-ai dist-tags
+  --json`: latest stable tag for legacy package `opencode-ai` was `1.18.34`;
+  `latest-0` was `1.0.142`, `latest-1` was `1.1.4`, while its `beta` tag points
+  to a beta build. Ran `npm view @opencode/cli version dist-tags --json` and
+  `npm view @opencode/cli@latest version`: the current package for v2 reports
+  `latest: 2.0.22`, `beta: 0.0.0-beta-19507`, `dev: 0.0.0-dev-20531`; latest
+  stable is **OpenCode 2.0.22**. Official sources checked: release page
+  `https://github.com/anomalyco/opencode/releases` showed v1.18.34 as latest
+  GitHub release at lookup time; `https://opencode.ai/v2/docs` states new v2 is
+  available; v2 CLI docs recommend `npm install -g @opencode/cli`. This makes
+  package identity important: Dockerfile's old package tag does not identify the
+  new v2 stable line.
+- **Scratch v2 build:** Built `wp01-opencode2:2.0.22` only in local Docker using
+  a temporary Dockerfile under `$env:TEMP\wp01-opencode2` with `FROM
+  node:22-bookworm-slim`, `RUN npm install --global @opencode/cli@2.0.22`,
+  `/workspace` workdir and `opencode` entrypoint; repository pin unchanged.
+  `docker run --rm --entrypoint opencode wp01-opencode2:2.0.22 --version`
+  printed `opencode v2.0.22`.
+- **v1.18.33 initialize/session evidence:** Process launched with
+  `docker run --rm -i --entrypoint opencode kosmo-opencode:local acp`.
+  Request order was initialize → session/new → set model (advertised model).
+  Initialize result had `protocolVersion: 1`, `agentCapabilities:
+  {loadSession: true, mcpCapabilities: {http:true,sse:true},
+  promptCapabilities:{embeddedContext:true,image:true},
+  sessionCapabilities:{close:{},fork:{},list:{},resume:{}}}`, auth method
+  `opencode-login`, and `agentInfo:{name:"OpenCode",version:"1.18.33"}`.
+  `session/new({cwd:"/workspace",mcpServers:[]})` advertised `model` current
+  `opencode/big-pickle` (10 OpenCode Zen models) and `mode` current `build`
+  with values `build` and `plan`. `session/set_config_option` on advertised
+  `model` returned the same options. No reasoning config option was present.
+- **v2.0.22 initialize/session evidence:** Same JSON-RPC harness, image
+  `wp01-opencode2:2.0.22`. Initialize advertised
+  `mcpCapabilities:{http:true,sse:false}`, prompt embeddedContext/image, session
+  capabilities additionalDirectories/close/delete/fork/list/resume plus
+  `_meta:{"opencode/child-session-updates":true}`; `agentInfo.version` was
+  `2.0.22`. Fresh sessions returned model and mode, with available model
+  list/current varying between starts; `opencode/fledge-alpha-free` and
+  `opencode/longcat-2.5-preview-free` were observed. Fledge's model values were
   `opencode/big-pickle`, `opencode/fledge-alpha-free`,
   `opencode/ling-3.0-flash-fin-free`, `opencode/ling-3.1-flash-free`,
   `opencode/longcat-2.5-preview-free`, `opencode/mimo-v2.6-flash-free`,
-  `opencode/muse-spark-1.3-contributor-free`,
-  `opencode/nemotron-3-ultra-free`, `opencode/nemotron-3.5-lightning-free`,
-  `opencode/space-bunny-free`. Selecting the advertised current model with
-  `session/set_config_option` (`configId: "model"`) returned unchanged
-  `configOptions`. No reasoning option appeared; its ID/value set and
-  non-default application are **blocked/unverified** for this runtime/config.
-- **MCP fixtures:** A live request included a local stdio fixture (`node -e
-  "process.stdin.resume()"`, args and synthetic env) and a local HTTP fixture
-  (`http://host.docker.internal:18765/mcp`, synthetic header). Command
-  `python "$env:TEMP\\wp01_mcp_probe.py"` timed out after 30 seconds waiting for
-  the `session/new` response (`asyncio.TimeoutError`, no response frame). Thus
-  neither acceptance nor rejection/wire mapping is proven. `mcpCapabilities.http`
-  alone does not prove delivery.
-- **Skill receipt:** offline adapter test only confirms the synthetic delimited
-  skill text is serialized in first `session/prompt` using a recording transport.
-  Live receipt is **unverified**; no real model prompt was sent without
-  credentials, and no LLM-obedience claim is made.
-- **Commands/evidence:** `docker run --rm --entrypoint opencode
-  kosmo-opencode:local acp --help` confirmed ACP CLI. Python asyncio probes ran
-  `docker run --rm -i --entrypoint opencode kosmo-opencode:local acp` and
-  captured initialize, session/new, then model set-config responses above.
+  `opencode/muse-spark-1.3-contributor-free`, `opencode/nemotron-3-ultra-free`,
+  `opencode/nemotron-3.5-lightning-free`, `opencode/space-bunny-free`; its mode
+  was current `build`, values `build`, `plan`. A first scratch run without
+  `/workspace` returned JSON-RPC `-32603`, `Internal error: Internal service
+  failure`; adding `/workspace` resolved the harness setup issue.
+- **Reasoning investigation:** OpenCode v2 official model docs
+  (`https://opencode.ai/v2/docs/models/`, checked 2026-10-04) specify variants
+  selected as `provider/model#variant`; their example uses `openai/gpt-5.2#high`.
+  Docs also show variant `settings.reasoningEffort` values and provider/model
+  settings, e.g. `reasoningEffort: "medium"`, with a `deep` variant setting it
+  to `high`; model docs say the selected variant is applied after provider and
+  model settings. The v2 config docs
+  (`https://opencode.ai/v2/docs/config/`) expose model `settings` and `variants`.
+  Live v2 `session/new` on a session with selected model
+  `opencode/fledge-alpha-free` returned complete effort option
+  `{id:"effort",name:"Effort",description:"Available effort levels for this
+  model",category:"thought_level",type:"select",currentValue:"default",
+  options:[{value:"low",name:"Low"},{value:"high",name:"High"},
+  {value:"max",name:"Max"},{value:"default",name:"Default"}]}`. Order:
+  initialize → session/new → set model with advertised `configId:"model"` and
+  advertised current `opencode/fledge-alpha-free`; response again listed
+  `effort`; then set advertised `configId:"effort", value:"high"`. Successful
+  response returned options with `effort.currentValue:"high"`. This proves
+  advertised non-default effort application on v2 without a guessed ID/value.
+  It is model/session-dependent; an earlier fresh session lacked `effort` until
+  a Fledge session was observed. The live prompt also triggered
+  `config_option_update` with effort for a dynamically selected Fledge model.
+  During a synthetic prompt, v2 emitted `agent_thought_chunk` update frames;
+  thought body omitted here. The current pinned v1 session advertised no effort.
+  v2 therefore closes the ACP application proof, but provider-specific request
+  payload mapping to a backend `reasoningEffort` setting was not observed.
+  OpenCode docs show `#variant` and provider model settings, but our scratch
+  custom provider config (visible in `opencode debug config`) did not enter the
+  ACP model list. Recommendation: use v2's dynamically advertised `effort`
+  option when available; retain explicit unsupported handling for v1/other
+  models; verify provider payload on an authorized configured runtime before
+  claiming backend parameter semantics. Do not hardcode the `effort` ID
+  universally.
+- **`mode` option:** Both versions advertised `build` and `plan`; v2 descriptions
+  identify build as default permission-based execution and plan as read-only
+  planning. Live v2 requests setting advertised `configId:"mode"` to `plan`
+  and then `build` each succeeded and returned corresponding currentValue.
+  These are agent modes, not thinking effort.
+- **Part C — MCP fixtures:** An earlier combined v1 attempt with a stdio Node process
+  (`process.stdin.resume()`) and host HTTP handler at
+  `http://host.docker.internal:18765/mcp` waited 30 seconds for `session/new`
+  and raised `asyncio.TimeoutError` with no JSON-RPC result/error. The stdio
+  process was not a faithful MCP responder and timed out; it does not prove
+  unsupported transport. A corrected v2 run used local Node stdio and Python
+  HTTP fixtures. `session/new` returned a result. HTTP fixture captured
+  `initialize` using protocol version `2025-11-25`, client `{name:"acp",
+  version:"2.0.22"}`, then `notifications/initialized`, then `tools/list`.
+  Initial fixture observed `X-WP01: synthetic` on each request; the final marker
+  fixture observed `X-WP01: synthetic-header-observed` on each request.
+  `mcpServers` supplied HTTP url/headers and stdio `command:"node"`, args
+  `[-e,<fixture source>]`, env `[{name:"WP01_SYNTHETIC",value:"safe"}]`.
+  This proves v2 session/new accepted both shapes and HTTP connectivity/header
+  mapping. A final marker probe mounted a scratch-only host directory at
+  `/wp01`; the stdio fixture wrote the environment value to
+  `/wp01/stdio-marker` only when it received MCP `initialize`. The final fixture
+  env was `[{name:"WP01_SYNTHETIC",value:"stdio-env-observed"}]`; host observed
+  marker content `stdio-env-observed`. This proves v2 started the stdio fixture and delivered
+  its env entry. Both transport shapes and HTTP headers are proven on v2.
+- **Skill prompt receipt:** Live v2 first prompt contained
+  `<skill name="synthetic">WP01_SKILL_RECEIPT_MARKER</skill>\nReply OK.`.
+  `session/update` `agent_thought_chunk` frames referred to the unique marker;
+  runtime then returned `agent_message_chunk` `OK` and prompt result
+  `stopReason:"end_turn"`. This proves text reached runtime/model response
+  path, not general LLM obedience. Reported cost was zero; no real credentials
+  were supplied. Offline test remains a serialization regression proof.
+- **Exact validation performed:** `docker run --rm kosmo-opencode:local
+  --version` → `1.18.33`; the npm queries above returned the versions/tags
+  recorded above; scratch `docker build -t wp01-opencode2:2.0.22 $env:TEMP\wp01-opencode2`
+  succeeded; v2 version and `acp --help` commands succeeded; Python asyncio
+  ACP initialize/options/mode/effort/prompt/MCP probes returned results above;
+  `python "$env:TEMP\wp01_v2_effort_probe.py"` set advertised effort to `high`;
+  `python "$env:TEMP\wp01_mode_probe.py"` set both advertised mode values;
+  `python "$env:TEMP\wp01_v2_prompt_probe.py"` captured prompt/update/result;
+  `python "$env:TEMP\wp01_mcp_faithful.py"` captured HTTP fixture requests;
+  `python "$env:TEMP\wp01_mcp_marker_probe.py"` confirmed stdio env receipt.
+  The earlier unfaithful fixture command timed out; and
   `uv run --project backend --directory backend pytest
-  tests/worker/test_catalog_runtime_probe.py` passed 1 offline test. Fixture
-  timeout is recorded above. No credentials were used.
-- **Remaining blockers:** no advertised reasoning option in observed options;
-  MCP fixture session creation timed out; live prompt receipt was not tested.
-  Treat those legs as unverified, not successful delivery.
+  tests/worker/test_catalog_runtime_probe.py` passed 1 test. No real credentials
+  used; no repo image pin, adapter or dependencies changed.
+- **Direct coordinator probe (2026-10-04, independent):** Reproduced the v2.0.22
+  `session/new` config options exactly: `model` (category `model`), `effort`
+  (category `thought_level`, description "Available effort levels for this
+  model", values `low`/`high`/`max`/`default`, `currentValue:"default"`) and
+  `mode` (build/plan). With a scratch `nan` provider config (from the operator's
+  own v2 config) planted at `~/.config/opencode/opencode.json`, `opencode debug
+  config` showed it and `opencode --print-logs models` listed `nan/qwen3.6`, but
+  the ACP session still offered only the built-in `opencode/*` models. Root
+  cause is the **v2 credential store**, not the provider schema: v2.0.22 does
+  not consume the v1 `auth.json` object (`opencode auth export` -> `[]`,
+  `opencode auth list` -> "No authenticated integrations"); `opencode auth
+  import` expects a JSON **array**, and `opencode auth login nan --method key`
+  requires an interactive terminal. **Upgrade implication:** moving the Kosmo
+  agent runtime to v2 is not just an image bump — provider credential injection
+  (currently a v1 `auth.json`) must be reworked for the v2 auth store. Reasoning
+  `effort` is confirmed available on v2; model-specific `effort` for
+  `nan/qwen3.6` was not confirmable until v2 auth is wired.
 
 ### WP-02 — Catalog persistence and migration
 - Type / owner: development / Developer (`developer`).

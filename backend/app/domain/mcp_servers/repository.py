@@ -64,9 +64,11 @@ class McpServerRepository:
         await self.db.refresh(row)
         return row
 
-    async def update(self, row: McpServer, *, secret_values: dict[str, str] | None = None, **changes) -> McpServer:
+    async def update(self, row: McpServer, *, secret_values: dict[str, str] | None = None,
+                     retained_ciphertext: dict[str, str] | None = None, **changes) -> McpServer:
         if "name" in changes: changes["name"] = changes["name"].strip()
-        if secret_values is not None: changes["secret_ciphertext"] = self.encrypt_secrets(secret_values)
+        if secret_values is not None:
+            changes["secret_ciphertext"] = {**(retained_ciphertext or {}), **self.encrypt_secrets(secret_values)}
         for key, value in changes.items(): setattr(row, key, value)
         self._validate(row)
         await self._commit()
