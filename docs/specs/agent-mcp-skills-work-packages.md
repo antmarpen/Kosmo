@@ -1172,6 +1172,42 @@ preserved. None of these new packages has been implemented by this re-plan.
   after WP-17 D8, rollback requires full coordinated DB/task-storage restore.
   Switching image alone on converted auth is not a rollback procedure.
 
+#### WP-21 results
+
+- **Status:** image pinned and rebuilt; v2 ACP initialization and `session/new`
+  succeeded under the production user, read-only root filesystem, workspace cwd,
+  and tmpfs layout. No `agent.py` launch change was needed: its existing
+  `HOME=/home/opencode`, `opencode acp` invocation and isolation match the v2
+  requirements. The v1 `auth.json` injection remains intentionally unchanged for
+  WP-24; this probe supplied no provider credentials.
+- Dockerfile now installs exact package `@opencode/cli@2.0.22`. Build command:
+  `docker compose --profile image-build build opencode`. Version command
+  `docker run --rm --entrypoint opencode kosmo-opencode:local --version` printed
+  `opencode v2.0.22`.
+- ACP command used a JSON-RPC stdin harness around
+  `docker run --rm -i --user 10001:10001 --env HOME=/home/opencode --read-only`
+  with mounts `/tmp` (16 MiB), config (8 MiB), share (256 MiB), state (64 MiB),
+  and cache (256 MiB), all with the agent's existing noexec/nosuid/nodev settings;
+  it ran `--workdir /workspace --entrypoint opencode kosmo-opencode:local acp`.
+  Initialize request used protocol version 1 and returned `agentInfo`
+  `{name:OpenCode,version:2.0.22}`, `mcpCapabilities:{http:true,sse:false}`,
+  embeddedContext/image prompt capabilities, and session capabilities
+  additionalDirectories/close/delete/fork/list/resume. `session/new` with
+  `{cwd:/workspace,mcpServers:[]}` returned `sessionId` and `configOptions` for
+  model and mode. Model current value varied per run; mode was `build` with
+  `build`/`plan` values. No `effort` option appeared for the unauthenticated
+  built-in model in this run (WP-19 separately proved it model-dependent).
+- `docker compose --profile image-build config --quiet` succeeded. The existing
+  focused offline probe passed in the worker container using
+  `docker compose exec -T worker uv run --project /app --directory /app pytest
+  tests/worker/test_catalog_runtime_probe.py` (1 passed). The live isolated ACP
+  transcript was run from the host Docker CLI, not through the worker's Docker
+  socket; no new live image-launch pytest was added in this package.
+- Host regression command `uv run --project backend --directory backend pytest`:
+  443 passed, 51 skipped, 6 failed. All six failures are the known stale seeded
+  inline-agent reference shape (`agent` rejected by the new schema): three in
+  `test_workflow_publication.py` and three in `test_ai_node.py`.
+
 ### WP-22 — V2 provider storage, upload and candidate contracts
 - Type / owner: development / Developer (`developer`).
 - Objective / ACs: retain usable encrypted v2 files through save/probe contracts;
