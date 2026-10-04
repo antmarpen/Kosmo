@@ -8,6 +8,7 @@ import { RequireAuth } from "@/features/auth/AuthProvider";
 import { TaskListPage, TaskDetailPage } from "@/features/tasks/TaskPages";
 import { EditorPage } from "@/features/workflows/editor/EditorPage";
 import { ProvidersPage } from "@/features/providers/ProvidersPage";
+import { SkillsPage } from "@/features/skills/SkillsPage";
 import { WorkflowListPage } from "@/features/workflows/WorkflowListPage";
 
 export const appRoutes: RouteObject[] = [
@@ -24,6 +25,7 @@ export const appRoutes: RouteObject[] = [
       { path: "/workflows", element: <WorkflowListPage /> },
       { path: "/applications", element: <PlaceholderPage /> },
       { path: "/providers", element: <ProvidersPage /> },
+      { path: "/admin/skills", element: <SkillsPage /> },
       { path: "*", element: <PlaceholderPage /> },
     ],
   },

@@ -293,6 +293,47 @@
       "empty": "Todavía no hay nada escrito."
     }
   },
+  "skills": {
+    "title": "Habilidades",
+    "description": "Paquetes de instrucciones reutilizables que tus agentes aplican a sus tareas.",
+    "emptyTitle": "Aún no hay habilidades",
+    "emptyDescription": "Crea una habilidad para dar a tus agentes instrucciones que seguirán en cada tarea.",
+    "addFirst": "Crea tu primera habilidad",
+    "columns": {
+      "name": "Nombre",
+      "description": "Descripción",
+      "scope": "Ámbito",
+      "owner": "Propietario"
+    },
+    "scope": {
+      "personal": "Personal",
+      "group": "Grupo",
+      "global": "Global"
+    },
+    "delete": {
+      "title": "Eliminar habilidad",
+      "description": "La habilidad «{{name}}» se eliminará. Las tareas que la usen fallarán de forma visible cuando ya no exista. Esta acción no se puede deshacer."
+    },
+    "form": {
+      "createTitle": "Añadir habilidad",
+      "createDescription": "Describe la habilidad y escribe las instrucciones que seguirá un agente al usarla.",
+      "editTitle": "Editar habilidad",
+      "editDescription": "Actualiza los detalles y las instrucciones de la habilidad.",
+      "name": "Nombre",
+      "nameHint": "Hasta {{max}} caracteres.",
+      "namePlaceholder": "p. ej. Lista de revisión de seguridad",
+      "description": "Descripción",
+      "descriptionHint": "Opcional. Hasta {{max}} caracteres.",
+      "descriptionPlaceholder": "Una o dos frases que se muestran al seleccionar la habilidad.",
+      "instructions": "Instrucciones",
+      "instructionsHint": "Se admite Markdown. Hasta {{max}} caracteres.",
+      "editorView": "Vista del editor",
+      "write": "Escribir",
+      "preview": "Vista previa",
+      "save": "Guardar habilidad",
+      "back": "Volver a las habilidades"
+    }
+  },
   "errors": {
     "generic": "Se produjo un error inesperado.",
     "node": {

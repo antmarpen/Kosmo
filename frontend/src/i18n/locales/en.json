@@ -293,6 +293,47 @@
       "empty": "Nothing written yet."
     }
   },
+  "skills": {
+    "title": "Skills",
+    "description": "Reusable instruction packs your agents apply to their tasks.",
+    "emptyTitle": "No skills yet",
+    "emptyDescription": "Create a skill to give your agents instructions they follow on every task.",
+    "addFirst": "Create your first skill",
+    "columns": {
+      "name": "Name",
+      "description": "Description",
+      "scope": "Scope",
+      "owner": "Owner"
+    },
+    "scope": {
+      "personal": "Personal",
+      "group": "Group",
+      "global": "Global"
+    },
+    "delete": {
+      "title": "Delete skill",
+      "description": "The skill “{{name}}” will be removed. Tasks that use it will fail visibly once it is gone. This action cannot be undone."
+    },
+    "form": {
+      "createTitle": "Add skill",
+      "createDescription": "Describe the skill and write the instructions an agent follows when it is used.",
+      "editTitle": "Edit skill",
+      "editDescription": "Update the skill's details and instructions.",
+      "name": "Name",
+      "nameHint": "Up to {{max}} characters.",
+      "namePlaceholder": "e.g. Security review checklist",
+      "description": "Description",
+      "descriptionHint": "Optional. Up to {{max}} characters.",
+      "descriptionPlaceholder": "One or two sentences shown when the skill is selected.",
+      "instructions": "Instructions",
+      "instructionsHint": "Markdown supported. Up to {{max}} characters.",
+      "editorView": "Editor view",
+      "write": "Write",
+      "preview": "Preview",
+      "save": "Save skill",
+      "back": "Back to skills"
+    }
+  },
   "errors": {
     "generic": "An unexpected error occurred.",
     "node": {
