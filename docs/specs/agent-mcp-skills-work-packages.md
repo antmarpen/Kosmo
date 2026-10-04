@@ -1444,6 +1444,18 @@ proven during this planning session.
 
 ## Status log (living record)
 
+- 2026-10-04 (v2 auth milestone): the v2 `Credential.Value` API-key discriminator
+  is **`key`** (not `api`); `opencode auth import` accepts the array. The worker
+  bootstrap (version -> `opencode auth import` from a 0600 temp file ->
+  `opencode acp` -> model selection -> prompt) is proven end-to-end in the
+  isolated `kosmo-opencode:local` container with the **real** provider config +
+  key: the prompt returned `stopReason: end_turn` (`nan/qwen3.6`, thought tokens
+  present). WP-22/23/24 corrections committed (`105f268`). The opt-in
+  **fixture** test still needs the correct v2 provider config keys
+  (`package` + `settings.baseURL`, not `npm`/`options`) and a fixture reachable
+  from the agent network; the runtime itself is validated. The dev DB's v1
+  provider row still needs the WP-23 conversion before the app can use it.
+
 - 2026-10-04 coordinator sequencing decision: WP-22 owns additive provider
   format-marker migration 0023 (existing rows v1, new writes v2); WP-23 owns
   encrypted conversion migration 0024; WP-17 reset migration shifts to 0025.
