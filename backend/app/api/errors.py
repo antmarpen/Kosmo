@@ -1,6 +1,7 @@
 ﻿import logging
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from shared.errors import KosmoError
@@ -9,6 +10,20 @@ logger = logging.getLogger(__name__)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RequestValidationError)
+    async def handle_request_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Pydantic's default `input` fields can echo large/user-authored bodies.
+        # Keep diagnostics bounded to structural locations and error types.
+        details = []
+        for error in exc.errors()[:20]:
+            loc = [str(part)[:80] for part in error.get('loc', ())[:8]]
+            details.append({'message_key': 'errors.request.invalid',
+                            'params': {'location': loc, 'type': str(error.get('type', 'invalid'))[:80]}})
+        return JSONResponse(status_code=422, content={
+            'code': 'VALIDATION_FAILED', 'message_key': 'errors.request.invalid',
+            'params': {}, 'details': details,
+        })
+
     @app.exception_handler(KosmoError)
     async def handle_kosmo_error(request: Request, exc: KosmoError) -> JSONResponse:
         if exc.internal:
