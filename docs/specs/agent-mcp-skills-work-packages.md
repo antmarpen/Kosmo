@@ -1398,6 +1398,18 @@ proven during this planning session.
 
 ## Status log (living record)
 
+- 2026-10-04 (session): WP-02/03/04/05/06 implemented and committed (`615b940`,
+  `3d84586`, `585adae`, `9fe8abe`, `3698d6c`). WP-19 **resolved** (exact v2 auth
+  array contract + `auth import` -> selectable `nan/qwen3.6` -> `effort` proof;
+  commit `80f9bf9`). Local backend baseline: **436 passed / 6 failed / 51
+  skipped**; the 6 failures are seed-dependent and deferred to **WP-17**. Docker
+  was stopped by the operator, so the v2 lane (WP-21/22/23/24/25) is **paused**.
+  **WP-20 parked:** a tester pass produced five partly-defective RED test files
+  (invalid setup/assertions); they were removed to keep a clean local baseline
+  and will be regenerated when the v2 lane resumes. Ownership captured:
+  parser/candidate -> WP-22, conversion -> WP-23, adapter -> WP-09,
+  bootstrap/secrecy -> WP-24.
+
 - 2026-10-04 re-plan: source/git log confirms WP-02 persistence/probe commit
   `615b940`, WP-03 Skill CRUD `3d84586`, WP-04 MCP CRUD `585adae`; their committed
   status is retained, not a fresh validation claim. WP-01 remains closed/resolved
