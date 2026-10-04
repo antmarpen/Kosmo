@@ -887,6 +887,52 @@ unless separately authorized by the coordinator.
   Temporal history is not retroactively sanitized. Restart upgraded worker/API
   only after upgrade+seed, then resume traffic. No owner DB test runs.
 
+#### WP-17 execution results (2026-10-04)
+
+- **Status:** implementation and disposable PostgreSQL cutover proof complete;
+  owner/dev database was not touched. No commit created.
+- Added `0025_agent_reference_reset` after actual Alembic revision ID
+  `0024_provider_runtime_v2` (the migration filename is
+  `0024_provider_runtime_v2_conversion.py`; its declared revision ID differs).
+  It discovers task-referencing FKs through PostgreSQL and refuses to proceed
+  unless every task-owned dependent has `ON DELETE CASCADE`. Deletion order:
+  tasks (cascading task notes, node executions, artifacts, task events, capacity
+  claims and agent slot waiters), activations, all drafts (including orphan
+  NULL-workflow drafts), versions, workflows. Provider/ciphertext, catalog, and
+  identity rows are preserved.
+- Seed flushes the admin, creates/reuses a global reference agent (`opencode`,
+  model `default`, no reasoning override, empty MCP/skill references), then
+  publishes and activates the reference workflow with its UUID. If workflows
+  already exist, seed leaves workflow/agent state alone; repeated runs do not
+  duplicate records.
+- Disposable migration test populated workflow/version/activation/task/task-note,
+  orphan draft, user and provider ciphertext data. After upgrade all workflow and
+  execution tables were empty; user/provider ciphertext remained. The initial run
+  found catalog `char` decoding in the FK check; text-casting the action code
+  fixed it and the integration test passed.
+- On dedicated `kosmo_test` only, migration followed by two seed invocations
+  produced exactly one workflow/version/agent/admin, active publication and
+  matching node agent UUID; two provider rows remained. The owner/dev database
+  was not addressed.
+- Red/green evidence: initial focused suite had 3 failures for callers using the
+  old reference-definition API without an agent UUID. Updated tests now pass:
+  `60 passed` across publication, AI-node and reset migration tests. Full suite
+  attempt: `515 passed, 13 failed, 7 skipped`; former seed-dependent failures
+  became green. Remaining failures included four shared-DB publication/name
+  tests, existing 0021 migration test, and five Docker-sandbox tests because the
+  backend container cannot access the Docker socket. They remain unresolved.
+- Validation: `docker exec -e KOSMO_TEST_DATABASE_URL=... kosmo-backend uv run
+  pytest tests/domain/test_agent_reference_reset_migration.py
+  tests/domain/test_workflow_publication.py -q` (37 passed); add
+  `tests/worker/test_ai_node.py` (60 passed); full `uv run pytest -q` (515 passed,
+  13 failed, 7 skipped); `git diff --check` passed.
+- Operator cutover remains separate: verified backup/restore, drain/stop Temporal
+  executions and workers, record affected workflow/task/artifact IDs and external
+  task-storage paths, block old app versions, upgrade to head, explicitly run
+  seed, verify one active reference workflow/agent and preserved providers/users,
+  clean/quarantine external storage, restart upgraded services, then resume
+  traffic. Coordinator approval and WP-23/24/25 preflight are required first.
+
 ### WP-18 — Integrated acceptance and browser proof
 - Type / owner: test / Tester (`tester`).
 - Objective / ACs: verify AC-AMS-01…10 across actual API/editor/worker boundaries.
