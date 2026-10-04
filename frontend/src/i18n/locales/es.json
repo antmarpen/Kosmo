@@ -334,6 +334,81 @@
       "back": "Volver a las habilidades"
     }
   },
+  "mcps": {
+    "title": "Servidores MCP",
+    "description": "Servidores de Model Context Protocol a los que pueden conectarse tus agentes.",
+    "emptyTitle": "Aún no hay servidores MCP",
+    "emptyDescription": "Añade un servidor MCP para dar a tus agentes herramientas y contexto adicionales.",
+    "addFirst": "Añade tu primer servidor MCP",
+    "columns": {
+      "name": "Nombre",
+      "scope": "Ámbito",
+      "owner": "Propietario"
+    },
+    "scope": {
+      "personal": "Personal",
+      "group": "Grupo",
+      "global": "Global"
+    },
+    "delete": {
+      "title": "Eliminar servidor MCP",
+      "description": "El servidor MCP «{{name}}» se eliminará. Los agentes que lo referencien fallarán de forma visible cuando ya no exista. Esta acción no se puede deshacer."
+    },
+    "form": {
+      "createTitle": "Añadir servidor MCP",
+      "createDescription": "Configura cómo se conectan los agentes a este servidor MCP.",
+      "editTitle": "Editar servidor MCP",
+      "editDescription": "Actualiza los detalles de conexión. Los secretos guardados nunca se muestran; deja en blanco un secreto para conservarlo.",
+      "name": "Nombre",
+      "nameHint": "Hasta {{max}} caracteres.",
+      "namePlaceholder": "p. ej. Búsqueda en repositorios",
+      "transport": "Transporte",
+      "type": {
+        "stdio": "Comando local (stdio)",
+        "stdioHint": "Ejecuta el comando dentro del contenedor del agente.",
+        "http": "Endpoint HTTP",
+        "httpHint": "Se conecta a un servidor MCP por HTTP(S)."
+      },
+      "switchTitle": "¿Cambiar el transporte?",
+      "switchDescription": "Cambiar a {{type}} borrará el comando, los argumentos y las entradas del transporte actual.",
+      "switchConfirm": "Cambiar",
+      "command": "Comando",
+      "commandHint": "Un ejecutable disponible dentro del contenedor del agente, sin argumentos.",
+      "commandPlaceholder": "p. ej. npx",
+      "args": "Argumentos",
+      "argsHint": "Un argumento por línea.",
+      "argsPlaceholder": "p. ej. -y\n@acme/mcp-server",
+      "url": "URL",
+      "urlHint": "Dirección http(s) absoluta. Las credenciales van en cabeceras secretas, no en la URL.",
+      "urlPlaceholder": "https://example.com/mcp",
+      "entries": {
+        "envTitle": "Variables de entorno",
+        "headersTitle": "Cabeceras",
+        "addEnv": "Añadir variable de entorno",
+        "addHeader": "Añadir cabecera",
+        "nameEnv": "Nombre de la variable de entorno",
+        "nameHeader": "Nombre de la cabecera",
+        "value": "Valor",
+        "valuePlaceholder": "Introduce un valor",
+        "secret": "Secreto",
+        "remove": "Quitar la entrada",
+        "valueSet": "Establecido",
+        "valueNotSet": "Sin establecer",
+        "keepHint": "Déjalo en blanco para conservar el valor guardado.",
+        "empty": "Sin entradas. Añade una si este servidor necesita variables de entorno o cabeceras."
+      },
+      "errors": {
+        "commandInvalid": "Escribe un comando sin espacios. Pon los argumentos en líneas separadas.",
+        "urlInvalid": "Escribe una URL http(s) absoluta sin información de usuario.",
+        "nameInvalid": "Los nombres de entrada no pueden estar vacíos ni contener caracteres no válidos.",
+        "nameDuplicate": "Los nombres de las entradas deben ser únicos. Las cabeceras se comparan sin distinguir mayúsculas.",
+        "valueRequired": "Introduce un valor o quita la entrada.",
+        "keepAfterRename": "No se pueden conservar los secretos guardados tras renombrar el servidor. Introduce un valor nuevo para cada secreto conservado o quita la entrada."
+      },
+      "save": "Guardar servidor MCP",
+      "back": "Volver a los servidores MCP"
+    }
+  },
   "errors": {
     "generic": "Se produjo un error inesperado.",
     "node": {

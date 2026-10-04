@@ -9,6 +9,7 @@ import { TaskListPage, TaskDetailPage } from "@/features/tasks/TaskPages";
 import { EditorPage } from "@/features/workflows/editor/EditorPage";
 import { ProvidersPage } from "@/features/providers/ProvidersPage";
 import { SkillsPage } from "@/features/skills/SkillsPage";
+import { McpServersPage } from "@/features/mcp-servers/McpServersPage";
 import { WorkflowListPage } from "@/features/workflows/WorkflowListPage";
 
 export const appRoutes: RouteObject[] = [
@@ -26,6 +27,7 @@ export const appRoutes: RouteObject[] = [
       { path: "/applications", element: <PlaceholderPage /> },
       { path: "/providers", element: <ProvidersPage /> },
       { path: "/admin/skills", element: <SkillsPage /> },
+      { path: "/admin/mcps", element: <McpServersPage /> },
       { path: "*", element: <PlaceholderPage /> },
     ],
   },

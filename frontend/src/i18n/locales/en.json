@@ -334,6 +334,81 @@
       "back": "Back to skills"
     }
   },
+  "mcps": {
+    "title": "MCP servers",
+    "description": "Model Context Protocol servers your agents can connect to.",
+    "emptyTitle": "No MCP servers yet",
+    "emptyDescription": "Add an MCP server to give your agents extra tools and context.",
+    "addFirst": "Add your first MCP server",
+    "columns": {
+      "name": "Name",
+      "scope": "Scope",
+      "owner": "Owner"
+    },
+    "scope": {
+      "personal": "Personal",
+      "group": "Group",
+      "global": "Global"
+    },
+    "delete": {
+      "title": "Delete MCP server",
+      "description": "The MCP server “{{name}}” will be removed. Agents that reference it will fail visibly once it is gone. This action cannot be undone."
+    },
+    "form": {
+      "createTitle": "Add MCP server",
+      "createDescription": "Configure how agents connect to this MCP server.",
+      "editTitle": "Edit MCP server",
+      "editDescription": "Update the connection details. Stored secrets are never shown; leave a secret blank to keep it.",
+      "name": "Name",
+      "nameHint": "Up to {{max}} characters.",
+      "namePlaceholder": "e.g. Repository search",
+      "transport": "Transport",
+      "type": {
+        "stdio": "Local command (stdio)",
+        "stdioHint": "Runs the command inside the agent container.",
+        "http": "HTTP endpoint",
+        "httpHint": "Connects to an MCP server over HTTP(S)."
+      },
+      "switchTitle": "Switch transport?",
+      "switchDescription": "Switching to {{type}} clears the command, arguments and entries authored for the current transport.",
+      "switchConfirm": "Switch",
+      "command": "Command",
+      "commandHint": "An executable available inside the agent container, without arguments.",
+      "commandPlaceholder": "e.g. npx",
+      "args": "Arguments",
+      "argsHint": "One argument per line.",
+      "argsPlaceholder": "e.g. -y\n@acme/mcp-server",
+      "url": "URL",
+      "urlHint": "Absolute http(s) address. Credentials belong in secret headers, not the URL.",
+      "urlPlaceholder": "https://example.com/mcp",
+      "entries": {
+        "envTitle": "Environment variables",
+        "headersTitle": "Headers",
+        "addEnv": "Add environment variable",
+        "addHeader": "Add header",
+        "nameEnv": "Environment variable name",
+        "nameHeader": "Header name",
+        "value": "Value",
+        "valuePlaceholder": "Enter a value",
+        "secret": "Secret",
+        "remove": "Remove entry",
+        "valueSet": "Set",
+        "valueNotSet": "Not set",
+        "keepHint": "Leave blank to keep the stored value.",
+        "empty": "No entries. Add one if this server needs environment variables or headers."
+      },
+      "errors": {
+        "commandInvalid": "Enter a command without spaces. Put arguments on separate lines.",
+        "urlInvalid": "Enter an absolute http(s) URL without user information.",
+        "nameInvalid": "Entry names cannot be empty or contain invalid characters.",
+        "nameDuplicate": "Entry names must be unique. Header names are compared case-insensitively.",
+        "valueRequired": "Enter a value, or remove the entry.",
+        "keepAfterRename": "Stored secrets cannot be kept after renaming the server. Enter a new value for each kept secret, or remove the entry."
+      },
+      "save": "Save MCP server",
+      "back": "Back to MCP servers"
+    }
+  },
   "errors": {
     "generic": "An unexpected error occurred.",
     "node": {
