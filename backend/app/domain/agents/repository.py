@@ -4,6 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.agents.models import Agent
 from app.domain.identity.models import GroupMembership
+from app.domain.mcp_servers.models import McpServer
+from app.domain.skills.models import Skill
 
 
 class AgentRepository:
@@ -15,6 +17,18 @@ class AgentRepository:
 
     async def memberships(self, user_id: str) -> list[str]:
         return list((await self.db.scalars(select(GroupMembership.group_id).where(GroupMembership.user_id == user_id))).all())
+
+    async def visible_reference(self, kind: str, user_id: str, reference_id: str) -> bool:
+        model = {"mcp": McpServer, "skill": Skill}.get(kind)
+        if model is None:
+            return False
+        row = await self.db.get(model, reference_id)
+        if row is None or row.visibility == "personal" and row.owner_user_id != user_id:
+            return False
+        if row.visibility == "group":
+            groups = await self.memberships(user_id)
+            return row.group_id in groups
+        return row.visibility == "global" or row.visibility == "personal"
 
     async def visible_candidates(self, user_id: str, group_ids: list[str]) -> list[Agent]:
         clauses = [and_(Agent.visibility == "personal", Agent.owner_user_id == user_id), Agent.visibility == "global"]
