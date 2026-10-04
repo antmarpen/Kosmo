@@ -72,24 +72,7 @@ Kosmo has successfully completed the Phase 1 — Foundations and Execution Proof
   - D9: 12 passed.
   - Visibility: 9 passed (in-container).
 - **Accepted Residuals:**
-  - **WP-R2:** End-to-end Temporal history/replay assertion for MCP/provider secrets not built (covered by AR3-05 + WP-10 + WP-24).
-  - **WP-R3:** Partial coverage for central-edit/live-execution and long-name browser interaction.
-
-
-### Agent, MCP server, and Skill Catalogs & OpenCode 2 Runtime (2026-10-04)
-- **Feature:** First-class, scoped Agent, MCP server, and Skill catalogs with visibility mirroring provider configurations (personal/group/global).
-- **AI Node:** Reference-only AI node that selects an agent and inherits its model, reasoning effort, MCP servers, and skills, with node-level overrides allowed.
-- **Runtime:** OpenCode 2 runtime upgrade (`@opencode/cli@2.0.22`) with provider v2 auth bootstrap (the v2 `Credential.Value` API-key discriminator is `type:"key"`).
-- **Capability:** Reasoning effort (`effort`) support (D5).
-- **Migrations:** `0022_agent_catalogs`, `0023_provider_runtime_format`, `0024_provider_runtime_v2`, `0025_agent_reference_reset`.
-- **Verification State (Reported):**
-  - Backend: 482 passed / 62 skipped / 0 failed.
-  - Frontend: 507 passed; build green.
-  - v2 runtime auth + reasoning proven end-to-end.
-  - D9: 12 passed.
-  - Visibility: 9 passed (in-container).
-- **Accepted Residuals:**
-  - **WP-R2:** End-to-end Temporal history/replay assertion for MCP/provider secrets not built (covered by AR3-05 + WP-10 + WP-24).
+  - **WP-R2: RESOLVED** — `backend/tests/worker/test_secret_boundary_temporal.py` (opt-in) runs the production resolver + real v2 bootstrap under a Temporal workflow with a fixture MCP receiver; the sentinel reaches the runtime but is absent from the recorded history, the activity result and the safe DTO.
   - **WP-R3:** Partial coverage for central-edit/live-execution and long-name browser interaction.
 
 ### UI Refresh Implementation (2026-10-02)
