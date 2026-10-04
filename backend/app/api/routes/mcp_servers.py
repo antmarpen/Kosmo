@@ -1,7 +1,7 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -11,6 +11,57 @@ from app.domain.mcp_servers.service import McpServerService
 from shared.errors import ValidationFailedError
 
 router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
+
+
+class McpEntryResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    secret: bool
+    is_set: bool
+    value: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def remove_secret_value(cls, value):
+        if isinstance(value, dict) and value.get("secret") is True:
+            return {key: item for key, item in value.items() if key not in {"value", "ciphertext"}}
+        return value
+
+    @model_serializer(mode="wrap")
+    def serialize_secret_safely(self, handler):
+        data = handler(self)
+        if self.secret:
+            data.pop("value", None)
+        return data
+
+
+class StdioTransportResponse(BaseModel):
+    type: Literal["stdio"]
+    command: str
+    args: list[str]
+    env: list[McpEntryResponse]
+
+
+class HttpTransportResponse(BaseModel):
+    type: Literal["http"]
+    url: str
+    headers: list[McpEntryResponse]
+
+
+McpTransportResponse = Annotated[StdioTransportResponse | HttpTransportResponse, Field(discriminator="type")]
+
+
+class McpServerListResponse(BaseModel):
+    id: str
+    name: str
+    owner_user_id: str
+    visibility: str
+    group_id: str | None
+
+
+class McpServerResponse(McpServerListResponse):
+    transport: McpTransportResponse
+    updated_at: str | None
 
 
 def get_mcp_server_service(db: AsyncSession = Depends(get_db)) -> McpServerService:
@@ -69,22 +120,22 @@ def _body_values(body):
     return values
 
 
-@router.get("")
+@router.get("", response_model=list[McpServerListResponse])
 async def list_mcp_servers(user=Depends(get_current_user), service: McpServerService = Depends(get_mcp_server_service)):
     return await service.list_visible(user.id)
 
 
-@router.get("/{server_id}")
+@router.get("/{server_id}", response_model=McpServerResponse)
 async def get_mcp_server(server_id: str, user=Depends(get_current_user), service: McpServerService = Depends(get_mcp_server_service)):
     return await service.get_visible(user.id, server_id)
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, response_model=McpServerResponse)
 async def create_mcp_server(body: McpCreate, user=Depends(get_current_user), service: McpServerService = Depends(get_mcp_server_service)):
     return await service.create(user, body.model_dump(exclude_none=True))
 
 
-@router.patch("/{server_id}")
+@router.patch("/{server_id}", response_model=McpServerResponse)
 async def update_mcp_server(server_id: str, body: McpPatch, user=Depends(get_current_user), service: McpServerService = Depends(get_mcp_server_service)):
     return await service.update(user, server_id, _body_values(body))
 

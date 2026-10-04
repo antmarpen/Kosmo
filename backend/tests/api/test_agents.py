@@ -41,6 +41,9 @@ def test_agents_api_crud_nullable_patch_and_extra_fields_rejected():
     created = client.post("/agents", json={"name": "Agent", "model": "provider/model", "reasoning_effort": "effort-x", "instructions": "Markdown"})
     assert created.status_code == 201, created.text
     agent_id = created.json()["id"]
+    listed = client.get("/agents").json()
+    assert listed[0]["model"] == "provider/model"
+    assert set(listed[0]) == {"id", "name", "owner_user_id", "visibility", "group_id", "runtime", "model", "reasoning_effort", "instructions", "mcp_ids", "skill_ids", "updated_at"}
     assert client.patch(f"/agents/{agent_id}", json={"reasoning_effort": None}).json()["reasoning_effort"] is None
     assert client.get(f"/agents/{agent_id}").json()["instructions"] == "Markdown"
     assert client.post("/agents", json={"name": "No", "model": "m", "agent": {}}).status_code == 422

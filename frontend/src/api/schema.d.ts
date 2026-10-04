@@ -716,6 +716,33 @@ export interface components {
             /** Skill Ids */
             skill_ids?: string[] | null;
         };
+        /** AgentResponse */
+        AgentResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner User Id */
+            owner_user_id: string;
+            /** Visibility */
+            visibility: string;
+            /** Group Id */
+            group_id: string | null;
+            /** Runtime */
+            runtime: string;
+            /** Model */
+            model: string;
+            /** Reasoning Effort */
+            reasoning_effort: string | null;
+            /** Instructions */
+            instructions: string;
+            /** Mcp Ids */
+            mcp_ids: string[];
+            /** Skill Ids */
+            skill_ids: string[];
+            /** Updated At */
+            updated_at: string | null;
+        };
         /** Body_replace_opencode_config_providers_opencode_config_put */
         Body_replace_opencode_config_providers_opencode_config_put: {
             /** Opencode Json */
@@ -833,6 +860,18 @@ export interface components {
             /** Headers */
             headers?: components["schemas"]["EntryWrite"][];
         };
+        /** HttpTransportResponse */
+        HttpTransportResponse: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "http";
+            /** Url */
+            url: string;
+            /** Headers */
+            headers: components["schemas"]["McpEntryResponse"][];
+        };
         /** HumanInput */
         HumanInput: {
             /** Answer */
@@ -857,6 +896,17 @@ export interface components {
             /** Transport */
             transport: components["schemas"]["StdioTransport"] | components["schemas"]["HttpTransport"];
         };
+        /** McpEntryResponse */
+        McpEntryResponse: {
+            /** Name */
+            name: string;
+            /** Secret */
+            secret: boolean;
+            /** Is Set */
+            is_set: boolean;
+            /** Value */
+            value?: string | null;
+        };
         /** McpPatch */
         McpPatch: {
             /** Name */
@@ -867,6 +917,36 @@ export interface components {
             group_id?: string | null;
             /** Transport */
             transport?: (components["schemas"]["StdioTransport"] | components["schemas"]["HttpTransport"]) | null;
+        };
+        /** McpServerListResponse */
+        McpServerListResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner User Id */
+            owner_user_id: string;
+            /** Visibility */
+            visibility: string;
+            /** Group Id */
+            group_id: string | null;
+        };
+        /** McpServerResponse */
+        McpServerResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner User Id */
+            owner_user_id: string;
+            /** Visibility */
+            visibility: string;
+            /** Group Id */
+            group_id: string | null;
+            /** Transport */
+            transport: components["schemas"]["StdioTransportResponse"] | components["schemas"]["HttpTransportResponse"];
+            /** Updated At */
+            updated_at: string | null;
         };
         /** ModelVerificationRequest */
         ModelVerificationRequest: {
@@ -948,6 +1028,25 @@ export interface components {
             /** Instructions */
             instructions?: string | null;
         };
+        /** SkillResponse */
+        SkillResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner User Id */
+            owner_user_id: string;
+            /** Visibility */
+            visibility: string;
+            /** Group Id */
+            group_id: string | null;
+            /** Description */
+            description: string;
+            /** Instructions */
+            instructions: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
         /** StdioTransport */
         StdioTransport: {
             /**
@@ -961,6 +1060,20 @@ export interface components {
             args: string[];
             /** Env */
             env?: components["schemas"]["EntryWrite"][];
+        };
+        /** StdioTransportResponse */
+        StdioTransportResponse: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "stdio";
+            /** Command */
+            command: string;
+            /** Args */
+            args: string[];
+            /** Env */
+            env: components["schemas"]["McpEntryResponse"][];
         };
         /** TaskCreated */
         TaskCreated: {
@@ -1145,7 +1258,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AgentResponse"][];
                 };
             };
         };
@@ -1169,7 +1282,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AgentResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1200,7 +1313,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AgentResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1264,7 +1377,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AgentResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1614,7 +1727,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["McpServerListResponse"][];
                 };
             };
         };
@@ -1638,7 +1751,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["McpServerResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1669,7 +1782,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["McpServerResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1733,7 +1846,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["McpServerResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2044,7 +2157,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SkillResponse"][];
                 };
             };
         };
@@ -2068,7 +2181,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SkillResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2099,7 +2212,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SkillResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2163,7 +2276,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SkillResponse"];
                 };
             };
             /** @description Validation Error */

@@ -52,9 +52,15 @@ def test_skills_api_crud_and_invalid_body_does_not_echo_instructions():
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_skill_service] = lambda: service
     client = TestClient(app)
+    schema = app.openapi()
+    assert schema["paths"]["/skills"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]["type"] == "array"
     created = client.post("/skills", json={"name": "Notes", "instructions": "Keep me"})
     assert created.status_code == 201
     skill_id = created.json()["id"]
+    listed = client.get("/skills")
+    assert listed.status_code == 200
+    assert listed.json()[0]["instructions"] == "Keep me"
+    assert set(listed.json()[0]) == {"id", "name", "owner_user_id", "visibility", "group_id", "description", "instructions", "updated_at"}
     assert client.get("/skills/" + skill_id).json()["instructions"] == "Keep me"
     assert client.patch("/skills/" + skill_id, json={"description": "Updated"}).json()["instructions"] == "Keep me"
     assert client.delete("/skills/" + skill_id).status_code == 204

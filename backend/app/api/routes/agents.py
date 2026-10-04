@@ -11,6 +11,21 @@ from shared.errors import ValidationFailedError
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
+class AgentResponse(BaseModel):
+    id: str
+    name: str
+    owner_user_id: str
+    visibility: str
+    group_id: str | None
+    runtime: str
+    model: str
+    reasoning_effort: str | None
+    instructions: str
+    mcp_ids: list[str]
+    skill_ids: list[str]
+    updated_at: str | None
+
+
 def get_agent_service(db: AsyncSession = Depends(get_db)) -> AgentService:
     return AgentService(AgentRepository(db))
 
@@ -49,22 +64,22 @@ def _patch_values(body: AgentPatch) -> dict:
     return values
 
 
-@router.get("")
+@router.get("", response_model=list[AgentResponse])
 async def list_agents(user=Depends(get_current_user), service: AgentService = Depends(get_agent_service)):
     return await service.list_visible(user.id)
 
 
-@router.get("/{agent_id}")
+@router.get("/{agent_id}", response_model=AgentResponse)
 async def get_agent(agent_id: str, user=Depends(get_current_user), service: AgentService = Depends(get_agent_service)):
     return await service.get_visible(user.id, agent_id)
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, response_model=AgentResponse)
 async def create_agent(body: AgentCreate, user=Depends(get_current_user), service: AgentService = Depends(get_agent_service)):
     return await service.create(user, body.model_dump(exclude_none=True))
 
 
-@router.patch("/{agent_id}")
+@router.patch("/{agent_id}", response_model=AgentResponse)
 async def update_agent(agent_id: str, body: AgentPatch, user=Depends(get_current_user), service: AgentService = Depends(get_agent_service)):
     return await service.update(user, agent_id, _patch_values(body))
 
