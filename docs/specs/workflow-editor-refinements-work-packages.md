@@ -339,15 +339,18 @@ Status: AR3-01/02/03/04/06 IN PROGRESS→RESOLVED; AR3-04/05/06 QUEUED.
 - **AR3-01/02/03/04/06 — RESOLVED** (re-review confirmed). Commits `413691d`,
   `b2de476`, `6a519da`, `0d38eb9`, AR3-06 dialog commit (`styled confirmation +
   LoadingControl`).
-- **AR3-05 — implementation landed, behavioral proof BLOCKED BY ENVIRONMENT.**
+- **AR3-05 — implementation landed; behavioral proof executed.**
   Bounded validation diagnostics and an opaque `execute_opaque_node` /
   `validate_persisted_start_inputs` path gated by the `opaque-task-inputs-v1`
-  Temporal patch are in place (commit `66d61ad`); the launch and authored E2E
-  journeys still pass. The required sentinel/history and legacy-replay proofs
-  were authored (`backend/tests/worker/test_task_input_secrecy.py`) but the
-  in-process Temporal test server **hangs in this sandbox** (Windows host and the
-  backend container), so the tests are opt-in
-  (`KOSMO_TEMPORAL_INTEGRATION=1`) and were not executed. The architect requires
-  this proof for the security change: **run it where the Temporal test server can
-  start (or in CI)** before final approval.
+  Temporal patch are in place (commit `66d61ad`). The sentinel/history and replay
+  proofs (`backend/tests/worker/test_task_input_secrecy.py`) **pass in the
+  in-process Temporal test server inside the backend container** (2 passed):
+  the sentinel is absent from workflow/activity arguments and from the recorded
+  history, and a recorded history replays. The tests are opt-in
+  (`KOSMO_TEMPORAL_INTEGRATION=1`) because the test server can hang on a bare
+  Windows host; the explicit pre-patch legacy branch still needs a history
+  recorded before the patch marker (documented residual).
+- **Responsive evidence — DONE.** `frontend/e2e/responsive.e2e.ts` asserts no
+  horizontal overflow at 1280px and 768px on the editor and at 375px on the task
+  form (2 passed).
 - Also fixed a flaky `ProviderModelSelect` full-suite test (`97562e1`).
