@@ -486,6 +486,8 @@
       "disconnected": "The workflow contains disconnected nodes.",
       "draft_not_found": "Draft not found.",
       "draft_revision_conflict": "This draft was changed elsewhere. Reload before saving.",
+      "delete_in_progress": "This workflow has tasks in progress. Stop them or wait before deleting.",
+      "delete_tasks_exist": "This workflow has {{count}} task(s). Enable \"also delete its tasks\" to delete it.",
       "duplicate_node_id": "The workflow has duplicate node IDs.",
       "edge_node_missing": "A workflow edge references a missing node.",
       "end_count": "The workflow must have one end node.",

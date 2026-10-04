@@ -96,6 +96,12 @@ class FakeRepository:
                 counts[draft["workflow_id"]] = counts.get(draft["workflow_id"], 0) + 1
         return counts
 
+    async def count_tasks_by_workflow(self):
+        return {}
+
+    async def task_counts(self, workflow_id):
+        return (0, 0)
+
     async def lock_workflow(self, workflow_id):
         return await self.get_workflow(workflow_id)
 

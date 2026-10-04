@@ -1,9 +1,16 @@
+import logging
+import os
+import shutil
+from pathlib import Path
+
 from app.domain.workflows.validation import validate_workflow
 from datetime import datetime, timedelta, timezone
 from pydantic import ValidationError
 from shared.errors import ConflictError, ErrorDetail, NotFoundError, PermissionDeniedError, ValidationFailedError
 from shared.graph.schema import AiNode, WorkflowDefinition, WorkflowNode
 from shared.graph.output_contract import normalize_validation_contracts
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowService:
@@ -181,25 +188,54 @@ class WorkflowService:
                 for version in await self.repository.list_versions(workflow_id, limit, offset)]
 
     async def list_workflows(self, author_id):
-        """List view with the caller's own draft count per workflow.
+        """List view with the caller's own draft count and the workflow task counts.
 
-        Drafts are author-private everywhere else, so the reported count
-        covers only drafts owned by `author_id`; the repository resolves all
-        counts in one grouped query instead of one query per workflow.
+        Drafts are author-private everywhere else, so the reported draft count
+        covers only drafts owned by `author_id`; the repository resolves draft
+        and task counts in grouped queries instead of one query per workflow.
         """
         draft_counts = await self.repository.count_drafts_by_author(author_id)
+        task_counts = await self.repository.count_tasks_by_workflow()
         result = []
         for workflow in await self.repository.list_workflows():
             workflow_id = _value(workflow, "id")
             active = await self.repository.get_active_version(workflow_id)
-            result.append(self._workflow_view(workflow, active, draft_counts.get(workflow_id, 0)))
+            total, active_tasks = task_counts.get(workflow_id, (0, 0))
+            result.append(self._workflow_view(workflow, active, draft_counts.get(workflow_id, 0),
+                                              total, active_tasks))
         return result
 
     async def get_workflow(self, workflow_id):
         workflow = await self.repository.get_workflow(workflow_id)
         if workflow is None:
             raise NotFoundError("errors.workflow.not_found")
-        return self._workflow_view(workflow, await self.repository.get_active_version(workflow_id))
+        total, active_tasks = await self.repository.task_counts(workflow_id)
+        return self._workflow_view(workflow, await self.repository.get_active_version(workflow_id),
+                                   task_count=total, in_progress_task_count=active_tasks)
+
+    async def delete_workflow(self, workflow_id, delete_tasks: bool):
+        """Delete a workflow, optionally with its tasks.
+
+        One transaction: locks the workflow row, blocks while any task is in
+        progress, and (when requested) deletes the workflow's tasks before the
+        workflow itself. Task storage is removed after commit, best-effort and
+        idempotently.
+        """
+        workflow = await self.repository.lock_workflow(workflow_id)
+        if workflow is None:
+            raise NotFoundError("errors.workflow.not_found")
+        total, in_progress = await self.repository.task_counts(workflow_id)
+        if in_progress:
+            raise ConflictError("errors.workflow.delete_in_progress", {"count": in_progress})
+        if total and not delete_tasks:
+            raise ConflictError("errors.workflow.delete_tasks_exist", {"count": total})
+        task_ids = await self.repository.list_task_ids(workflow_id) if delete_tasks else []
+        if task_ids:
+            await self.repository.delete_tasks(workflow_id)
+        await self.repository.delete_workflow(workflow_id)
+        await self.repository.db.commit()
+        _remove_task_storage(task_ids)
+        return {"deleted_tasks": len(task_ids)}
 
     async def create_draft(self, workflow_id, author_id):
         if await self.repository.get_workflow(workflow_id) is None:
@@ -256,11 +292,12 @@ class WorkflowService:
         return []
 
     @staticmethod
-    def _workflow_view(workflow, active, draft_count=0):
+    def _workflow_view(workflow, active, draft_count=0, task_count=0, in_progress_task_count=0):
         return {"id": _value(workflow, "id"), "name": _value(workflow, "name"),
                 "publication_revision": _value(workflow, "publication_revision"),
                 "active_version": None if active is None else {"id": _value(active, "id"), "version": _value(active, "version"), "definition": _value(active, "definition")},
-                "draft_count": draft_count}
+                "draft_count": draft_count, "task_count": task_count,
+                "in_progress_task_count": in_progress_task_count}
 
 
 def _value(row, key):
@@ -275,3 +312,23 @@ def _normalized_definition(definition: WorkflowDefinition) -> WorkflowDefinition
     name is what both the workflow row and the published version carry.
     """
     return definition.model_copy(update={"name": definition.name.strip()})
+
+
+def _remove_task_storage(task_ids):
+    """Best-effort, idempotent removal of the deleted tasks' storage directories.
+
+    Only immediate children of the resolved task-storage root are removed so a
+    malformed id can never escape the root.
+    """
+    if not task_ids:
+        return
+    root = Path(os.getenv("KOSMO_TASK_STORAGE_ROOT", "/var/lib/kosmo/tasks")).resolve()
+    for task_id in task_ids:
+        try:
+            target = (root / task_id).resolve()
+            if target.parent != root:
+                logger.warning("Skipping unsafe task storage path for %s", task_id)
+                continue
+            shutil.rmtree(target, ignore_errors=True)
+        except OSError:
+            logger.warning("Could not remove task storage for %s", task_id)

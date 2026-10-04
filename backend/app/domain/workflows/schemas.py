@@ -47,6 +47,16 @@ class WorkflowResponse(BaseModel):
     active_version: ActiveVersionResponse | None
     """Drafts of this workflow owned by the requesting user (drafts are author-private)."""
     draft_count: int = 0
+    """Total tasks for this workflow."""
+    task_count: int = 0
+    """Tasks in a non-terminal state (queued/allocating/running/waiting_for_input/stopping)."""
+    in_progress_task_count: int = 0
+
+
+class DeleteWorkflowRequest(BaseModel):
+    """Options for deleting a workflow."""
+
+    delete_tasks: bool = False
 
 
 class WorkflowCreatedResponse(WorkflowResponse):

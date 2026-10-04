@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_roles
 from app.core.db import get_db
 from app.domain.workflows.repository import WorkflowRepository
-from app.domain.workflows.schemas import ActivateWorkflowRequest, CreateWorkflowRequest, PublishDraftRequest, ScriptAnalysisRequest, ScriptAnalysisResponse, WorkflowCreatedResponse, WorkflowDraftMetadata, WorkflowDraftResponse, WorkflowDraftSave, WorkflowResponse, WorkflowVersionResponse, WorkflowVersionSummary
+from app.domain.workflows.schemas import ActivateWorkflowRequest, CreateWorkflowRequest, DeleteWorkflowRequest, PublishDraftRequest, ScriptAnalysisRequest, ScriptAnalysisResponse, WorkflowCreatedResponse, WorkflowDraftMetadata, WorkflowDraftResponse, WorkflowDraftSave, WorkflowResponse, WorkflowVersionResponse, WorkflowVersionSummary
 from app.domain.workflows.service import WorkflowService
 from shared.graph.script_contract import analyze_script_body
 
@@ -50,6 +50,15 @@ async def list_workflows(user=Depends(get_current_user), db: AsyncSession = Depe
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
 async def get_workflow(workflow_id: str, _user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await service(db).get_workflow(workflow_id)
+
+
+@router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT,
+               dependencies=[Depends(require_roles("admin", "builder"))])
+async def delete_workflow(workflow_id: str, body: DeleteWorkflowRequest | None = None,
+                          db: AsyncSession = Depends(get_db)):
+    """Delete a workflow; with `delete_tasks` also delete its tasks (blocked while a task runs)."""
+    await service(db).delete_workflow(workflow_id, bool(body and body.delete_tasks))
+    return None
 
 
 @router.get("/{workflow_id}/versions", response_model=list[WorkflowVersionSummary])

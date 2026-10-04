@@ -1,4 +1,7 @@
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
+
+# Task states that are terminal; any other state counts as "in progress".
+TERMINAL_TASK_STATES = {"stopped", "failed", "success"}
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,6 +113,39 @@ class WorkflowRepository:
             .group_by(WorkflowDraft.workflow_id)
         )).all()
         return {workflow_id: count for workflow_id, count in rows}
+
+    async def count_tasks_by_workflow(self):
+        """Grouped per-workflow task totals and in-progress totals in one query."""
+        from app.domain.tasks.models import Task
+        rows = (await self.db.execute(
+            select(Task.workflow_id, Task.state, func.count()).group_by(Task.workflow_id, Task.state)
+        )).all()
+        result: dict[str, tuple[int, int]] = {}
+        for workflow_id, state, count in rows:
+            total, active = result.get(workflow_id, (0, 0))
+            result[workflow_id] = (total + count, active + (0 if state in TERMINAL_TASK_STATES else count))
+        return result
+
+    async def task_counts(self, workflow_id):
+        """Return ``(total, in_progress)`` task counts for one workflow."""
+        from app.domain.tasks.models import Task
+        rows = (await self.db.execute(
+            select(Task.state, func.count()).where(Task.workflow_id == workflow_id).group_by(Task.state)
+        )).all()
+        total = sum(count for _, count in rows)
+        active = sum(count for state, count in rows if state not in TERMINAL_TASK_STATES)
+        return total, active
+
+    async def list_task_ids(self, workflow_id):
+        from app.domain.tasks.models import Task
+        return list((await self.db.scalars(select(Task.id).where(Task.workflow_id == workflow_id))).all())
+
+    async def delete_tasks(self, workflow_id):
+        from app.domain.tasks.models import Task
+        await self.db.execute(delete(Task).where(Task.workflow_id == workflow_id))
+
+    async def delete_workflow(self, workflow_id):
+        await self.db.execute(delete(Workflow).where(Workflow.id == workflow_id))
 
     async def get_draft(self, workflow_id, draft_id):
         return await self.db.scalar(select(WorkflowDraft).where(WorkflowDraft.id == draft_id, WorkflowDraft.workflow_id == workflow_id))

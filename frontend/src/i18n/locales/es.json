@@ -486,6 +486,8 @@
       "disconnected": "El flujo contiene nodos desconectados.",
       "draft_not_found": "No se encontró el borrador.",
       "draft_revision_conflict": "Este borrador se modificó en otro lugar. Vuelve a cargarlo antes de guardar.",
+      "delete_in_progress": "Este flujo tiene tareas en curso. Páralas o espera antes de borrarlo.",
+      "delete_tasks_exist": "Este flujo tiene {{count}} tarea(s). Activa \"borrar también sus tareas\" para eliminarlo.",
       "duplicate_node_id": "El flujo contiene IDs de nodo duplicados.",
       "edge_node_missing": "Una conexión referencia un nodo inexistente.",
       "end_count": "El flujo debe tener un nodo final.",
