@@ -1,12 +1,17 @@
 # Agent, MCP server, and skill catalogs — work packages (execution record)
 
-Status: **Planned; not implemented or verified** (2026-10-04).
+Status: **In progress** (2026-10-04). WP-02/03/04 committed; WP-01 resolved
+on the approved v2 path. Remaining packages, including WP-19…25, are planned.
 Contract: `docs/specs/agent-mcp-skills.md`, approved 2026-10-04.
 Owner of execution, delegation, integration and scope questions: coordinator.
 Architect planning only; no application code or database changes were made.
 
 ## Coordinator decisions
 
+- **2026-10-04 — Runtime upgrade APPROVED.** Replace `opencode-ai@1.18.33`
+  with `@opencode/cli@2.0.22` and rework provider credential injection for the
+  v2 auth store. This is part of this increment, not a separate feature. The
+  exact auth array schema/bootstrap mechanism remains the bounded WP-19 gate.
 - **2026-10-04 — Catalog authorization parity CONFIRMED.** The three catalogs
   mirror the provider-configuration policy exactly: any authenticated user may
   create personal entries; group creation requires admin or a `group_manager`
@@ -245,16 +250,23 @@ unless separately authorized by the coordinator.
 | WP-06 | Reference-only AI schema | development / developer | WP-01 |
 | WP-07 | Worker-local effective catalog resolver | development / developer | WP-03, WP-04, WP-05, WP-06 |
 | WP-08 | Runtime and secrecy tests first | test / tester | WP-01, WP-07 |
-| WP-09 | ACP model/reasoning/transport delivery | development / developer | WP-08 |
-| WP-10 | Live AI session integration and safe diagnostics | development / developer | WP-07, WP-08, WP-09 |
+| WP-09 | ACP model/reasoning/transport delivery | development / developer | WP-08, WP-21, WP-20 adapter-test handoff |
+| WP-10 | Live AI session integration and safe diagnostics | development / developer | WP-07, WP-08, WP-09, WP-24 |
 | WP-11 | Typed frontend catalog and override state | development / developer | WP-05, WP-06 |
 | WP-12 | Shared catalog controls and safe Markdown | design / designer | WP-11 |
 | WP-13 | Skill catalog screen | design / designer | WP-03, WP-12 |
 | WP-14 | MCP catalog screen | design / designer | WP-04, WP-13 |
 | WP-15 | Agent catalog screen | design / designer | WP-05, WP-14 |
 | WP-16 | AI reference and override properties | design / designer | WP-11, WP-12, WP-15 |
-| WP-17 | Destructive workflow reset and reference reseed | development / developer | WP-02, WP-05, WP-06, WP-10, WP-16 |
-| WP-18 | Integrated acceptance and browser proof | test / tester | WP-01…WP-17 |
+| WP-17 | Destructive workflow reset and reference reseed | development / developer | WP-02, WP-05, WP-06, WP-10, WP-16, WP-23…25 preflight |
+| WP-18 | Integrated acceptance and browser proof | test / tester | WP-01…WP-17, WP-19…25 |
+| WP-19 | Pin v2 auth bootstrap and conversion contract | development / developer | WP-01 (resolved) |
+| WP-20 | V2 provider/runtime contract tests first | test / tester | WP-19 accepted evidence |
+| WP-21 | Pinned v2 runtime image and ACP launch compatibility | development / developer | WP-19, WP-20 RED |
+| WP-22 | V2 provider storage, upload and candidate contracts | development / developer | WP-19, WP-20 RED |
+| WP-23 | Encrypted v1 provider-data conversion and cutover tooling | development / developer | WP-22 |
+| WP-24 | Worker-local v2 auth bootstrap for all agent sessions | development / developer | WP-21, WP-22, WP-23 disposable proof |
+| WP-25 | Provider frontend v2 auth upload compatibility | development / developer | WP-22, WP-11 generated-client handoff |
 
 ### WP-01 — OpenCode delivery capability proof
 - Type / owner: development / Developer (`developer`).
@@ -287,9 +299,12 @@ unless separately authorized by the coordinator.
 #### WP-01 results
 
 - **Status:** Live ACP initialization, model-dependent effort selection and
-  application, live skill prompt receipt, and HTTP MCP handshake are proven on
+  application, live skill prompt receipt, and HTTP/stdio MCP handshake are proven on
   scratch OpenCode 2.0.22. The v1 pin did not advertise effort in its observed
-  default session. Stdio fixture handshake remains unproven.
+  default session. **Resolved: owner approved v2.0.22 on 2026-10-04.** The final
+  marker probe below proves stdio startup, initialize receipt and env delivery.
+  Auth format/bootstrap is a new WP-19 gate, not a reopening of WP-01. Backend
+  provider-specific reasoning payload mapping remains a later live verification.
 - **Part A — source/version/release check:** `backend/docker/opencode/Dockerfile`
   installs official npm package `opencode-ai@1.18.33` globally, not a GitHub
   binary. Ran `npm view opencode-ai version` and `npm view opencode-ai dist-tags
@@ -543,6 +558,10 @@ unless separately authorized by the coordinator.
   checks use service boundaries where appropriate and do not freeze resolutions.
 - Dependencies / ownership: WP-01 validates reasoning contract; owns shared
   schema and associated fixtures. WP-17 later owns seed; do not race seed edits.
+  WP-01 is resolved on v2; no auth/image gate is needed for this pure schema work.
+  Retain bounded arbitrary runtime values, not a global low/high/max enum.
+  Omitted node effort inherits; null clears the override; effective null causes
+  no effort RPC. Explicit `default` is a requested runtime option, not inheritance.
 - Skills: `test-driven-development`, `python-testing-patterns`,
   `verification-before-completion`.
 - Tests / command: RED missing ID, legacy rejection, UUID/delta overlap/duplicate
@@ -568,6 +587,9 @@ unless separately authorized by the coordinator.
   after permission checks, no secret repr/logs. Return safe keyed failure kinds.
 - Dependencies / ownership: WP-03/04/05/06; owns new resolver/tests. Do not edit
   `ai_node.py` (WP-10 owns integration).
+  Keep catalog resolution separate from provider credentials; WP-22/24 own the
+  provider bundle. Both are ephemeral activity-local values and neither may be
+  returned by a new resolution activity or attached to the authored node.
 - Skills: `test-driven-development`, `python-design-patterns`,
   `python-testing-patterns`, `verification-before-completion`.
 - Tests / command: RED→GREEN precedence/order, all delta edge cases, agent edits,
@@ -616,7 +638,19 @@ unless separately authorized by the coordinator.
   reasoning using WP-01's discovered capability path after model selection;
   unsupported requested value/capability blocks safely. Map stdio/http catalog
   data to ACP server union; inspect initialize capabilities, do not discard servers.
-- Dependencies / ownership: WP-08; owns adapter only. WP-10 runs afterward because
+  Consume the model-set response's current `configOptions` (and relevant updates),
+  not stale session/new options. Locate the unique advertised select option in
+  category `thought_level` (v2 advertises id `effort`); use its actual id/value.
+  Missing/ambiguous option, unadvertised requested value, rejected RPC or returned
+  currentValue mismatch must block with safe keyed unsupported/configuration
+  errors before prompt delivery. Effective null/omission makes no effort call.
+  Do not translate `medium` to `high`, encode effort in a prompt or silently drop
+  it. A model string containing `#variant` stays an opaque advertised model value;
+  explicit effort, when requested, is applied afterward. No guessed variant
+  expansion. `mode` is out of scope: retain runtime build default; do not add
+  authoring fields or RPCs to toggle plan/build. These are not reasoning values.
+- Dependencies / ownership: WP-08, WP-21 and WP-20 adapter RED handoff;
+  owns adapter only. WP-10 runs afterward because
   diagnostic/event boundary changes may also touch adapter normalization.
 - Skills: `test-driven-development`, `python-testing-patterns`,
   `verification-before-completion`.
@@ -645,6 +679,9 @@ unless separately authorized by the coordinator.
   Safe localized resolution/unsupported-option errors survive task reporting.
 - Dependencies / ownership: WP-07/08/09; owns activity edits and transferred tests;
   serialize adapter edits after WP-09. No locale edits (WP-12 owns error messages).
+  Also requires WP-24: preserve the new v2 provider bundle/bootstrap, not v1 file
+  injection. WP-24 finishes and hands off `ai_node.py`/`agent.py` before WP-10
+  edits them. Provider and MCP sentinels share diagnostic/event secrecy coverage.
 - Skills: `test-driven-development`, `python-design-patterns`,
   `python-testing-patterns`, `verification-before-completion`;
   `systematic-debugging` for regression failures.
@@ -809,7 +846,7 @@ unless separately authorized by the coordinator.
   with AC-AMS-03/06 reference workflow integration.
 - Included / exclusions: destructive migration, seed update, obsolete fixture
   cleanup and cutover procedure; do not preserve embedded-agent definitions.
-- Files: proposed `backend/alembic/versions/0023_agent_reference_reset.py`,
+- Files: proposed `backend/alembic/versions/0024_agent_reference_reset.py`,
   `backend/scripts/seed.py`, proposed migration/seed tests under
   `backend/tests/domain/`; update this record with operational evidence only.
 - Changes / contracts: explicitly reset all workflow authoring/execution DB data:
@@ -826,6 +863,9 @@ unless separately authorized by the coordinator.
   both steps belong to the cutover, not an optional forgotten manual follow-up.
 - Dependencies / ownership: WP-02/05/06/10/16 and integrated preflight. Sole new
   reset migration/seed owner. Allocate migration head after WP-02, serialize.
+  WP-23 now owns proposed migration 0023; verify the actual Alembic head before
+  allocation. WP-23 provider conversion and WP-24/25 verification precede the
+  target reset. Provider rows/ciphertexts/version tags must survive D8 unchanged.
 - Skills: `test-driven-development`, `python-testing-patterns`,
   `verification-before-completion`.
 - Tests / commands: disposable PostgreSQL populated with published versions,
@@ -863,6 +903,11 @@ unless separately authorized by the coordinator.
 - Dependencies / ownership: all prior packages, clean cutover on disposable/dev
   test stack. Own E2E tests; no production fixes except coordinator-assigned
   remediation packages. Update stale old inline-agent journeys explicitly.
+  Includes WP-19…25: prove v2 version, authenticated custom-provider ACP model
+  selection, explicit effort success/unsupported blocking, candidate upload →
+  discovery → verification → save → task execution, API-key/OAuth conversion as
+  supported by WP-19, and provider/MCP sentinels absent from histories/replay/logs.
+  Auth export/import alone or `models` output is not ACP authentication proof.
 - Skills: `test-driven-development` for new integration regressions,
   `python-testing-patterns`, `verification-before-completion`,
   `systematic-debugging` for failures; `web-design-guidelines` for targeted UI review.
@@ -876,13 +921,307 @@ unless separately authorized by the coordinator.
 - Risks: worker reload requires restart; tests with OpenCode/provider credentials
   are not safe to run with arbitrary external tool destinations.
 
+## Runtime/auth re-plan — approved 2026-10-04
+
+This is **new work in the same plan**, WP-19…25, not a second feature or a
+separate execution workflow. It is a prerequisite lane for runtime integration,
+not for independent catalog CRUD/schema/UI work. Existing WP-02/03/04 stay closed;
+WP-01 stays resolved on the v2 path. Existing edits to this living record were
+preserved. None of these new packages has been implemented by this re-plan.
+
+### Source evidence and remaining gate
+
+- Current Dockerfile still installs `opencode-ai@1.18.33`; Compose builds the
+  profile-gated `opencode` service and the worker uses `kosmo-opencode:local`.
+- `agent.py` uses non-root UID 10001, read-only rootfs, tmpfs config/data/state/
+  cache, socket stdin file injection, then `exec_create(["opencode", "acp"])`.
+  Its present injector writes a v1 object to the legacy `auth.json` location.
+- Provider service parsing, candidate decoding and proof redemption all assume
+  auth is a dict; routes' `CandidateConfig.auth` and `_pair_validator` do too.
+  The handler reads singular `provider` and `options.apiKey`. Changing only the
+  upload validator would silently discard array auth downstream. Frontend
+  `providerFile.ts` rejects array roots; `ProviderWizard.tsx` types auth as Config.
+- `provider_verify.py` resolves stored/candidate credentials inside activities
+  and calls the same session factory as AI nodes. Preserve this shared seam,
+  operation TTL/purpose/single-use/exact-pair proof and safe activity result DTOs.
+- Graph project `C-Develop-Proyectos-Kosmo`, full generation
+  `2026-10-04T12:01:37Z`, was consulted. Exact adapter/loader snippets and a depth-1
+  bidirectional loader trace confirm `run_ai_node` → loader → provider service.
+  Candidate lookup was provisional (100/119 results, not an exhaustive audit).
+  Coverage of 14 relevant paths reported metadata_changed, with a parse gap at
+  ProviderWizard.test.tsx:35; targeted current source reads, including that line,
+  were used instead. This is bounded evidence, not a complete call-chain audit.
+- The exact v2 auth array entry schema, writable auth-store paths, inline-key
+  conversion, OAuth compatibility and custom-provider ACP eligibility are **not
+  established by this planning session**. WP-19 must produce the contract before
+  downstream work is assigned. Do not copy the operator's live auth store.
+
+### Fixed cutover/security contracts
+
+- Native v2 uploads use object `opencode.json` (`providers`) and optional array
+  `auth.json` (the upload filename remains stable; its contents are an import
+  payload, not a file to plant at the old auth path). WP-19 fixes entry fields.
+  No simultaneous v1/v2 production runtime or automatic v1 fallback.
+- Store encrypted config/auth bytes with an explicit format marker, proposed
+  `runtime_format` values `opencode-v1` / `opencode-v2`. Existing rows receive v1
+  through an additive schema migration; new saves/candidates must be v2. Secrets
+  and store databases are never API metadata. Use one activity-local bundle of
+  config bytes and optional auth-import bytes; never put it in node definitions,
+  workflow/activity arguments/results/failures, checkpoints or Temporal history.
+- Format conversion is an explicit maintenance script with the encryption key,
+  **not decryption inside Alembic**. Preserve row IDs/scopes/names, do not silently
+  drop unsupported auth/config fields. Block unresolved rows with safe keyed
+  errors; no credential-free provider or same-name fallback. Invalidate v1
+  verification attestations/candidate proofs when moving to v2.
+- Prefer supported noninteractive `auth import`, receiving secrets via stdin or
+  a 0600 tmpfs import file if CLI requires a path. Never use secret CLI arguments,
+  Docker environment variables, host files, workspace mounts or interactive login
+  in production. Require checked import completion before opening the ACP socket.
+  Auth DB/session/log writes must fit writable tmpfs; cleanup removes the container.
+- `effort` delivery belongs to WP-09; null means no effort RPC, any non-null
+  requested value (including `default`) must be applied and acknowledged or block.
+  `mode` is excluded; retain runtime build default, no plan/build authoring field.
+
+### WP-19 — Pin v2 auth bootstrap and conversion contract
+- Type / owner: development / Developer (`developer`).
+- Objective / acceptance IDs: remove the auth uncertainty blocking real D5 and
+  AC-AMS-06/07 delivery; preserve AR3-05. Bounded investigation, not implementation.
+- Included scope / exclusions: exact pinned-package auth schema/import invocation,
+  config conversion and container paths; no production credentials/data or package
+  upgrade. One bounded probe cycle; return a blocker if no supported path works.
+- Files / patterns: read Dockerfile, provider handler/service and agent injector;
+  proposed `backend/tests/worker/test_opencode_v2_auth_probe.py`; record sanitized
+  fixture/results here. Use official v2 docs and installed 2.0.22 package source.
+- Changes / contracts / experiment: in an isolated scratch v2 image, inspect
+  `auth import --help`/`auth export` and package validation code. Register a
+  synthetic API-key integration once using an interactive scratch terminal only
+  if necessary to obtain export shape. Export to scratch storage, substitute all
+  values with synthetic sentinels; import into a second empty HOME and compare
+  semantic export and `auth list`. Repeat with custom `providers` config and a
+  local fixture API: prove model appears in ACP `session/new` and is selectable,
+  then capture a request with expected key/model/effort (do not retain auth headers).
+  Test absent auth, malformed arrays, duplicate/provider-ID mismatches, inline
+  v1 apiKey extraction, v1 API-key and OAuth entries. Record required paths,
+  import exit/status/output and model-dependent effort advertisement.
+- Dependencies / ownership / order: WP-01 closed; sole probe/record owner. Before
+  WP-20, coordinator accepts a sanitized schema example and deterministic v1→v2
+  mapping table (provider/options/models/settings/auth fields), supported cases,
+  collision policy (conflicting inline/separate credentials block), and CLI call.
+- Required skills: `python-testing-patterns`, `systematic-debugging` for probe
+  failures, `verification-before-completion` for evidence.
+- Tests / commands / evidence: scratch `opencode --version`, `auth import --help`,
+  `auth export`, `auth list`, ACP harness; record exact Docker/pytest commands
+  after inspecting CLI. Probe must reproduce UID 10001/read-only-rootfs/tmpfs,
+  not only root scratch execution. No external LLM required for fixture proof.
+- Completion criteria: native import → authenticated custom model selection under
+  production isolation, plus exact conversion fixtures and sanitized transcript.
+- Risks / blockers / fallback: if CLI cannot bootstrap noninteractively, inspect
+  pinned source for a supported store writer. Direct DB seeding is **not approved
+  by this plan**: return exact schema/version/transaction constraints and evidence
+  to architect/coordinator for a narrow revision. Unconvertible OAuth/provider
+  plugins require explicit owner-approved re-upload/re-auth policy; do not discard
+  them. Never reduce D5 to prompt text or silently revert to v1.
+
+### WP-20 — V2 provider/runtime contract tests first
+- Type / owner: test / Tester (`tester`).
+- Objective / ACs: meaningful RED before implementation; AC-AMS-06/07/08,
+  D5/D9 and AR3-05 regression protection.
+- Included scope / exclusions: auth parsing/proof/storage/conversion/injection
+  and adapter behavioral tests; no implementation, no weakening v1 secrecy proof.
+- Files / patterns: existing `backend/tests/domain/test_provider_configs.py`,
+  `tests/api/test_provider_config_api.py`, `tests/worker/test_provider_verify.py`;
+  proposed `test_opencode_v2_auth.py`, `test_provider_v2_migration.py` in matching
+  test directories; existing adapter/agent tests discovered at handoff. Reuse
+  `test_task_input_secrecy.py` opt-in harness, coordinate WP-08 test ownership.
+- Changes / contracts: native array roundtrip without dict filtering, safe invalid
+  request/log diagnostics, encryption, candidate TTL/purpose/proof exactness,
+  auth-only/config-only edit retention, conversion idempotence/unsupported rows;
+  checked import-before-ACP ordering, failed import cleanup, no host/workspace/env
+  secret persistence. Adapter tests cover model response changes, advertised
+  thought_level option, missing/ambiguous effort, rejected value/RPC/mismatch,
+  null omission, explicit default, and no mode RPC. Temporal sentinels cover
+  saved and candidate provider paths, activity errors/results and history/replay.
+- Dependencies / ownership / order: WP-19 contract accepted. Tester owns tests
+  until RED handoff; transfer by file to WP-21/22/23/24/09. WP-08 and WP-20 must
+  agree one owner for any shared adapter/secrecy test. No parallel test edits.
+- Skills: `test-driven-development`, `python-testing-patterns`,
+  `verification-before-completion`.
+- Tests / commands: focused files via standard backend pytest; Docker/PostgreSQL/
+  opt-in Temporal checks separately labeled. Run new tests and record expected
+  missing-behavior failures, not fixture/import/environment failures as RED.
+- Completion: concrete test ownership manifest and RED evidence before each
+  dependent implementation; unexecutable integration tests carry explicit gates.
+- Risks: avoid mock-only auth proof or an auth export in logs; use synthetic fixtures.
+
+### WP-21 — Pinned v2 runtime image and ACP launch compatibility
+- Type / owner: development / Developer (`developer`).
+- Objective / ACs: ship approved `@opencode/cli@2.0.22`; AC-AMS-06 and D5 foundation.
+- Included scope / exclusions: image/package pin and launch compatibility only;
+  no provider storage/auth bootstrap or reasoning adapter edits.
+- Files / patterns: `backend/docker/opencode/Dockerfile`, `docker-compose.yml`
+  only if tag/build configuration needs change; runtime launch in agent.py only
+  if WP-19 proves invocation flags are needed. Preserve non-root/sandbox defaults.
+- Changes / contracts: replace legacy npm install with exact v2 package, verify
+  binary/version/ACP protocol 1 and production cwd. Audit active package references,
+  leave historical evidence intact. Pin version, never latest. Keep old image
+  digest/tag separately for an operator rollback; never overwrite the sole copy.
+- Dependencies / ownership / order: WP-19, WP-20 RED; hand off agent.py before
+  WP-24. WP-09 follows image evidence, not just Dockerfile edit.
+- Skills: `test-driven-development`, `verification-before-completion`.
+- Tests / commands: `docker compose --profile image-build build opencode`,
+  `docker run --rm --entrypoint opencode kosmo-opencode:local --version`, Compose
+  config check and initialized ACP fixture under production isolation. Recheck
+  HTTP/stdio capability shapes and stream/permission/close compatibility.
+- Completion: version 2.0.22 and ACP launch evidence, preserved isolation limits;
+  no claim of provider authentication until WP-24.
+- Risks: tmpfs size/UID and node base compatibility. Rollback before destructive
+  cutover restores old application image/code and backed-up v1 provider data;
+  after WP-17 D8, rollback requires full coordinated DB/task-storage restore.
+  Switching image alone on converted auth is not a rollback procedure.
+
+### WP-22 — V2 provider storage, upload and candidate contracts
+- Type / owner: development / Developer (`developer`).
+- Objective / ACs: retain usable encrypted v2 files through save/probe contracts;
+  AC-AMS-06/07/08 prerequisites and AR3-05.
+- Included scope / exclusions: provider service/handler/API contracts and format
+  metadata persistence; no live container bootstrap or encrypted-row conversion.
+- Files / patterns: `backend/app/domain/provider_configs/{models,repository,service}.py`,
+  `app/integrations/providers/{base,opencode}.py`, `app/api/routes/provider_configs.py`,
+  WP-20 assigned tests; proposed small provider-format parser/normalizer if useful.
+- Changes / contracts: object config with `providers`, array auth validated against
+  WP-19; bound sizes and safe errors with no candidate-value echo. Preserve native
+  array through candidate encrypt/decrypt/read/redeem and parsed exact-pair equality
+  (array order preserved unless WP-19 proves canonical semantics). Include v2
+  format in encrypted candidate payload/proof comparison; reject legacy payloads
+  with keyed re-verification requirement. Service read helpers expose an ephemeral
+  versioned runtime bundle, never a new public secret endpoint. Reject unmigrated
+  rows at runtime; preserve provider scope/recency/instance policy. New writes v2,
+  edits with kept v1 files block pending conversion rather than mix formats.
+- Dependencies / ownership / order: WP-19 and assigned WP-20 RED. Own provider
+  domain/API/handler files, not Alembic (WP-23) or generated frontend (WP-11/25).
+  Serialize WP-23 model/repository fixes after this handoff.
+- Skills: `test-driven-development`, `fastapi-python`, `python-design-patterns`,
+  `python-testing-patterns`, `verification-before-completion`.
+- Tests / commands: provider domain/API assigned RED→GREEN plus existing candidate
+  redemption boundary tests; standard backend pytest. API metadata contains only
+  safe format/presence/status; neither encrypted nor decrypted file content.
+- Completion: full create/edit/probe/proof contracts preserve arrays and secrets;
+  old format fails predictably pending WP-23, schema migration ready for allocation.
+- Risks: dict-only helper loss, verifying different credentials than saved, Pydantic
+  echo, unknown v2 plugin/env indirections; unsupported mapping must block safely.
+
+### WP-23 — Encrypted v1 provider-data conversion and cutover tooling
+- Type / owner: development / Developer (`developer`).
+- Objective / ACs: migrate existing providers without losing credentials or breaking
+  AR3-05; AC-AMS-06/07 and AC-AMS-09 preservation prerequisite.
+- Included scope / exclusions: additive format schema migration + explicit encrypted
+  conversion/preflight script; no workflow reset or production run without approval.
+- Files / patterns: proposed `backend/alembic/versions/0023_provider_runtime_format.py`,
+  `backend/scripts/migrate_provider_runtime_v2.py`, WP-20 migration tests; use
+  provider Fernet/repository conventions. Verify current head before naming.
+- Changes / contracts: migration marks existing rows v1, new rows explicitly v2;
+  no encryption key required by Alembic. Script dry-run reports IDs/counts and safe
+  failure categories only. Convert config/auth together under transaction/row
+  concurrency guard; encrypt replacement bytes before write, mark v2 atomically,
+  set verification unverified, preserve updated_at so scope recency does not change.
+  Already-v2 rows are no-ops. Unknown fields/types, key failure or credential
+  conflicts leave row untouched and block cutover. Expire old candidate operations
+  during maintenance; no old success proof may attest v2 credentials. No durable
+  plaintext backup or ciphertext dumps in logs; rely on operator encrypted DB backup.
+- Dependencies / ownership / order: WP-22 then WP-20 assigned RED→GREEN. Sole
+  migration/script owner; WP-17 allocates next head after this package. Conversion
+  target run occurs only with traffic/probes/workers drained/stopped and backup
+  restore verified. WP-24 consumes disposable conversion proof first.
+- Skills: `test-driven-development`, `python-design-patterns`,
+  `python-testing-patterns`, `verification-before-completion`.
+- Tests / commands: dedicated PostgreSQL via `KOSMO_TEST_DATABASE_URL`, populated
+  API-key/inline-key/OAuth-supported fixtures, absent auth, malformed/unsupported
+  rows, interrupted transaction, rerun/concurrent-write, wrong-key and metadata
+  preservation. Verify upgrade/downgrade metadata semantics without claiming
+  ciphertext reversal. Record actual script CLI after implementation; no guessed
+  production conversion command is authorized here.
+- Completion: disposable conversion/read-back through v2 resolver plus dry-run
+  blocker report and maintenance/backup/rollback checklist accepted by coordinator.
+- Risks: no general inverse auth conversion; rollback uses backed-up DB and old
+  code/image, not dropping format marker. Unsupported rows need owner re-auth
+  approval before target cutover, not data deletion under D8.
+
+### WP-24 — Worker-local v2 auth bootstrap for all agent sessions
+- Type / owner: development / Developer (`developer`).
+- Objective / ACs: real authenticated custom-provider sessions with activity-local
+  credentials; AC-AMS-06/07/08, D5 and AR3-05 preservation.
+- Included scope / exclusions: common session bootstrap and provider resolution
+  integration for saved/candidate probes and AI nodes; no catalog integration
+  (WP-10), reasoning selection (WP-09), Temporal workflow payload changes.
+- Files / patterns: `backend/worker/activities/{agent,ai_node,provider_verify}.py`,
+  WP-20 assigned tests; consume WP-22 bundle and WP-19 checked CLI mechanism.
+- Changes / contracts: update `_load_provider_runtime_config`, provider verification
+  helpers and `_inject_runtime_files` to one v2 bundle/bootstrap seam. Config
+  written only to approved config tmpfs; import auth into v2 store before ACP
+  exec, checked exit/timeout, erase temporary import file in finally. No old auth
+  object planting. Include inline-key import when contract requires; config
+  visibility alone is never authentication proof. Verify expected configured model
+  availability; import/store failure blocks with stable safe error before prompt.
+  Keep caller identity/ref-only probe arguments and task DB creator resolution;
+  no new credential activity. Gather provider secret values locally for WP-10
+  redaction; never log bootstrap stdout/stderr/export/store contents. Cleanup on
+  import, socket, session failure and stop retains existing isolation.
+- Dependencies / ownership / order: WP-21/22 and WP-23 disposable proof, assigned
+  WP-20 RED. Exclusive activity files after WP-21; hand off to WP-10 afterward.
+  WP-09 adapter can run independently; final effort/auth integration needs both.
+- Skills: `test-driven-development`, `python-design-patterns`,
+  `python-testing-patterns`, `verification-before-completion`,
+  `systematic-debugging` for container failures.
+- Tests / commands: focused agent/provider/AI tests, fixture API inside disposable
+  Docker network, version/import→ACP model selection→prompt request proof; failed
+  import/missing model/cleanup and persisted-data sentinel checks. Run opt-in
+  Temporal provider/candidate tests in backend container and original AR3-05
+  `test_task_input_secrecy.py`; tests must exercise production resolution wiring.
+- Completion: saved and candidate provider sessions authenticate under non-root
+  read-only isolation; secrets absent from histories/arguments/results/failures/
+  logs/workspace, import files cleaned, provider verification safe DTOs preserved.
+- Risks: writable DB WAL/sidecar paths, private runtime logs in tmpfs, import output
+  echo and session secrets; local runtime consumption is intentional, platform
+  persistence is not. Report live paid-provider checks as opt-in, not mocks as proof.
+
+### WP-25 — Provider frontend v2 auth upload compatibility
+- Type / owner: development / Developer (`developer`).
+- Objective / ACs: existing provider setup accepts native v2 credentials without
+  losing verification/edit semantics; AC-AMS-06 prerequisite, 07/10 regressions.
+- Included scope / exclusions: functional parser/types/payload/copy changes only;
+  no provider wizard redesign, new OAuth login UI or credential download endpoint.
+- Files / patterns: `frontend/src/features/providers/{providerFile,ProviderWizard}.ts*`
+  and tests, `frontend/src/api/schema.d.ts`, en/es locales if error/copy changes.
+  Reuse vetted jsonc-parser, API/local state/refetch and write-only edit flow.
+- Changes / contracts: separate object-config parser from array-auth parser;
+  auth upload sends native validated array, never arbitrary arrays as config.
+  Preserve JSONC→strict JSON, file allowlist/byte bound, missing-file retention,
+  proof invalidation/TTL and auth-only edits. Update v2 upload guidance and safe
+  keyed errors; never store auth in browser persistence/console or fetch secrets.
+- Dependencies / ownership / order: WP-22 API contract and WP-11 generated-client
+  handoff. Regenerate once for combined APIs, no hand edits; serialize any locales
+  with WP-12…16. If WP-11 waits, coordinator may perform its client regeneration
+  portion first and hand ownership explicitly; no circular package dependency.
+- Skills: `test-driven-development`, `vercel-react-best-practices`,
+  `verification-before-completion`.
+- Tests / commands: parser/wizard RED→GREEN native array, rejected config array,
+  malformed auth, byte bounds, edit retention and exact candidate/save payloads;
+  `pnpm -C frontend test`, `pnpm -C frontend build`, client regeneration commands
+  below. Browser verify existing create/edit discovery→verify→save flow on v2.
+- Completion: functional onboarding and edits accept v2 auth with nested en/es
+  parity and no secret readback; real container authentication covered WP-24/18.
+- Risks: accidental generic parser weakening, stale verified proof and locale/client
+  ownership conflicts. Only supported WP-19 auth methods are represented as usable.
+
 ## Ordering, test-first rules and shared-file ownership
 
-1. WP-01 and WP-02 may run in parallel (probe versus persistence ownership).
+1. WP-01 is resolved on the approved v2 path; WP-02/03/04 are committed. Historical
+   WP-01/WP-02 parallel ordering is complete; do not rerun or reopen these packages.
 2. WP-03 can follow WP-02 while WP-01 finishes. WP-04 follows both gates;
    WP-05 follows WP-03/04. WP-06 may run separately after WP-01 but catalog
    fixtures must use the fixed IDs/contracts, not invent alternate schemas.
-3. WP-07 → WP-08 (RED handoff) → WP-09 → WP-10. No integration implementation
+3. WP-07 → WP-08 (RED handoff) → WP-09 → WP-10, subject to new runtime gates below.
+   No integration implementation
    before the relevant RED evidence. Pure resolver TDD is owned within WP-07.
 4. WP-11 can run after WP-05/06 alongside WP-07…10 (distinct frontend files).
    WP-12 → WP-13 → WP-14 → WP-15 → WP-16 serialize router/locale/shared UI edits.
@@ -895,7 +1234,21 @@ unless separately authorized by the coordinator.
 7. Coordinator integrates and requests architecture review; findings become
    remediation packages. Only after approval invoke documentator to reconcile
    durable context/README/spec status (including old live-versus-snapshot text).
-   Architecture/documentation are stages, not additional package types.
+    Architecture/documentation are stages, not additional package types.
+8. New lane: WP-19 → WP-20 RED → WP-21 and WP-22. WP-21 image work and WP-22
+   provider contracts may run in parallel (distinct owners). WP-22 → WP-23
+   disposable conversion proof; WP-21/22/23 → WP-24 → WP-10. WP-09 follows WP-21,
+   WP-08 and its WP-20 adapter tests, and may run beside WP-23/24 (adapter versus
+   activities). WP-05/06/07/11 and catalog screens need not wait for WP-19.
+9. WP-25 follows WP-22 plus WP-11 generated-client handoff; serialize locales with
+   WP-12…16. WP-23 owns migration 0023, WP-17 next head (proposed 0024). WP-24
+   owns agent/AI/provider activity edits first, WP-10 later. WP-20 transfers test
+   ownership by file; WP-08 cannot concurrently edit the same tests.
+10. Before target cutover, complete WP-23/24/25 proofs and WP-09/10 preflight on
+    disposable stack. One coordinated maintenance window runs format schema
+    upgrade/conversion and D8 reset/reseed only after safe backup and unresolved
+    provider-row blockers are resolved. Then rebuild/restart API/worker on v2
+    together and run WP-18. No mixed-format traffic or old worker on new data.
 
 ## Acceptance coverage
 
@@ -906,11 +1259,13 @@ unless separately authorized by the coordinator.
 | AC-AMS-03 | 06, 10, 11, 16 | legacy rejection, serialized workflow/API roundtrip, WP-18 |
 | AC-AMS-04 | 05–07, 11, 15–16 | delta/live-edit/refetch/switch tests, WP-18 |
 | AC-AMS-05 | 05, 12, 15–16 | safe read-only Markdown tests and browser WP-18 |
-| AC-AMS-06 | 01, 07–10 | adapter/probe/worker integration, WP-18 actual delivery |
-| AC-AMS-07 | 02, 04, 07–10, 14 | encrypted DB, DTO/log/event/history sentinel tests, WP-18 |
+| AC-AMS-06 | 01, 07–10, 19, 21–25 | WP-20 RED; import→authenticated custom-model ACP selection and effort, probes/task integration, WP-18 actual delivery |
+| AC-AMS-07 | 02, 04, 07–10, 14, 22–25 | WP-20 RED; encrypted DB/conversion, safe auth upload/errors, provider+MCP DTO/log/event/history sentinels, WP-18 |
 | AC-AMS-08 | 07, 10, 12, 16 | keyed blocked task tests; missing skill also required by D9 |
-| AC-AMS-09 | 06, 11, 17 | PostgreSQL reset/reseed, legacy-path audit and WP-18 |
-| AC-AMS-10 | 12–16 | nested locale parity and en/es journeys, WP-18 |
+| AC-AMS-09 | 06, 11, 17, 23 | PostgreSQL provider conversion then reset/reseed preserving converted credentials, legacy-path audit, WP-18 |
+| AC-AMS-10 | 12–16, 25 | nested locale parity and en/es journeys including provider v2 upload, WP-18 |
+| D5 / D9 runtime contract | 06, 09, 10, 19, 21, 24 | WP-20 model-dependent effort RED→GREEN, explicit unsupported blocking, no mode/variant guess or credential-free fallback; WP-18 |
+| AR3-05 regression invariant | 07, 10, 22–24 | WP-08/20 production resolver sentinel history/replay, original task-input secrecy opt-in proof, WP-18; no secret workflow boundary crossings |
 
 ## Verification commands and execution notes
 
@@ -949,6 +1304,15 @@ the worker after worker module changes. No host/container availability was
 proven during this planning session.
 
 ## Status log (living record)
+
+- 2026-10-04 re-plan: source/git log confirms WP-02 persistence/probe commit
+  `615b940`, WP-03 Skill CRUD `3d84586`, WP-04 MCP CRUD `585adae`; their committed
+  status is retained, not a fresh validation claim. WP-01 remains closed/resolved
+  by the owner's v2 decision and recorded scratch proofs. WP-19…25 are **Planned**,
+  not executed. WP-06/07/09/10/17/18 refinements and runtime ordering/coverage are
+  now part of this record. No application code, runtime probe, test, migration,
+  target data or commit changed during this re-plan. Exact v2 auth schema and
+  conversion compatibility remain WP-19's blocking deliverable.
 
 - 2026-10-04: WP-01…WP-18 **Planned**. No implementation, tests, runtime probes,
   destructive migration or commits executed. OQ3/OQ4 architectural contracts
