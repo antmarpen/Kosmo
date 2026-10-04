@@ -268,6 +268,31 @@
       "verifiedScopeNote": "Connection verified with {{model}}."
     }
   },
+  "catalog": {
+    "list": {
+      "loading": "Loading…",
+      "retry": "Retry"
+    },
+    "scope": {
+      "legend": "Availability",
+      "description": "Choose who can see and use this entry.",
+      "personal": "Just me",
+      "group": "A managed group",
+      "global": "Everyone (global)",
+      "groupLabel": "Group",
+      "chooseGroup": "Choose a group"
+    },
+    "selection": {
+      "searchPlaceholder": "Search…",
+      "noResults": "No results match “{{query}}”.",
+      "remove": "Remove {{name}}",
+      "clear": "Clear selection",
+      "unavailable": "Unavailable"
+    },
+    "markdown": {
+      "empty": "Nothing written yet."
+    }
+  },
   "errors": {
     "generic": "An unexpected error occurred.",
     "node": {
@@ -306,7 +331,50 @@
     },
     "agent": {
       "runtime_failed": "Agent runtime failed.",
-      "input_missing": "The agent requested input that is not available."
+      "input_missing": "The agent requested input that is not available.",
+      "field_required": "The request body is missing required agent fields.",
+      "scope_invalid": "The visibility and group combination is invalid.",
+      "scope_forbidden": "You do not have permission to share to this scope.",
+      "global_admin_only": "Only administrators can create global agents.",
+      "name_invalid": "Enter a name of 1 to 80 characters for the agent.",
+      "model_invalid": "Enter a model for this agent (up to 300 characters).",
+      "reasoning_effort_invalid": "The reasoning effort must be at most {{max_length}} characters.",
+      "instructions_invalid": "The instructions must be at most {{max_length}} characters.",
+      "runtime_invalid": "The agent runtime is not supported.",
+      "reference_ids_invalid": "The {{field}} list must contain unique, non-empty identifiers.",
+      "reference_unavailable": "The selected {{kind}} entry is not available to you.",
+      "name_duplicate": "You already have an agent with this name in this scope.",
+      "not_found": "Agent not found.",
+      "forbidden": "You do not have permission to manage this agent."
+    },
+    "skill": {
+      "field_required": "The request body is missing required skill fields.",
+      "name_invalid": "Enter a name of 1 to 80 characters for the skill.",
+      "name_too_long": "The name is too long. Use at most {{max_length}} characters.",
+      "scope_invalid": "The visibility and group combination is invalid.",
+      "global_admin_only": "Only administrators can create global skills.",
+      "group_forbidden": "You can only share skills to groups you manage.",
+      "forbidden": "You do not have permission to manage this skill.",
+      "name_duplicate": "You already have a skill with this name in this scope.",
+      "not_found": "Skill not found.",
+      "description_invalid": "The description must be at most {{max_length}} characters.",
+      "instructions_invalid": "The instructions must be at most {{max_length}} characters."
+    },
+    "mcp_server": {
+      "field_required": "The request body is missing required MCP server fields.",
+      "invalid": "The MCP server transport configuration is invalid.",
+      "name_invalid": "Enter a name of 1 to 80 characters for the MCP server.",
+      "name_reserved": "This name is reserved for the platform validator.",
+      "scope_invalid": "The visibility and group combination is invalid.",
+      "scope_forbidden": "You do not have permission to share to this scope.",
+      "global_admin_only": "Only administrators can create global MCP servers.",
+      "name_duplicate": "You already have an MCP server with this name in this scope.",
+      "encryption_unavailable": "The platform encryption configuration is unavailable, so MCP secrets cannot be stored or read safely. Ask an administrator to check the configuration.",
+      "not_found": "MCP server not found.",
+      "forbidden": "You do not have permission to manage this MCP server."
+    },
+    "catalog": {
+      "reference_unavailable": "The referenced {{kind}} entry is unavailable. It may have been deleted or you may no longer have access to it."
     },
     "artifact": {
       "not_found": "Artifact not found."

@@ -268,6 +268,31 @@
       "verifiedScopeNote": "Conexión verificada con {{model}}."
     }
   },
+  "catalog": {
+    "list": {
+      "loading": "Cargando…",
+      "retry": "Reintentar"
+    },
+    "scope": {
+      "legend": "Disponibilidad",
+      "description": "Elige quién puede ver y usar esta entrada.",
+      "personal": "Solo para mí",
+      "group": "Un grupo que gestiono",
+      "global": "Para todos (global)",
+      "groupLabel": "Grupo",
+      "chooseGroup": "Selecciona un grupo"
+    },
+    "selection": {
+      "searchPlaceholder": "Buscar…",
+      "noResults": "Ningún resultado coincide con «{{query}}».",
+      "remove": "Quitar {{name}}",
+      "clear": "Quitar la selección",
+      "unavailable": "No disponible"
+    },
+    "markdown": {
+      "empty": "Todavía no hay nada escrito."
+    }
+  },
   "errors": {
     "generic": "Se produjo un error inesperado.",
     "node": {
@@ -306,7 +331,50 @@
     },
     "agent": {
       "runtime_failed": "Falló el entorno del agente.",
-      "input_missing": "El agente solicitó datos que no están disponibles."
+      "input_missing": "El agente solicitó datos que no están disponibles.",
+      "field_required": "El cuerpo de la petición no incluye los campos obligatorios del agente.",
+      "scope_invalid": "La combinación de visibilidad y grupo no es válida.",
+      "scope_forbidden": "No tienes permiso para compartir en este ámbito.",
+      "global_admin_only": "Solo los administradores pueden crear agentes globales.",
+      "name_invalid": "Escribe un nombre de entre 1 y 80 caracteres para el agente.",
+      "model_invalid": "Escribe un modelo para este agente (hasta 300 caracteres).",
+      "reasoning_effort_invalid": "El nivel de razonamiento debe tener {{max_length}} caracteres como máximo.",
+      "instructions_invalid": "Las instrucciones deben tener {{max_length}} caracteres como máximo.",
+      "runtime_invalid": "El entorno de ejecución del agente no es compatible.",
+      "reference_ids_invalid": "La lista {{field}} debe contener identificadores únicos y no vacíos.",
+      "reference_unavailable": "La entrada de tipo {{kind}} seleccionada no está disponible para ti.",
+      "name_duplicate": "Ya tienes un agente con este nombre en este ámbito.",
+      "not_found": "No se encontró el agente.",
+      "forbidden": "No tienes permiso para administrar este agente."
+    },
+    "skill": {
+      "field_required": "El cuerpo de la petición no incluye los campos obligatorios de la habilidad.",
+      "name_invalid": "Escribe un nombre de entre 1 y 80 caracteres para la habilidad.",
+      "name_too_long": "El nombre es demasiado largo. Usa {{max_length}} caracteres como máximo.",
+      "scope_invalid": "La combinación de visibilidad y grupo no es válida.",
+      "global_admin_only": "Solo los administradores pueden crear habilidades globales.",
+      "group_forbidden": "Solo puedes compartir habilidades en grupos que gestionas.",
+      "forbidden": "No tienes permiso para administrar esta habilidad.",
+      "name_duplicate": "Ya tienes una habilidad con este nombre en este ámbito.",
+      "not_found": "No se encontró la habilidad.",
+      "description_invalid": "La descripción debe tener {{max_length}} caracteres como máximo.",
+      "instructions_invalid": "Las instrucciones deben tener {{max_length}} caracteres como máximo."
+    },
+    "mcp_server": {
+      "field_required": "El cuerpo de la petición no incluye los campos obligatorios del servidor MCP.",
+      "invalid": "La configuración de transporte del servidor MCP no es válida.",
+      "name_invalid": "Escribe un nombre de entre 1 y 80 caracteres para el servidor MCP.",
+      "name_reserved": "Este nombre está reservado para el validador de la plataforma.",
+      "scope_invalid": "La combinación de visibilidad y grupo no es válida.",
+      "scope_forbidden": "No tienes permiso para compartir en este ámbito.",
+      "global_admin_only": "Solo los administradores pueden crear servidores MCP globales.",
+      "name_duplicate": "Ya tienes un servidor MCP con este nombre en este ámbito.",
+      "encryption_unavailable": "La configuración de cifrado de la plataforma no está disponible, así que no se pueden guardar ni leer los secretos del MCP de forma segura. Pide a un administrador que revise la configuración.",
+      "not_found": "No se encontró el servidor MCP.",
+      "forbidden": "No tienes permiso para administrar este servidor MCP."
+    },
+    "catalog": {
+      "reference_unavailable": "La entrada de tipo {{kind}} referenciada no está disponible. Puede que se haya eliminado o que ya no tengas acceso a ella."
     },
     "artifact": {
       "not_found": "No se encontró el artefacto."

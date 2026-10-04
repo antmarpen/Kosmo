@@ -207,4 +207,163 @@ describe("translation catalogs", () => {
       expect.any(String),
     );
   });
+
+  // --- WP-12: shared catalog controls and safe Markdown ---
+
+  it("exposes the shared catalog list state vocabulary (WP-12)", () => {
+    expect(en.catalog?.list?.loading).toBe("Loading…");
+    expect(es.catalog?.list?.loading).toBe("Cargando…");
+    expect(en.catalog?.list?.retry).toBe("Retry");
+    expect(es.catalog?.list?.retry).toBe("Reintentar");
+  });
+
+  it("exposes the shared catalog scope-control vocabulary (WP-12)", () => {
+    expect(en.catalog?.scope?.legend).toBe("Availability");
+    expect(es.catalog?.scope?.legend).toBe("Disponibilidad");
+    expect(en.catalog?.scope?.personal).toBe("Just me");
+    expect(es.catalog?.scope?.personal).toBe("Solo para mí");
+    expect(en.catalog?.scope?.group).toBe("A managed group");
+    expect(es.catalog?.scope?.group).toBe("Un grupo que gestiono");
+    expect(en.catalog?.scope?.global).toBe("Everyone (global)");
+    expect(es.catalog?.scope?.global).toBe("Para todos (global)");
+    expect(en.catalog?.scope?.groupLabel).toBe("Group");
+    expect(es.catalog?.scope?.groupLabel).toBe("Grupo");
+    expect(en.catalog?.scope?.chooseGroup).toBe("Choose a group");
+    expect(es.catalog?.scope?.chooseGroup).toBe("Selecciona un grupo");
+  });
+
+  it("exposes the shared searchable-selection vocabulary (WP-12)", () => {
+    expect(en.catalog?.selection?.searchPlaceholder).toBe("Search…");
+    expect(es.catalog?.selection?.searchPlaceholder).toBe("Buscar…");
+    expect(en.catalog?.selection?.noResults).toBe(
+      "No results match “{{query}}”.",
+    );
+    expect(es.catalog?.selection?.noResults).toBe(
+      "Ningún resultado coincide con «{{query}}».",
+    );
+    expect(en.catalog?.selection?.remove).toBe("Remove {{name}}");
+    expect(es.catalog?.selection?.remove).toBe("Quitar {{name}}");
+    expect(en.catalog?.selection?.clear).toBe("Clear selection");
+    expect(es.catalog?.selection?.clear).toBe("Quitar la selección");
+    expect(en.catalog?.selection?.unavailable).toBe("Unavailable");
+    expect(es.catalog?.selection?.unavailable).toBe("No disponible");
+  });
+
+  it("exposes the safe Markdown preview vocabulary (WP-12)", () => {
+    expect(en.catalog?.markdown?.empty).toBe("Nothing written yet.");
+    expect(es.catalog?.markdown?.empty).toBe("Todavía no hay nada escrito.");
+  });
+
+  it("translates the backend catalog runtime error keys (WP-12)", () => {
+    // Raised by the worker resolver as CATALOG_REFERENCE_UNAVAILABLE with
+    // safe {kind, id} parameters (agent/mcp/skill).
+    expect(en.errors?.catalog?.reference_unavailable).toBe(
+      "The referenced {{kind}} entry is unavailable. It may have been deleted or you may no longer have access to it.",
+    );
+    expect(es.errors?.catalog?.reference_unavailable).toBe(
+      "La entrada de tipo {{kind}} referenciada no está disponible. Puede que se haya eliminado o que ya no tengas acceso a ella.",
+    );
+    // Raised as CATALOG_DECRYPTION_UNAVAILABLE when stored MCP secrets
+    // cannot be decrypted (blocking, never silent).
+    expect(en.errors?.mcp_server?.encryption_unavailable).toBe(
+      "The platform encryption configuration is unavailable, so MCP secrets cannot be stored or read safely. Ask an administrator to check the configuration.",
+    );
+    expect(es.errors?.mcp_server?.encryption_unavailable).toBe(
+      "La configuración de cifrado de la plataforma no está disponible, así que no se pueden guardar ni leer los secretos del MCP de forma segura. Pide a un administrador que revise la configuración.",
+    );
+  });
+
+  it("translates the backend agent CRUD error keys (WP-12)", () => {
+    const requiredKeys = [
+      "field_required",
+      "scope_invalid",
+      "scope_forbidden",
+      "global_admin_only",
+      "name_invalid",
+      "model_invalid",
+      "reasoning_effort_invalid",
+      "instructions_invalid",
+      "runtime_invalid",
+      "reference_ids_invalid",
+      "reference_unavailable",
+      "name_duplicate",
+      "not_found",
+      "forbidden",
+    ] as const;
+    for (const key of requiredKeys) {
+      expect(en.errors?.agent?.[key], `en:errors.agent.${key}`).toEqual(
+        expect.any(String),
+      );
+      expect(es.errors?.agent?.[key], `es:errors.agent.${key}`).toEqual(
+        expect.any(String),
+      );
+    }
+    expect(en.errors?.agent?.global_admin_only).toBe(
+      "Only administrators can create global agents.",
+    );
+    expect(es.errors?.agent?.global_admin_only).toBe(
+      "Solo los administradores pueden crear agentes globales.",
+    );
+  });
+
+  it("translates the backend skill CRUD error keys (WP-12)", () => {
+    const requiredKeys = [
+      "field_required",
+      "name_invalid",
+      "name_too_long",
+      "scope_invalid",
+      "global_admin_only",
+      "group_forbidden",
+      "forbidden",
+      "name_duplicate",
+      "not_found",
+      "description_invalid",
+      "instructions_invalid",
+    ] as const;
+    for (const key of requiredKeys) {
+      expect(en.errors?.skill?.[key], `en:errors.skill.${key}`).toEqual(
+        expect.any(String),
+      );
+      expect(es.errors?.skill?.[key], `es:errors.skill.${key}`).toEqual(
+        expect.any(String),
+      );
+    }
+    expect(en.errors?.skill?.name_duplicate).toBe(
+      "You already have a skill with this name in this scope.",
+    );
+    expect(es.errors?.skill?.name_duplicate).toBe(
+      "Ya tienes una habilidad con este nombre en este ámbito.",
+    );
+  });
+
+  it("translates the backend MCP server CRUD error keys (WP-12)", () => {
+    const requiredKeys = [
+      "field_required",
+      "invalid",
+      "name_invalid",
+      "name_reserved",
+      "scope_invalid",
+      "scope_forbidden",
+      "global_admin_only",
+      "name_duplicate",
+      "not_found",
+      "forbidden",
+    ] as const;
+    for (const key of requiredKeys) {
+      expect(
+        en.errors?.mcp_server?.[key],
+        `en:errors.mcp_server.${key}`,
+      ).toEqual(expect.any(String));
+      expect(
+        es.errors?.mcp_server?.[key],
+        `es:errors.mcp_server.${key}`,
+      ).toEqual(expect.any(String));
+    }
+    expect(en.errors?.mcp_server?.name_reserved).toBe(
+      "This name is reserved for the platform validator.",
+    );
+    expect(es.errors?.mcp_server?.name_reserved).toBe(
+      "Este nombre está reservado para el validador de la plataforma.",
+    );
+  });
 });

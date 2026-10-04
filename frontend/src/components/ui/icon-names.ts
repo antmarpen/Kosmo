@@ -51,6 +51,7 @@ export const ICON_NAMES = {
   run: "play_arrow",
   login: "login",
   connectionTest: "network_check",
+  search: "search",
   // Feedback and status.
   check: "check",
   error: "error",
