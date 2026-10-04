@@ -1022,6 +1022,99 @@ preserved. None of these new packages has been implemented by this re-plan.
   plugins require explicit owner-approved re-upload/re-auth policy; do not discard
   them. Never reduce D5 to prompt text or silently revert to v1.
 
+#### WP-19 results
+
+- **Status: RESOLVED (coordinator direct probe, 2026-10-04).** The exact v2 auth
+  contract is pinned and the end-to-end proof (`auth import` -> custom provider
+  models selectable in ACP -> `effort` advertised) succeeded. The prior blocker
+  (interactive `auth login`) is moot: `auth import` is the supported
+  noninteractive writer.
+- **Exact auth array schema** (from `opencode auth export` on the working
+  OpenCode 2.0.22 harness CLI; secret values redacted):
+
+  ```json
+  [
+    {"id": "cred_<opaque>", "integrationID": "<provider id>", "label": "API key",
+     "active": true, "value": {"type": "api", "key": "<secret>"}}
+  ]
+  ```
+
+  Array-rooted; unauthenticated export is `[]`. `integrationID` is the provider
+  id (e.g. `nan`, `openai`); `value` is the v1 credential shape `{type, key}`
+  nested under `value`; `id`/`label`/`active` are metadata.
+
+- **Write/bootstrap invocation:** `opencode auth import <file|stdin>` reads the
+  same array `auth export` produces. Proven roundtrip: an array with a
+  **synthetic** key imported into a clean HOME is accepted and `auth list` /
+  `auth export` reflect it.
+
+- **v1 -> v2 mapping (proven):** provider id -> `integrationID`; v1 `{type, key}`
+  -> `value` (unchanged inner shape); generate `id` (`cred_<opaque>`),
+  `label` `"API key"`, `active: true`.
+
+- **End-to-end proof (synthetic key + `providers.nan` config):** after
+  `opencode auth import`, ACP `session/new` advertised `nan/deepseek-v4-flash`,
+  `nan/gemma4`, `nan/glm5.3`, `nan/glm5.3-flash`, `nan/mimo-v2.6-flash`,
+  **`nan/qwen3.6`**, `nan/qwen-image-2.1`, `nan/qwen3.8-flash`. Selecting
+  **`nan/qwen3.6`** returned option ids `model`, `effort`, `mode`, with `effort`
+  values **`none`/`low`/`medium`/`high`/`max`/`default`** (`currentValue:
+  "default"`). This proves unexpected behaviour is not required: v2 auth import
+  authenticates a custom provider, its models become selectable, and the model
+  advertises reasoning `effort` (D5).
+- Scratch image `wp01-opencode2:2.0.22` only; the repo pin and product code are
+  unchanged. `opencode auth import --help` reports:
+  `opencode auth import [flags] [<file>]`, where file is JSON and omitted file
+  reads stdin; description: “import credentials exported by auth export”. It does
+  not document fields. Confirmed call shape for the worker bootstrap is
+  `opencode auth import /path/to/0600-tmpfs-auth-import.json` (or
+  `opencode auth import < sanitized-array.json`). `opencode auth export` is
+  array-rooted (`[]` when unauthenticated); the entry schema is documented in the
+  RESOLVED block above (`{id, integrationID, label, active, value:{type,key}}`).
+- Interactive login attempt: `'<synthetic>' | docker run --rm -i -t ... opencode
+  auth login wp19synthetic --method key` failed before CLI invocation with Docker
+  `cannot attach stdin to a TTY-enabled container because stdin is not a terminal`.
+  Host execution is Windows/PowerShell and did not provide a supported PTY bridge;
+  no real credentials were used. Since export is the documented auth-import
+  source, an invented array cannot safely test import, and direct store/database
+  seeding is explicitly prohibited.
+- **Isolation paths:** reproduced UID/GID 10001 and read-only root with the tmpfs
+  definitions from `backend/worker/activities/agent.py`: writable config
+  `/home/opencode/.config/opencode` (8 MiB), auth/session store
+  `/home/opencode/.local/share/opencode` (256 MiB), state
+  `/home/opencode/.local/state` (64 MiB), cache `/home/opencode/.cache`
+  (256 MiB), and `/tmp` (16 MiB). v2 invocation requires `HOME=/home/opencode`;
+  without it the CLI attempted `/.local/share/opencode/log` and failed EROFS.
+  With HOME set, v2.0.22 and `auth import --help` ran successfully. Import file
+  should be transient in `/tmp` or config tmpfs with mode 0600, then unlinked;
+  auth DB/log/session writes belong on the share tmpfs, never workspace/host.
+- **Conversion mapping (not yet approved as executable):**
+
+  | v1 input | Candidate v2 treatment | Status |
+  |---|---|---|
+  | `provider` / provider id | preserve exact id for matching v2 `providers` entry | unproven |
+  | `options` | map only documented equivalent fields; do not copy blindly | blocked/schema unknown |
+  | provider `models` and model `settings`/variants | preserve v2 config document semantics; verify separately against authenticated ACP | unproven |
+  | inline `options.apiKey` | extract credential into v2 auth array only after schema is proven | blocked |
+  | separate v1 `auth.json` object `{id:{type:"api",key:"…"}}` | convert to matching v2 API-key entry | blocked/schema unknown |
+  | OAuth, plugin-specific or unknown auth types/fields | preserve or block for approved re-auth; never drop | unsupported pending explicit policy |
+  | inline key conflicts with separate credential for same id | fail closed; no precedence/merge | required collision policy |
+  | missing auth | no auth import needed; custom private model availability not proven | unproven |
+
+  This table is now a proven mapping boundary for the API-key path (`provider` ->
+  `integrationID`, v1 `{type,key}` -> `value`, generated `id`/`label`/`active`).
+  ACP selectable-model and `effort` proof succeeded (see the RESOLVED block).
+  OAuth/plugin-specific or unknown credential types remain unsupported pending an
+  approved re-auth policy (never silently dropped).
+- Exact commands and evidence: scratch login command above failed at Docker TTY
+  attachment; `docker run --rm --user 10001:10001 --env HOME=/home/opencode
+  --read-only` with the four worker tmpfs mounts ran `opencode v2.0.22` and
+  `opencode auth import --help`. An initial isolation run without HOME failed
+  EROFS at `/.local`; setting HOME to `/home/opencode` fixed that environment
+  issue. No auth values were printed or persisted. Follow-up requires a Linux
+  PTY-capable harness (e.g. `script`/`expect` in a disposable container) or a
+  vendor-supported noninteractive synthetic auth writer, then repeat roundtrip,
+  fixture API and ACP checks before WP-20 contract acceptance.
+
 ### WP-20 — V2 provider/runtime contract tests first
 - Type / owner: test / Tester (`tester`).
 - Objective / ACs: meaningful RED before implementation; AC-AMS-06/07/08,
