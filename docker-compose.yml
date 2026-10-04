@@ -87,6 +87,7 @@ services:
       - task-storage:/var/lib/kosmo/tasks
     environment:
       KOSMO_DATABASE_URL: postgresql+asyncpg://kosmo:kosmo@postgres:5432/kosmo
+      KOSMO_TEST_DATABASE_URL: postgresql+asyncpg://kosmo:kosmo@postgres:5432/kosmo_test
       KOSMO_TEMPORAL_HOST: temporal:7233
       KOSMO_TEMPORAL_NAMESPACE: default
       KOSMO_TEMPORAL_TASK_QUEUE: kosmo-tasks
@@ -136,6 +137,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       KOSMO_DATABASE_URL: postgresql+asyncpg://kosmo:kosmo@postgres:5432/kosmo
+      KOSMO_TEST_DATABASE_URL: postgresql+asyncpg://kosmo:kosmo@postgres:5432/kosmo_test
       KOSMO_TEMPORAL_HOST: temporal:7233
       KOSMO_TEMPORAL_NAMESPACE: default
       KOSMO_TEMPORAL_TASK_QUEUE: kosmo-tasks
