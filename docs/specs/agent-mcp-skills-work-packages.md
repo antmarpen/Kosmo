@@ -1490,6 +1490,18 @@ proven during this planning session.
 
 ## Status log (living record)
 
+- 2026-10-04 (remediation): WP-R1 **done** — real-DB visibility (personal/group/
+  global; `membership_role` repository defect fixed) and D9 blocking journeys
+  (missing/invisible/revoked agent/MCP/skill -> `errors.catalog.reference_unavailable`,
+  no fallback/existence disclosure, en/es; 12 passed in-container). WP-R3
+  **partial** — editor override round-trip + responsive overflow check; central
+  edit/live-execution and long-name cases pending. **WP-R2 residual:** the
+  end-to-end Temporal-history/replay proof for MCP/provider secrets could not be
+  built (4 attempts; missing fixture MCP receiver harness). The invariant is
+  otherwise enforced and proven by AR3-05 (task inputs not in history), WP-10
+  (effective config passed separately, safe activity results, redacted
+  diagnostics) and WP-24 (v2 bootstrap, import temp cleanup, no secret logging).
+
 - 2026-10-04 (v2 auth milestone): the v2 `Credential.Value` API-key discriminator
   is **`key`** (not `api`); `opencode auth import` accepts the array. The worker
   bootstrap (version -> `opencode auth import` from a 0600 temp file ->
