@@ -32,6 +32,7 @@ async def start_agent_session(
     runtime_environment: dict[str, str] | None = None,
     runtime_config_files: dict[str, bytes | str] | None = None,
     mcp_servers: list[dict[str, Any]] | None = None,
+    diagnostic_secrets: tuple[str, ...] = (),
 ):
     """Start an ACP exec socket inside a fresh, task-scoped agent container."""
     import docker
@@ -111,7 +112,8 @@ async def start_agent_session(
             tty=False,
         )
         transport = (transport_factory or DockerSocketACPTransport)(exec_socket)
-        adapter = OpenCodeACPAdapter(transport, workspace_path, session_cwd="/workspace", mcp_servers=mcp_servers)
+        adapter = OpenCodeACPAdapter(transport, workspace_path, session_cwd="/workspace", mcp_servers=mcp_servers,
+                                     diagnostic_secrets=diagnostic_secrets)
         return _ManagedAdapter(adapter, client, container, transport)
     except Exception:
         if transport:

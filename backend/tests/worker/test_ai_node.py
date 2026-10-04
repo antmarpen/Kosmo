@@ -40,6 +40,9 @@ class FakeAdapter:
     async def collect_artifacts(self):
         return {}
 
+    async def close(self):
+        return None
+
 
 def test_ai_node_persists_validated_output_and_checkpoint(tmp_path):
     output = tmp_path / "out"
@@ -59,15 +62,16 @@ def test_ai_node_persists_validated_output_and_checkpoint(tmp_path):
         effects.append(("checkpoint", record))
 
     result = asyncio.run(orchestrate_ai_node(
-        {"id": "ai1", "agent": {"instructions": "do it"}, "inputs": ["report.md"], "prompt_template": "task prompt",
+        {"id": "ai1", "inputs": ["report.md"], "prompt_template": "task prompt",
          "outputs": ["summary.md"], "validation": {"levels": [
              {"name": "format", "message_key": "v.format", "params_schema": {}},
              {"name": "schema", "message_key": "v.schema", "params_schema": {}},
              {"name": "business", "message_key": "v.business", "params_schema": {}},
          ]}, "max_validation_cycles": 3},
         adapter, output, "task1", persist, note, checkpoint,
+        effective_config={"agent": {"instructions": "do it"}, "mcps": [], "skills": []},
     ))
-    assert result["state"] == "success"
+    assert result["state"] == "success", result
     assert [entry[0] for entry in effects] == ["artifact", "checkpoint", "tasks.notes.validation_passed"]
     assert adapter.cycles == 1
     assert adapter.session_starts == 1
@@ -75,11 +79,173 @@ def test_ai_node_persists_validated_output_and_checkpoint(tmp_path):
     assert "/workspace/inputs/report.md" in adapter.prompts[0]
 
 
-def test_ai_executor_rejects_unsupported_runtime_with_keyed_error():
+def test_ai_node_delivers_full_effective_skill_sections_and_starts_with_resolved_agent(tmp_path):
+    adapter = FakeAdapter([{}])
+    async def noop(*args): return None
+    async def persist(*args): return {"sha256": "abc"}
+    effective = {"agent": {"model": "vendor/live", "reasoning_effort": "high", "instructions": "agent rules"},
+                 "mcps": [], "skills": [
+                     {"name": "Alpha", "description": "first skill", "instructions": "full alpha"},
+                     {"name": "Beta", "description": "second skill", "instructions": "full beta"}]}
+    result = asyncio.run(orchestrate_ai_node(
+        {"id": "ai", "outputs": [], "prompt_template": "task prompt", "agent": {"instructions": "spoof"}},
+        adapter, tmp_path, "task", persist, noop, noop, effective_config=effective))
+    assert result["state"] == "success"
+    assert adapter.session_starts == 1
+    prompt = adapter.prompts[0]
+    assert prompt.index("agent rules") < prompt.index("<skill name=\"Alpha\">") < prompt.index("full alpha")
+    assert prompt.index("full alpha") < prompt.index("<skill name=\"Beta\">") < prompt.index("full beta") < prompt.index("task prompt")
+
+
+def test_permission_request_secrets_are_redacted_before_note_persistence(tmp_path):
+    class PermissionAdapter(FakeAdapter):
+        async def events(self):
+            yield InputRequested("agent.permission.requested", {"authorization": "CONFIGURED_SECRET"}, 7,
+                                  "session/request_permission")
+            yield CompletionProposed()
+    adapter = PermissionAdapter([{}])
+    effective = {"agent": {}, "mcps": [{"transport": {"type": "http"},
+                  "headers": (("Authorization", "CONFIGURED_SECRET"),)}], "skills": []}
+    persisted = []
+    async def request_input(_key, params, *_args):
+        persisted.append(params)
+        return False
+    async def noop(*_args): return None
+    result = asyncio.run(orchestrate_ai_node({"id": "ai", "outputs": []}, adapter, tmp_path, "task",
+        noop, noop, noop, request_input, effective_config=effective))
+    assert result["state"] == "success"
+    assert persisted == [{"authorization": "[REDACTED]"}]
+    assert "CONFIGURED_SECRET" not in json.dumps(persisted)
+
+
+def test_ai_executor_rejects_unsupported_runtime_with_keyed_error(monkeypatch):
     from worker.activities.ai_node import run_ai_node
-    result = asyncio.run(run_ai_node({"task_id": "task", "node": {"id": "ai", "agent": {"runtime": "claude"}, "outputs": []}}))
+    import app.core.db
+    from app.domain.agents.resolution import AgentCatalogResolver
+    class TaskRow:
+        created_by = "creator"
+        prompt = ""
+    class Session:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def get(self, *_args): return TaskRow()
+    monkeypatch.setattr(app.core.db, "AsyncSessionLocal", lambda: Session())
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "jwt_secret", "test-validator-secret-at-least-32-bytes")
+    async def resolved(self, **kwargs):
+        assert kwargs["created_by"] == "creator"
+        return {"agent": {"runtime": "claude"}, "mcps": [], "skills": []}
+    monkeypatch.setattr(AgentCatalogResolver, "resolve", resolved)
+    import worker.activities.checkpoint as checkpoint
+    async def not_recovered(*args): return None
+    monkeypatch.setattr(checkpoint, "find_durable_artifact_result", not_recovered)
+    result = asyncio.run(run_ai_node({"task_id": "task", "user_id": "spoofed", "node": {"id": "ai", "agent_id": "catalog-id", "outputs": []}}))
     assert result["state"] == "failed"
     assert result["error"] == {"code": "EXECUTOR_NOT_SUPPORTED", "message_key": "errors.executor.not_registered", "params": {"type": "claude"}}
+
+
+def test_ai_recovery_returns_completed_artifact_without_live_catalog_resolution(monkeypatch):
+    from worker.activities.ai_node import run_ai_node
+    import worker.activities.checkpoint as checkpoint
+    from app.domain.agents.resolution import AgentCatalogResolver
+    recovered = {"state": "success", "outputs": {"out.md": {"id": "artifact"}}, "error": None}
+    async def find(*args): return recovered
+    async def must_not_resolve(*args, **kwargs): raise AssertionError("recovered node must not resolve catalog")
+    monkeypatch.setattr(checkpoint, "find_durable_artifact_result", find)
+    monkeypatch.setattr(AgentCatalogResolver, "resolve", must_not_resolve)
+    result = asyncio.run(run_ai_node({"task_id": "task", "node": {"id": "ai", "agent_id": "deleted",
+                                                                          "outputs": ["out.md"]}}))
+    assert result == recovered
+
+
+def test_ai_activity_fails_closed_when_platform_validator_cannot_be_installed(monkeypatch, tmp_path):
+    from worker.activities.ai_node import run_ai_node
+    import app.core.db
+    import worker.activities.checkpoint as checkpoint
+    from app.domain.agents.resolution import AgentCatalogResolver
+    class TaskRow:
+        created_by = "creator"
+        prompt = ""
+    class Session:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def get(self, *_args): return TaskRow()
+    monkeypatch.setattr(app.core.db, "AsyncSessionLocal", lambda: Session())
+    async def no_recovery(*args): return None
+    async def resolve(self, **kwargs):
+        return {"agent": {"runtime": "opencode", "model": "default", "instructions": ""}, "mcps": [], "skills": []}
+    monkeypatch.setattr(checkpoint, "find_durable_artifact_result", no_recovery)
+    monkeypatch.setattr(AgentCatalogResolver, "resolve", resolve)
+    result = asyncio.run(run_ai_node({"task_id": "task", "workspace": str(tmp_path),
+        "node": {"id": "ai", "agent_id": "agent", "outputs": []}}))
+    assert result["state"] == "failed"
+    assert result["error"]["code"] == "PLATFORM_VALIDATOR_UNAVAILABLE"
+
+
+def test_ai_activity_resolves_fresh_consumer_catalog_and_merges_platform_validator(tmp_path, monkeypatch):
+    from worker.activities.ai_node import run_ai_node
+    import app.core.db
+    from app.domain.agents.resolution import AgentCatalogResolver
+    import worker.activities.checkpoint as checkpoint
+    import worker.activities.ai_node as ai_node
+    class TaskRow:
+        created_by = "actual-creator"
+        prompt = "task prompt"
+    class Session:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def get(self, *_args): return TaskRow()
+    monkeypatch.setattr(app.core.db, "AsyncSessionLocal", lambda: Session())
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "jwt_secret", "test-validator-secret-at-least-32-bytes")
+    async def not_recovered(*args): return None
+    monkeypatch.setattr(checkpoint, "find_durable_artifact_result", not_recovered)
+    seen = []
+    live_model = ["vendor/updated"]
+    async def resolve(self, *, created_by, node):
+        seen.append((created_by, node["agent_id"]))
+        return {"agent": {"runtime": "opencode", "model": live_model[0], "reasoning_effort": "high",
+                           "instructions": "current instructions"},
+                "mcps": [{"id": "m1", "name": "tools", "transport": {"type": "http", "url": "http://mcp",
+                             "headers": [{"name": "X-Token", "secret": True}]},
+                           "headers": (("X-Token", "CATALOG_SECRET"),)}],
+                "skills": [{"name": "current-skill", "description": "desc", "instructions": "full skill"}]}
+    monkeypatch.setattr(AgentCatalogResolver, "resolve", resolve)
+    monkeypatch.setattr(ai_node, "_load_provider_runtime_config", lambda *_args: asyncio.sleep(0, result={}))
+    async def no_note(*_args): return None
+    monkeypatch.setattr(ai_node, "_add_task_note", no_note)
+    started = {}
+    started_models = []
+    adapters = []
+    async def start(cfg, workspace, **kwargs):
+        started.update(cfg=cfg, kwargs=kwargs)
+        started_models.append(cfg["model"])
+        adapter = FakeAdapter([{}])
+        adapters.append(adapter)
+        return adapter
+    import worker.activities.agent as agent
+    monkeypatch.setattr(agent, "start_agent_session", start)
+    monkeypatch.setattr(agent, "validator_mcp_server", lambda *_args: {"type": "http", "name": "kosmo-validator",
+                                                                         "url": "http://validator", "headers": []})
+    result = asyncio.run(run_ai_node({"task_id": "task", "user_id": "spoofed", "node_execution_id": "exec",
+        "workspace": str(tmp_path), "node": {"id": "ai", "agent_id": "ref", "outputs": [],
+        "prompt_template": "task-specific", "agent": {"instructions": "must not be used"}}}))
+    assert result["state"] == "success", result
+    assert seen == [("actual-creator", "ref")]
+    assert started["cfg"]["model"] == "vendor/updated"
+    assert "CATALOG_SECRET" in started["kwargs"]["diagnostic_secrets"]
+    servers = started["kwargs"]["mcp_servers"]
+    assert servers[0]["headers"] == (("X-Token", "CATALOG_SECRET"),)
+    assert servers[-1]["name"] == "kosmo-validator"
+    assert "current-skill" in adapters[0].prompts[0] and "full skill" in adapters[0].prompts[0]
+    assert "must not be used" not in adapters[0].prompts[0]
+    assert "CATALOG_SECRET" not in json.dumps(result)
+    live_model[0] = "vendor/retry-updated"
+    retry = asyncio.run(run_ai_node({"task_id": "task", "user_id": "spoofed", "node_execution_id": "exec",
+        "workspace": str(tmp_path), "node": {"id": "ai", "agent_id": "ref", "outputs": [],
+        "prompt_template": "task-specific", "agent": {"instructions": "must not be used"}}}))
+    assert retry["state"] == "success"
+    assert started_models == ["vendor/updated", "vendor/retry-updated"]
 
 
 def test_ai_input_staging_accepts_direct_start_value_and_artifact_reference(tmp_path):

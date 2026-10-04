@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str,
-                              persist_artifact, write_note, publish_checkpoint, request_input=None) -> dict:
+                              persist_artifact, write_note, publish_checkpoint, request_input=None,
+                              effective_config=None) -> dict:
     """Run bounded completion/validation cycles; side effects are injected for tests."""
     contracts = node.get("output_validation")
     if contracts is None:
@@ -38,9 +39,13 @@ async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str
     expected = [ArtifactContract(logical_name=name) for name in node["outputs"]]
     attempts = min(int(node.get("max_validation_cycles", 3)), 3)
     aggregate = []
-    await adapter.start_session(node.get("agent", {}))
+    effective_config = effective_config or {"agent": {}, "mcps": [], "skills": []}
+    agent = _effective_value(effective_config, "agent", {})
+    await adapter.start_session(_agent_runtime_config(agent))
+    skill_sections = [_skill_section(skill) for skill in _effective_value(effective_config, "skills", ())]
     prompt = "\n\n".join(part for part in (
-        node.get("agent", {}).get("instructions", ""),
+        _effective_value(agent, "instructions", ""),
+        *skill_sections,
         ("Declared inputs are mounted read-only under /workspace/inputs; read: "
          + ", ".join(f"/workspace/inputs/{Path(name).name}" for name in node.get("inputs", [])))
         if node.get("inputs") else "",
@@ -64,7 +69,8 @@ async def orchestrate_ai_node(node: dict, adapter, workspace: Path, task_id: str
                     raise RuntimeError("Human input handler is not configured")
                 request_key = str(event.request_id) if event.request_id is not None else f"notification-{attempt}-{input_request_index}"
                 input_request_index += 1
-                cancelled = await request_input(event.message_key, event.params, adapter, event.request_id, request_key)
+                safe_params = _sanitize_diagnostic(event.params, _effective_secrets(effective_config))
+                cancelled = await request_input(event.message_key, safe_params, adapter, event.request_id, request_key)
                 if cancelled:
                     return {"state": "stopped", "outputs": {}, "error": None}
                 continue
@@ -128,24 +134,38 @@ async def run_ai_node(payload: dict) -> dict:
     )
     if recovered:
         return recovered
-    runtime = payload["node"].get("agent", {}).get("runtime")
+    from worker.activities.agent import start_agent_session, stage_agent_inputs
+
+    task_id, node, task_prompt = payload["task_id"], payload["node"], payload.get("task_prompt", "")
+    from app.core.db import AsyncSessionLocal
+    from app.domain.tasks.models import Task
+    from app.domain.agents.resolution import AgentCatalogResolver, SqlCatalogResolutionRepository
+    try:
+        async with AsyncSessionLocal() as db:
+            task = await db.get(Task, task_id)
+            if not task:
+                raise ValueError("task unavailable")
+            task_prompt = task_prompt or task.prompt or ""
+            user_id = task.created_by
+            effective_config = await AgentCatalogResolver(SqlCatalogResolutionRepository(db)).resolve(
+                created_by=user_id, node=node)
+    except Exception as exc:
+        from shared.errors import KosmoError
+        if isinstance(exc, KosmoError):
+            return {"state": "failed", "outputs": {}, "error": {
+                "code": exc.code, "message_key": exc.message_key, "params": exc.params or {},
+            }}
+        logger.warning("AI catalog resolution failed", extra={"task_id": task_id, "node_id": node["id"],
+                                                               "failure_type": type(exc).__name__})
+        return {"state": "failed", "outputs": {}, "error": {
+            "code": "CATALOG_RESOLUTION_FAILED", "message_key": "errors.agent.runtime_failed", "params": {},
+        }}
+    runtime = _effective_value(_effective_value(effective_config, "agent", {}), "runtime", "")
     if runtime != "opencode":
         return {"state": "failed", "outputs": {}, "error": {
             "code": "EXECUTOR_NOT_SUPPORTED", "message_key": "errors.executor.not_registered",
             "params": {"type": runtime or ""},
         }}
-    from worker.activities.agent import start_agent_session, stage_agent_inputs
-
-    task_id, node, task_prompt = payload["task_id"], payload["node"], payload.get("task_prompt", "")
-    user_id = payload.get("user_id")
-    if not task_prompt or not user_id:
-        from app.core.db import AsyncSessionLocal
-        from app.domain.tasks.models import Task
-        async with AsyncSessionLocal() as db:
-            task = await db.get(Task, task_id)
-            if task:
-                task_prompt = task_prompt or task.prompt or ""
-                user_id = user_id or task.created_by
     workspace = payload.get("workspace") or str(Path("/var/lib/kosmo/tasks") / task_id / "agent" / node["id"])
     Path(workspace).mkdir(parents=True, exist_ok=True)
     # The lifecycle activity maintains the ACP session and yields cycle results.
@@ -183,17 +203,26 @@ async def run_ai_node(payload: dict) -> dict:
     adapter = None
     try:
         from worker.activities.agent import validator_mcp_server
-        runtime_config_files = await _load_provider_runtime_config(user_id, runtime) or {}
         from app.core.config import settings
-        runtime_environment = stage_agent_inputs(payload.get("inputs", {}), workspace)
         execution_id = payload.get("node_execution_id")
-        mcp_servers = ([validator_mcp_server(task_id, node["id"], execution_id, settings.jwt_secret)]
-                       if execution_id and settings.jwt_secret else [])
+        if not execution_id or not settings.jwt_secret:
+            return {"state": "failed", "outputs": {}, "error": {
+                "code": "PLATFORM_VALIDATOR_UNAVAILABLE", "message_key": "errors.agent.runtime_failed", "params": {},
+            }}
+        runtime_config_files = await _load_provider_runtime_config(user_id, runtime) or {}
+        runtime_environment = stage_agent_inputs(payload.get("inputs", {}), workspace)
+        mcp_servers = [_mcp_runtime_config(mcp) for mcp in _effective_value(effective_config, "mcps", ())]
+        mcp_servers.append(validator_mcp_server(task_id, node["id"], execution_id, settings.jwt_secret))
+        diagnostic_secrets = tuple(sorted(set(_effective_secrets(effective_config) + _wire_secrets(mcp_servers)
+                                              + _provider_config_secrets(runtime_config_files)),
+                                         key=len, reverse=True))
         adapter = await start_agent_session(
-            node.get("agent", {}), workspace, runtime_environment=runtime_environment,
+            _agent_runtime_config(_effective_value(effective_config, "agent", {})), workspace, runtime_environment=runtime_environment,
             runtime_config_files=runtime_config_files, mcp_servers=mcp_servers,
+            diagnostic_secrets=diagnostic_secrets,
         )
-        return await orchestrate_ai_node(node, adapter, Path(workspace), task_id, persist, note, checkpoint, request_input)
+        return await orchestrate_ai_node(node, adapter, Path(workspace), task_id, persist, note, checkpoint,
+                                         request_input, effective_config=effective_config)
     except Exception as exc:
         from worker.activities.agent import ProviderBootstrapError
         if isinstance(exc, ProviderBootstrapError):
@@ -201,7 +230,8 @@ async def run_ai_node(payload: dict) -> dict:
             return {"state": "failed", "outputs": {}, "error": {
                 "code": exc.code, "message_key": exc.message_key, "params": {},
             }}
-        logger.exception("AI node infrastructure failure", extra={"task_id": task_id, "node_id": node["id"]})
+        logger.warning("AI node infrastructure failure", extra={"task_id": task_id, "node_id": node["id"],
+                                                                "failure_type": type(exc).__name__})
         # Return a language-independent failure rather than letting infrastructure
         # exceptions trigger Temporal's unbounded default activity retry policy.
         from worker.adapters.opencode_acp import ACPResponseError
@@ -225,7 +255,11 @@ async def run_ai_node(payload: dict) -> dict:
         }
     finally:
         if adapter is not None:
-            await adapter.close()
+            try:
+                await adapter.close()
+            except Exception as close_error:
+                logger.warning("AI node session cleanup failed", extra={"task_id": task_id,
+                    "node_id": node["id"], "failure_type": type(close_error).__name__})
 
 
 async def _load_provider_runtime_config(user_id: str | None, provider_type: str = "opencode") -> dict[str, bytes] | None:
@@ -245,6 +279,88 @@ async def _load_provider_runtime_config(user_id: str | None, provider_type: str 
         return await ProviderConfigService(
             ProviderConfigRepository(db), settings.config_encryption_key,
         ).resolve_files(user_id, provider_type, group_ids)
+
+
+def _effective_value(value, key, default=None):
+    return value.get(key, default) if isinstance(value, dict) else getattr(value, key, default)
+
+
+def _agent_runtime_config(agent):
+    return {key: _effective_value(agent, key) for key in ("runtime", "model", "reasoning_effort", "instructions")}
+
+
+def _skill_section(skill):
+    name = _effective_value(skill, "name", "")
+    description = _effective_value(skill, "description", "")
+    instructions = _effective_value(skill, "instructions", "")
+    return f'<skill name="{name}">\n{description}\n\n{instructions}\n</skill>'
+
+
+def _mcp_runtime_config(mcp):
+    config = dict(_effective_value(mcp, "transport", {}))
+    collection = "headers" if config.get("type") == "http" else "env"
+    values = dict(_effective_value(mcp, collection, ()))
+    return {"id": _effective_value(mcp, "id"), "name": _effective_value(mcp, "name"),
+            "transport": config, collection: tuple(values.items())}
+
+
+def _effective_secrets(config):
+    secrets = []
+    for mcp in _effective_value(config, "mcps", ()):
+        transport = _effective_value(mcp, "transport", {})
+        collection = "headers" if transport.get("type") == "http" else "env"
+        values = dict(_effective_value(mcp, collection, ()))
+        secrets.extend(value for value in values.values() if value)
+    return tuple(sorted(set(secrets), key=len, reverse=True))
+
+
+def _wire_secrets(servers):
+    result = []
+    for server in servers:
+        for collection in ("headers", "env"):
+            for entry in server.get(collection, []):
+                name, value = (entry.get("name", ""), entry.get("value")) if isinstance(entry, dict) else entry
+                if name.casefold() in {"authorization", "token", "api-key", "x-api-key"} and value:
+                    result.append(value)
+    return tuple(result)
+
+
+def _provider_config_secrets(files):
+    secrets = []
+    secret_fields = {"key", "token", "password", "secret", "authorization", "apikey", "api_key",
+                     "access_token", "refreshtoken", "refresh_token", "clientsecret", "client_secret"}
+    for filename in ("auth.json", "opencode.json"):
+        content = files.get(filename) if isinstance(files, dict) else None
+        if not content:
+            continue
+        try:
+            document = json.loads(content)
+        except (TypeError, ValueError):
+            continue
+        def visit(value, key=""):
+            if isinstance(value, dict):
+                for child_key, child in value.items():
+                    visit(child, child_key.casefold())
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child, key)
+            elif isinstance(value, str) and key in secret_fields:
+                if value:
+                    secrets.append(value)
+        visit(document)
+    return tuple(secrets)
+
+
+def _sanitize_diagnostic(value, secrets):
+    if isinstance(value, str):
+        for secret in secrets:
+            value = value.replace(secret, "[REDACTED]")
+        return value[:4000]
+    if isinstance(value, dict):
+        return {key: _sanitize_diagnostic(item, secrets) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_diagnostic(item, secrets) for item in value[:100]]
+    return value
 
 
 def _is_provider_auth_error(exc: Exception) -> bool:

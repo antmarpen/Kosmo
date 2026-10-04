@@ -74,6 +74,17 @@ def test_normalization_surfaces_acp_form_elicitation_request_correlation():
     }, request_id=18, method="elicitation/create")]
 
 
+def test_acp_diagnostics_redact_configured_secret_from_error_and_permission_payload():
+    from shared.agent_events import AgentError, InputRequested
+    secret = "SENTINEL_CONFIGURED_TOKEN"
+    error = normalize_frame({"error": {"message": f"bad header {secret}"}}, secrets=(secret,))
+    permission = normalize_frame({"id": 1, "method": "session/request_permission",
+                                  "params": {"authorization": secret}}, secrets=(secret,))
+    assert error == [AgentError("agent.runtime.error", {"message": "{'message': 'bad header [REDACTED]'}"})]
+    assert permission == [InputRequested("agent.permission.requested", {"authorization": "[REDACTED]"}, 1,
+                                          "session/request_permission")]
+
+
 def test_synthetic_request_input_update_remains_supported_without_jsonrpc_id():
     from shared.agent_events import InputRequested
 
@@ -577,6 +588,7 @@ def test_ai_activity_returns_structured_failure_when_agent_infrastructure_fails(
     from worker.activities import agent as agent_module
     from worker.activities import ai_node as ai_node_module
     from worker.activities.ai_node import run_ai_node
+    _mock_live_agent_catalog(monkeypatch)
 
     async def unavailable(*args, **kwargs):
         raise RuntimeError("docker socket unavailable")
@@ -586,22 +598,23 @@ def test_ai_activity_returns_structured_failure_when_agent_infrastructure_fails(
         return None
     monkeypatch.setattr(ai_node_module, "_load_provider_runtime_config", no_provider_config)
     result = asyncio.run(run_ai_node({
-        "task_id": "task-1", "task_prompt": "work", "user_id": "user-1", "workspace": str(tmp_path),
-        "node": {"id": "ai-1", "agent": {"runtime": "opencode"}, "outputs": [], "validation": {"levels": []}},
+        "task_id": "task-1", "task_prompt": "work", "user_id": "user-1", "node_execution_id": "exec-1", "workspace": str(tmp_path),
+        "node": {"id": "ai-1", "agent_id": "agent-1", "outputs": [], "validation": {"levels": []}},
     }))
     assert result["state"] == "failed"
     assert result["error"]["code"] == "AGENT_RUNTIME_FAILED"
     assert result["error"]["message_key"] == "errors.agent.runtime_failed"
     assert result["error"]["params"] == {"cause": "errors.agent.runtime_failed"}
     assert "AI node infrastructure failure" in caplog.text
-    assert "Traceback" in caplog.text
-    assert "docker socket unavailable" in caplog.text
+    assert "Traceback" not in caplog.text
+    assert "docker socket unavailable" not in caplog.text
 
 
 def test_missing_provider_config_turns_runtime_failure_into_auth_error_and_note(monkeypatch, tmp_path):
     from worker.activities import agent as agent_module
     from worker.activities import ai_node as ai_node_module
     from worker.activities.ai_node import run_ai_node
+    _mock_live_agent_catalog(monkeypatch)
 
     notes = []
 
@@ -627,12 +640,32 @@ def test_missing_provider_config_turns_runtime_failure_into_auth_error_and_note(
     monkeypatch.setattr(ai_node_module, "_add_task_note", save_note)
     monkeypatch.setattr(agent_module, "start_agent_session", start_session)
     result = asyncio.run(run_ai_node({
-        "task_id": "task-1", "user_id": "owner-1", "task_prompt": "work", "workspace": str(tmp_path),
-        "node": {"id": "ai-1", "agent": {"runtime": "opencode"}, "outputs": [], "validation": {"levels": []}},
+        "task_id": "task-1", "user_id": "owner-1", "node_execution_id": "exec-1", "task_prompt": "work", "workspace": str(tmp_path),
+        "node": {"id": "ai-1", "agent_id": "agent-1", "outputs": [], "validation": {"levels": []}},
     }))
     assert result["error"]["code"] == "PROVIDER_AUTH_MISSING"
     assert result["error"]["message_key"] == "errors.provider.auth_missing"
     assert notes == [("task-1", "ai-1", "tasks.notes.agent_auth_missing", {"provider": "opencode"})]
+
+
+def _mock_live_agent_catalog(monkeypatch):
+    import app.core.db
+    from app.core.config import settings
+    from app.domain.agents.resolution import AgentCatalogResolver
+    class TaskRow:
+        created_by = "task-creator"
+        prompt = "task prompt"
+    class Session:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def get(self, *_args): return TaskRow()
+    monkeypatch.setattr(app.core.db, "AsyncSessionLocal", lambda: Session())
+    monkeypatch.setattr(settings, "jwt_secret", "test-validator-secret-at-least-32-bytes")
+    async def resolve(self, *, created_by, node):
+        assert created_by == "task-creator"
+        return {"agent": {"runtime": "opencode", "model": "default", "reasoning_effort": None,
+                           "instructions": ""}, "mcps": [], "skills": []}
+    monkeypatch.setattr(AgentCatalogResolver, "resolve", resolve)
 
 
 def test_permission_request_is_serviced_while_prompt_is_pending():

@@ -84,12 +84,12 @@ def _option(options: Any, *, category: str, option_type: str | None = None) -> d
     return matches[0] if len(matches) == 1 else None
 
 
-def normalize_frame(frame: dict[str, Any]) -> list[AgentEvent]:
+def normalize_frame(frame: dict[str, Any], *, secrets: tuple[str, ...] = ()) -> list[AgentEvent]:
     method, params = frame.get("method"), frame.get("params", {})
     if method == "session/request_permission":
-        return [InputRequested("agent.permission.requested", params, frame.get("id"), method)]
+        return [InputRequested("agent.permission.requested", _redact(params, secrets), frame.get("id"), method)]
     if method == "elicitation/create":
-        return [InputRequested("agent.input.requested", params, frame.get("id"), method)]
+        return [InputRequested("agent.input.requested", _redact(params, secrets), frame.get("id"), method)]
     update = params.get("update", {})
     kind = update.get("sessionUpdate")
     if kind == "agent_message_chunk":
@@ -106,17 +106,32 @@ def normalize_frame(frame: dict[str, Any]) -> list[AgentEvent]:
     if method == "session/update" and kind:
         return []
     if frame.get("error"):
-        return [AgentError("agent.runtime.error", {"message": str(frame["error"])})]
+        return [AgentError("agent.runtime.error", {"message": _redact(str(frame["error"]), secrets)})]
     return []
+
+
+def _redact(value, secrets):
+    if isinstance(value, str):
+        for secret in secrets:
+            if secret:
+                value = value.replace(secret, "[REDACTED]")
+        return value[:4000]
+    if isinstance(value, dict):
+        return {key: _redact(item, secrets) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact(item, secrets) for item in value[:100]]
+    return value
 
 
 class OpenCodeACPAdapter:
     def __init__(self, transport: ACPTransport, output_dir: str | Path | None = None,
-                 session_cwd: str = "/workspace", mcp_servers: list[dict[str, Any]] | None = None):
+                 session_cwd: str = "/workspace", mcp_servers: list[dict[str, Any]] | None = None,
+                 diagnostic_secrets: tuple[str, ...] = ()):
         self._transport = transport
         self._output_dir = Path(output_dir) if output_dir else None
         self._session_cwd = session_cwd
         self._mcp_servers = mcp_servers or []
+        self._diagnostic_secrets = tuple(sorted(set(diagnostic_secrets), key=len, reverse=True))
         self._session_id: str | None = None
         self._completion_ready = False
         self._prompt_task: asyncio.Task | None = None
@@ -236,7 +251,7 @@ class OpenCodeACPAdapter:
                     return
             if frame is None:
                 continue
-            normalized = normalize_frame(frame)
+            normalized = normalize_frame(frame, secrets=self._diagnostic_secrets)
             if frame.get("id") is not None and frame.get("method") and not normalized:
                 await self._transport.respond_error(frame["id"], -32601, "Method not supported")
                 continue
