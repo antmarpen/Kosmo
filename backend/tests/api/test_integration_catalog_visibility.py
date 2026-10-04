@@ -7,6 +7,7 @@ repositories, HTTP routing and PostgreSQL remain real.
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from types import SimpleNamespace
 
@@ -18,8 +19,13 @@ from sqlalchemy.pool import NullPool
 
 from app.api.deps import get_current_user
 from app.core.db import get_db
-from app.domain.identity.models import User, UserRole
+from app.domain.identity.models import Group, GroupMembership, GroupMembershipRole, User, UserRole
 from app.main import create_app
+
+pytestmark = pytest.mark.skipif(
+    not os.getenv("KOSMO_TEST_DATABASE_URL"),
+    reason="Requires a migrated test database (set KOSMO_TEST_DATABASE_URL).",
+)
 
 
 @pytest.fixture(scope="module")
@@ -39,7 +45,7 @@ def _user(sessions, role=UserRole.runner):
     return user_id
 
 
-def _client(sessions, user_id):
+def _client(sessions, user_id, role=UserRole.runner):
     app = create_app()
     async def db_override():
         async with sessions() as db:
@@ -47,7 +53,7 @@ def _client(sessions, user_id):
             await db.commit()
     app.dependency_overrides[get_db] = db_override
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
-        id=user_id, username=user_id, password_hash="x", role=UserRole.runner)
+        id=user_id, username=user_id, password_hash="x", role=role)
     return TestClient(app, base_url="http://test")
 
 
@@ -83,5 +89,83 @@ def test_personal_catalog_is_owner_visible_and_hidden_from_other_user(sessions, 
                     table = {"agents": "agents", "mcp-servers": "mcp_servers", "skills": "skills"}[route]
                     await db.execute(text(f"DELETE FROM {table} WHERE id = :id"), {"id": entity_id})
                 await db.execute(text("DELETE FROM users WHERE id IN (:owner, :other)"), {"owner": owner, "other": other})
+                await db.commit()
+        asyncio.run(cleanup())
+
+
+@pytest.mark.parametrize(("route", "payload"), [
+    ("agents", {"name": "group agent", "model": "provider/model", "instructions": "instructions"}),
+    ("mcp-servers", {"name": "group mcp", "transport": {"type": "stdio", "command": "tool", "args": [], "env": []}}),
+    ("skills", {"name": "group skill", "description": "desc", "instructions": "instructions"}),
+])
+def test_group_scope_manager_member_and_nonmember_matrix(sessions, route, payload):
+    manager, member, outsider = (_user(sessions) for _ in range(3))
+    group_id = str(uuid.uuid4())
+    async def seed_memberships():
+        async with sessions() as db:
+            db.add(Group(id=group_id, name=f"catalog-group-{group_id}"))
+            db.add_all([
+                GroupMembership(group_id=group_id, user_id=manager, role=GroupMembershipRole.group_manager),
+                GroupMembership(group_id=group_id, user_id=member, role=GroupMembershipRole.member),
+            ])
+            await db.commit()
+    asyncio.run(seed_memberships())
+    manager_client, member_client, outsider_client = (_client(sessions, uid) for uid in (manager, member, outsider))
+    entity_id = None
+    try:
+        created = manager_client.post(f"/{route}", json={**payload, "visibility": "group", "group_id": group_id})
+        assert created.status_code == 201, created.text
+        entity_id = created.json()["id"]
+        assert any(row["id"] == entity_id for row in manager_client.get(f"/{route}").json())
+        assert any(row["id"] == entity_id for row in member_client.get(f"/{route}").json())
+        assert member_client.get(f"/{route}/{entity_id}").status_code == 200
+        assert member_client.patch(f"/{route}/{entity_id}", json={"name": "forbidden"}).status_code == 403
+        assert member_client.delete(f"/{route}/{entity_id}").status_code == 403
+        assert all(row["id"] != entity_id for row in outsider_client.get(f"/{route}").json())
+        assert outsider_client.get(f"/{route}/{entity_id}").status_code == 403
+        assert outsider_client.patch(f"/{route}/{entity_id}", json={"name": "forbidden"}).status_code == 403
+    finally:
+        for client in (manager_client, member_client, outsider_client):
+            client.close()
+        async def cleanup():
+            async with sessions() as db:
+                if entity_id:
+                    table = {"agents": "agents", "mcp-servers": "mcp_servers", "skills": "skills"}[route]
+                    await db.execute(text(f"DELETE FROM {table} WHERE id = :id"), {"id": entity_id})
+                await db.execute(text("DELETE FROM groups WHERE id = :id"), {"id": group_id})
+                await db.execute(text("DELETE FROM users WHERE id IN (:a, :b, :c)"), {"a": manager, "b": member, "c": outsider})
+                await db.commit()
+        asyncio.run(cleanup())
+
+
+@pytest.mark.parametrize(("route", "payload"), [
+    ("agents", {"name": "global agent", "model": "provider/model", "instructions": "instructions"}),
+    ("mcp-servers", {"name": "global mcp", "transport": {"type": "stdio", "command": "tool", "args": [], "env": []}}),
+    ("skills", {"name": "global skill", "description": "desc", "instructions": "instructions"}),
+])
+def test_global_scope_is_admin_only_and_visible_to_authenticated_users(sessions, route, payload):
+    admin, ordinary = _user(sessions, UserRole.admin), _user(sessions)
+    admin_client = _client(sessions, admin, UserRole.admin)
+    ordinary_client = _client(sessions, ordinary)
+    entity_id = None
+    try:
+        denied = ordinary_client.post(f"/{route}", json={**payload, "visibility": "global"})
+        assert denied.status_code == 403
+        created = admin_client.post(f"/{route}", json={**payload, "visibility": "global"})
+        assert created.status_code == 201, created.text
+        entity_id = created.json()["id"]
+        assert any(row["id"] == entity_id for row in ordinary_client.get(f"/{route}").json())
+        assert ordinary_client.get(f"/{route}/{entity_id}").status_code == 200
+        assert ordinary_client.patch(f"/{route}/{entity_id}", json={"name": "forbidden"}).status_code == 403
+        assert ordinary_client.delete(f"/{route}/{entity_id}").status_code == 403
+    finally:
+        admin_client.close()
+        ordinary_client.close()
+        async def cleanup():
+            async with sessions() as db:
+                if entity_id:
+                    table = {"agents": "agents", "mcp-servers": "mcp_servers", "skills": "skills"}[route]
+                    await db.execute(text(f"DELETE FROM {table} WHERE id = :id"), {"id": entity_id})
+                await db.execute(text("DELETE FROM users WHERE id IN (:a, :b)"), {"a": admin, "b": ordinary})
                 await db.commit()
         asyncio.run(cleanup())

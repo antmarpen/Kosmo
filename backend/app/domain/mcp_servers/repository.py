@@ -26,6 +26,11 @@ class McpServerRepository:
     async def memberships(self, user_id: str) -> list[str]:
         return list((await self.db.scalars(select(GroupMembership.group_id).where(GroupMembership.user_id == user_id))).all())
 
+    async def membership_role(self, user_id: str, group_id: str) -> str | None:
+        role = await self.db.scalar(select(GroupMembership.role).where(
+            GroupMembership.user_id == user_id, GroupMembership.group_id == group_id))
+        return getattr(role, "value", role)
+
     async def visible_candidates(self, user_id: str, group_ids: list[str]) -> list[McpServer]:
         clauses = [and_(McpServer.visibility == "personal", McpServer.owner_user_id == user_id), McpServer.visibility == "global"]
         if group_ids: clauses.append(and_(McpServer.visibility == "group", McpServer.group_id.in_(group_ids)))

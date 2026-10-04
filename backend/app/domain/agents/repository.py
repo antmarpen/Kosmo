@@ -18,6 +18,11 @@ class AgentRepository:
     async def memberships(self, user_id: str) -> list[str]:
         return list((await self.db.scalars(select(GroupMembership.group_id).where(GroupMembership.user_id == user_id))).all())
 
+    async def membership_role(self, user_id: str, group_id: str) -> str | None:
+        role = await self.db.scalar(select(GroupMembership.role).where(
+            GroupMembership.user_id == user_id, GroupMembership.group_id == group_id))
+        return getattr(role, "value", role)
+
     async def visible_reference(self, kind: str, user_id: str, reference_id: str) -> bool:
         model = {"mcp": McpServer, "skill": Skill}.get(kind)
         if model is None:
