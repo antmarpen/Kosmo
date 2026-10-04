@@ -102,8 +102,14 @@ async function createSyntheticProvider(
   name: string,
   files?: { config: unknown; auth: unknown },
 ): Promise<ProviderRow> {
-  const config = files?.config ?? { provider: { opencode: { options: { apiKey: syntheticSecret() } } } };
-  const auth = files?.auth ?? { opencode: { type: "api", key: syntheticSecret() } };
+  const config = files?.config ?? { providers: { opencode: { options: {} } } };
+  const auth = files?.auth ?? [{
+    id: `cred_e2e_${uniqueSuffix()}`,
+    integrationID: "opencode",
+    label: "API key",
+    active: true,
+    value: { type: "key", key: syntheticSecret() },
+  }];
   const response = await request.put("/api/providers/opencode/config", {
     headers: authed(token),
     multipart: {
@@ -237,6 +243,14 @@ async function fitView(page: Page): Promise<void> {
   await page.waitForTimeout(400);
 }
 
+/** The reset seed now supplies a global reference agent; inline-agent authoring is obsolete. */
+async function chooseReferenceAgent(page: Page): Promise<void> {
+  const selector = page.getByRole("combobox", { name: /agent|agente/i });
+  await expect(selector).toBeVisible();
+  await selector.fill("reference-security-analysis-agent");
+  await page.getByRole("option", { name: "reference-security-analysis-agent" }).click();
+}
+
 /**
  * Authors the Start→Script→AI→End graph through the real UI: palette adds,
  * properties panel forms (Start input field, script code, AI model/prompt),
@@ -249,12 +263,10 @@ async function authorReferenceGraph(page: Page, workflowName: string): Promise<v
   await page.getByRole("button", { name: /^add script$|añadir script$/i }).click();
   await fillScriptCode(page, "report = f'Security analysis for {topic}'\ndata = {'topic': topic}\nreturn report, data");
 
-  // Add AI and configure the minimal required fields (model + prompt).
+  // AI nodes now reference the seeded catalog agent; there is no inline model
+  // or instructions configuration on the node.
   await page.getByRole("button", { name: /^add ai$|añadir ia$/i }).click();
-  const modelSelect = page.getByLabel(/^model$|modelo$/i);
-  await expect(modelSelect).toBeVisible();
-  await expect(modelSelect.locator("option").nth(1)).toBeAttached({ timeout: 30_000 });
-  await modelSelect.selectOption({ index: 1 });
+  await chooseReferenceAgent(page);
   await page.getByLabel(/prompt template|plantilla de prompt/i).fill("Summarize the topic.");
 
   // AI output validation belongs to each declared output, not a node-level
@@ -336,9 +348,9 @@ test("launch a task from /tasks/new and reach a terminal state", async ({ page, 
     await expect(page.getByText(/\breport\b/).first()).toBeVisible();
     await expect(page.getByText(/\bdata\b/).first()).toBeVisible();
   } else if (task.state === "failed") {
-    // Structured, localized failure without any raw stack trace.
+    // Structured v2 provider-auth or runtime failure without any raw stack trace.
     await expect(
-      page.getByText(/agent runtime failed|falló el entorno del agente/i).first(),
+      page.getByText(/Add provider credentials before continuing|agent runtime failed|falló el entorno del agente/i).first(),
     ).toBeVisible();
     await expect(page.locator("body")).not.toContainText("Traceback (most recent call last)");
   }

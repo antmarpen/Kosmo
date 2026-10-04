@@ -133,6 +133,14 @@ async function fitView(page: Page): Promise<void> {
   await page.waitForTimeout(400);
 }
 
+/** The destructive reset replaced inline agents with a seeded global reference. */
+async function chooseReferenceAgent(page: Page): Promise<void> {
+  const selector = page.getByRole("combobox", { name: /agent|agente/i });
+  await expect(selector).toBeVisible();
+  await selector.fill("reference-security-analysis-agent");
+  await page.getByRole("option", { name: "reference-security-analysis-agent" }).click();
+}
+
 /**
  * Waits for the authored task while answering any legitimate agent input
  * request through the task detail form (never a global auto-approval). Returns
@@ -182,16 +190,13 @@ async function authorExecutableGraph(page: Page): Promise<void> {
   await page.getByRole("button", { name: /^add script$|añadir script$/i }).click();
   await fillScriptCode(page, scriptCode);
 
-  // Add AI and configure model + prompt + instructions.
+  // AI nodes use a catalog reference. Instructions are agent-owned, not inline.
   await page.getByRole("button", { name: /^add ai$|añadir ia$/i }).click();
+  await chooseReferenceAgent(page);
   await fitView(page);
   const aiCard = page.locator(".react-flow__node").filter({ hasText: /\bAI\b|IA/ }).first();
   await dragNodeBy(page, aiCard, 170, 70);
   await fitView(page);
-  const modelSelect = page.getByLabel(/^model$|modelo$/i);
-  await expect(modelSelect.locator("option").nth(1)).toBeAttached({ timeout: 30_000 });
-  await modelSelect.selectOption({ index: 1 });
-  await page.getByLabel(/instructions|instrucciones/i).fill("Summarize accurately; do not invent findings.");
   await page.getByLabel(/prompt template|plantilla de prompt/i).fill(
     "Read report and write a concise summary to summary. Start with a top-level heading exactly \"Summary\" and include the word security.",
   );

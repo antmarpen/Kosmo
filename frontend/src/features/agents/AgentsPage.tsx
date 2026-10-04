@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { CatalogField, CatalogTextArea } from "@/features/catalogs/components/CatalogField";
+import { useCatalogFormFocus } from "@/features/catalogs/components/useCatalogFormFocus";
 import {
   CatalogEmpty,
   CatalogList,
@@ -462,6 +463,7 @@ function AgentFormFields({
   onClose: (options: { refetch: boolean }) => void;
 }) {
   const { t } = useTranslation();
+  const formRef = useCatalogFormFocus();
   const isEdit = initial !== null;
   const [name, setName] = useState(initial?.name ?? "");
   const [scope, setScope] = useState<CatalogScope>(
@@ -563,7 +565,7 @@ function AgentFormFields({
           </p>
         ) : null}
       </div>
-      <form className="mt-8 grid max-w-3xl gap-6" onSubmit={handleSubmit} noValidate>
+      <form ref={formRef} className="mt-8 grid max-w-3xl gap-6" onSubmit={handleSubmit} noValidate>
         {error ? <KosmoErrorAlert error={error} /> : null}
         <CatalogField
           label={t("agents.form.name")}

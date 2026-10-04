@@ -210,11 +210,11 @@ test('submit workflow displays live task progress and produced artifacts', async
       await expectWithReload(page, page.getByText(/summary(?:\.json)?/).first());
       await expectWithReload(page, page.getByText(/succeeded/i).first());
     } else if (state === 'failed') {
-      // Localized cause (the AI failure surfaces either as a missing runtime
-      // or as exhausted output validation — both rendered from message keys).
+      // A credential-less stack now reports the v2 provider-auth block (or an
+      // actual runtime/validation failure); all are localized keyed outcomes.
       await expectWithReload(
         page,
-        page.getByText(/Agent runtime failed|Validation failed after/i).first(),
+        page.getByText(/Provider authentication is missing|Agent runtime failed|Validation failed after/i).first(),
       );
     } else if (state === 'waiting_for_input') {
       // The live agent paused on a permission/input request; the progress UI
@@ -253,12 +253,11 @@ test('failed AI execution has localized cause and no stack trace', async ({ page
     test.skip(state !== 'failed',
       `Skipped: no AI failure was observable (task state: ${state}); the journey needs a ` +
       'run whose agent runtime fails or whose model output is rejected by validation.');
-    // Localized cause: the failure surfaces either as a missing agent runtime
-    // or as exhausted output validation; both render from message keys, never
-    // as a raw stack trace.
+    // Localized cause: provider authentication, runtime, and validation
+    // failures all render from message keys, never as a raw stack trace.
     await expectWithReload(
       page,
-      page.getByText(/Agent runtime failed|Validation failed after/i).first(),
+      page.getByText(/Provider authentication is missing|Agent runtime failed|Validation failed after/i).first(),
     );
     await expect(page.locator('body')).not.toContainText(/Traceback \(most recent call last\)/);
     if (process.env.KOSMO_E2E_FAIL_VALIDATION === '1') {
