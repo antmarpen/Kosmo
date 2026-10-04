@@ -366,4 +366,41 @@ describe("translation catalogs", () => {
       "Este nombre está reservado para el validador de la plataforma.",
     );
   });
+
+  // --- WP-15: agent catalog screen ---
+
+  it("exposes the agent catalog screen vocabulary (WP-15)", () => {
+    expect(en.agents?.title).toBe("Agents");
+    expect(es.agents?.title).toBe("Agentes");
+    expect(en.agents?.form?.modelDefault).toBe("Runtime default");
+    expect(es.agents?.form?.modelDefault).toBe("Predeterminado del runtime");
+    expect(en.agents?.form?.reasoningRuntimeDefault).toBe(
+      "Use runtime default",
+    );
+    expect(es.agents?.form?.reasoningRuntimeDefault).toBe(
+      "Usar el predeterminado del runtime",
+    );
+    // The live central-change behavior is explained, not propagated.
+    expect(en.agents?.form?.liveNote).toMatch(/next time those nodes run/);
+    expect(es.agents?.form?.liveNote).toMatch(
+      /la próxima vez que esos nodos se ejecuten/,
+    );
+  });
+
+  it("exposes the agent reasoning effort values (WP-15)", () => {
+    // The v2-advertised effort set (WP-19), localized; unknown stored values
+    // render raw with the unsupported indication instead.
+    expect(Object.keys(en.agents?.form?.reasoningValues ?? {}).sort()).toEqual([
+      "default",
+      "high",
+      "low",
+      "max",
+      "medium",
+      "none",
+    ]);
+    expect(en.agents?.form?.reasoningValues?.default).toBe("Default");
+    expect(es.agents?.form?.reasoningValues?.max).toBe("Máximo");
+    expect(en.agents?.form?.reasoningUnsupported).toContain("{{value}}");
+    expect(es.agents?.form?.reasoningUnsupported).toContain("{{value}}");
+  });
 });

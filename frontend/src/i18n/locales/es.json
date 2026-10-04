@@ -293,6 +293,68 @@
       "empty": "Todavía no hay nada escrito."
     }
   },
+  "agents": {
+    "title": "Agentes",
+    "description": "Perfiles de agente especializados que referencian los nodos de IA de tus flujos. Las ediciones se aplican dondequiera que se use el agente.",
+    "emptyTitle": "Aún no hay agentes",
+    "emptyDescription": "Crea un agente para dar a tus nodos de IA un modelo, instrucciones y recursos predeterminados.",
+    "addFirst": "Crea tu primer agente",
+    "columns": {
+      "name": "Nombre",
+      "model": "Modelo",
+      "scope": "Ámbito",
+      "owner": "Propietario"
+    },
+    "scope": {
+      "personal": "Personal",
+      "group": "Grupo",
+      "global": "Global"
+    },
+    "delete": {
+      "title": "Eliminar agente",
+      "description": "El agente «{{name}}» se eliminará. Los nodos de flujo que lo referencien fallarán de forma visible cuando ya no exista. Esta acción no se puede deshacer."
+    },
+    "form": {
+      "createTitle": "Añadir agente",
+      "createDescription": "Define el modelo, las instrucciones y los recursos predeterminados que este agente aporta a los nodos de flujo.",
+      "editTitle": "Editar agente",
+      "editDescription": "Actualiza los valores predeterminados del agente. Los cambios se aplican a los nodos que lo referencian la próxima vez que se ejecuten.",
+      "liveNote": "Este agente lo referencian nodos de flujos. Los cambios se aplican la próxima vez que esos nodos se ejecuten; las sesiones ya en curso conservan su configuración actual.",
+      "name": "Nombre",
+      "nameHint": "Hasta {{max}} caracteres.",
+      "namePlaceholder": "p. ej. Resumidor de informes",
+      "runtime": "Runtime",
+      "runtimeValue": "OpenCode",
+      "runtimeHint": "El runtime del agente está fijado por ahora.",
+      "model": "Modelo",
+      "modelHint": "Elige un modelo descubierto o el predeterminado del runtime. El modelo se resuelve cuando el nodo se ejecuta.",
+      "modelDefault": "Predeterminado del runtime",
+      "modelUnlisted": "El modelo guardado no está en la lista descubierta. Se conserva hasta que elijas otro modelo.",
+      "reasoning": "Esfuerzo de razonamiento",
+      "reasoningHint": "Cuánto razonamiento debe solicitar el runtime. «Usar el predeterminado del runtime» deja la elección al runtime.",
+      "reasoningRuntimeDefault": "Usar el predeterminado del runtime",
+      "reasoningValues": {
+        "none": "Ninguno",
+        "low": "Bajo",
+        "medium": "Medio",
+        "high": "Alto",
+        "max": "Máximo",
+        "default": "Predeterminado"
+      },
+      "reasoningUnsupported": "El valor guardado «{{value}}» no está entre los esfuerzos de razonamiento anunciados por el runtime. Se conserva hasta que lo cambies.",
+      "instructions": "Instrucciones",
+      "instructionsHint": "Se admite Markdown. Hasta {{max}} caracteres.",
+      "editorView": "Vista del editor",
+      "write": "Escribir",
+      "preview": "Vista previa",
+      "mcps": "Servidores MCP",
+      "mcpsHint": "Servidores MCP a los que este agente se conecta de forma predeterminada, aplicados en el orden elegido.",
+      "skills": "Habilidades",
+      "skillsHint": "Habilidades cuyas instrucciones este agente aplica de forma predeterminada, en el orden elegido.",
+      "save": "Guardar agente",
+      "back": "Volver a los agentes"
+    }
+  },
   "skills": {
     "title": "Habilidades",
     "description": "Paquetes de instrucciones reutilizables que tus agentes aplican a sus tareas.",

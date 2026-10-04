@@ -293,6 +293,68 @@
       "empty": "Nothing written yet."
     }
   },
+  "agents": {
+    "title": "Agents",
+    "description": "Specialized agent profiles your workflow AI nodes reference. Edits here apply wherever the agent is used.",
+    "emptyTitle": "No agents yet",
+    "emptyDescription": "Create an agent to give your AI nodes a model, instructions and default resources.",
+    "addFirst": "Create your first agent",
+    "columns": {
+      "name": "Name",
+      "model": "Model",
+      "scope": "Scope",
+      "owner": "Owner"
+    },
+    "scope": {
+      "personal": "Personal",
+      "group": "Group",
+      "global": "Global"
+    },
+    "delete": {
+      "title": "Delete agent",
+      "description": "The agent “{{name}}” will be removed. Workflow nodes that reference it will fail visibly once it is gone. This action cannot be undone."
+    },
+    "form": {
+      "createTitle": "Add agent",
+      "createDescription": "Define the model, instructions and default resources this agent contributes to workflow nodes.",
+      "editTitle": "Edit agent",
+      "editDescription": "Update the agent's defaults. Changes apply to referencing nodes the next time they run.",
+      "liveNote": "This agent is referenced by workflow nodes. Changes here take effect the next time those nodes run; sessions already running keep their current configuration.",
+      "name": "Name",
+      "nameHint": "Up to {{max}} characters.",
+      "namePlaceholder": "e.g. Report summarizer",
+      "runtime": "Runtime",
+      "runtimeValue": "OpenCode",
+      "runtimeHint": "The agent runtime is fixed for now.",
+      "model": "Model",
+      "modelHint": "Pick a discovered model or the runtime default. The model is resolved when a node runs.",
+      "modelDefault": "Runtime default",
+      "modelUnlisted": "The stored model is not in the discovered list. It is kept until you choose another model.",
+      "reasoning": "Reasoning effort",
+      "reasoningHint": "How much reasoning the runtime should request. “Use runtime default” leaves the choice to the runtime.",
+      "reasoningRuntimeDefault": "Use runtime default",
+      "reasoningValues": {
+        "none": "None",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "max": "Max",
+        "default": "Default"
+      },
+      "reasoningUnsupported": "The stored value “{{value}}” is not one of the runtime's advertised reasoning efforts. It is preserved until you change it.",
+      "instructions": "Instructions",
+      "instructionsHint": "Markdown supported. Up to {{max}} characters.",
+      "editorView": "Editor view",
+      "write": "Write",
+      "preview": "Preview",
+      "mcps": "MCP servers",
+      "mcpsHint": "MCP servers this agent connects to by default, applied in the chosen order.",
+      "skills": "Skills",
+      "skillsHint": "Skills whose instructions this agent applies by default, in the chosen order.",
+      "save": "Save agent",
+      "back": "Back to agents"
+    }
+  },
   "skills": {
     "title": "Skills",
     "description": "Reusable instruction packs your agents apply to their tasks.",
