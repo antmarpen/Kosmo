@@ -45,7 +45,7 @@ def test_schema_rejects_unknown_node_discriminator():
 
 def test_schema_requires_exactly_three_output_validation_levels():
     value = valid_definition()
-    value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": ["topic"], "outputs": ["result"], "output_validation": {"result": {"levels": []}}}
+    value["nodes"][1] = {"type": "ai", "id": "ai", "agent_id": "00000000-0000-0000-0000-000000000001", "prompt_template": "p", "inputs": ["topic"], "outputs": ["result"], "output_validation": {"result": {"levels": []}}}
     with pytest.raises(ValidationError):
         WorkflowDefinition.model_validate(value)
 
@@ -57,7 +57,7 @@ def test_legacy_ai_contract_is_copied_to_each_output_without_aliasing():
         {"name": "structure", "message_key": "x", "params_schema": {"required_keys": ["id"]}},
         {"name": "rules", "message_key": "x", "params_schema": {}},
     ]}
-    value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": ["a", "b"], "validation": legacy}
+    value["nodes"][1] = {"type": "ai", "id": "ai", "agent_id": "00000000-0000-0000-0000-000000000001", "prompt_template": "p", "inputs": [], "outputs": ["a", "b"], "validation": legacy}
     normalized = normalize_output_validation(value)
     normalized["nodes"][1]["output_validation"]["a"]["json_schema"]["required"].append("changed")
     assert normalized["nodes"][1]["output_validation"]["b"]["json_schema"]["required"] == ["id"]
@@ -67,7 +67,7 @@ def test_legacy_ai_contract_is_copied_to_each_output_without_aliasing():
 def test_legacy_ai_without_outputs_is_preserved_as_draft_extension():
     value = valid_definition()
     legacy = {"levels": []}
-    value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": [], "validation": legacy}
+    value["nodes"][1] = {"type": "ai", "id": "ai", "agent_id": "00000000-0000-0000-0000-000000000001", "prompt_template": "p", "inputs": [], "outputs": [], "validation": legacy}
     normalized = normalize_output_validation(value)
     assert normalized["nodes"][1]["validation"] == legacy
     assert WorkflowDefinition.model_validate(normalized).model_dump(mode="json")["nodes"][1].get("validation") is None
@@ -75,7 +75,7 @@ def test_legacy_ai_without_outputs_is_preserved_as_draft_extension():
 
 def test_legacy_and_new_contract_conflict_returns_keyed_issue():
     value = valid_definition()
-    value["nodes"][1] = {"type": "ai", "id": "ai", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": ["a"], "validation": {}, "output_validation": {}}
+    value["nodes"][1] = {"type": "ai", "id": "ai", "agent_id": "00000000-0000-0000-0000-000000000001", "prompt_template": "p", "inputs": [], "outputs": ["a"], "validation": {}, "output_validation": {}}
     _, issues = normalize_validation_contracts(value)
     assert issues[0]["key"] == "errors.graph.output_validation_conflict"
 
@@ -89,7 +89,7 @@ def test_schema_has_output_validation_only_on_contract_output_nodes():
     for node in [
         {"type": "script", "id": "s", "code": "pass", "inputs": [], "outputs": []},
         {"type": "http", "id": "h", "method": "GET", "url": "https://example.invalid"},
-        {"type": "ai", "id": "a", "agent": {"runtime": "opencode", "model": "m", "instructions": "i"}, "prompt_template": "p", "inputs": [], "outputs": []},
+        {"type": "ai", "id": "a", "agent_id": "00000000-0000-0000-0000-000000000001", "prompt_template": "p", "inputs": [], "outputs": []},
         {"type": "workflow", "id": "w", "workflow_id": "child"},
     ]:
         value = valid_definition(); value["nodes"][1] = node

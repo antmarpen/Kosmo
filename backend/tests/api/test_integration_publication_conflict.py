@@ -158,7 +158,7 @@ def _build_definition(name: str) -> dict:
             {"type": "script", "id": "script", "code": "pass",
              "inputs": ["topic"], "outputs": ["report"]},
             {"type": "ai", "id": "ai",
-             "agent": {"runtime": "opencode", "model": "test-model", "instructions": "Review"},
+             "agent_id": "00000000-0000-0000-0000-000000000001",
              "prompt_template": "Topic: {{topic}}",
              "inputs": ["report"], "outputs": ["summary.md"],
              "validation": {"levels": [

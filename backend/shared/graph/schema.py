@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from typing import Annotated, Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 SAFE_IDENTIFIER = r"^[a-zA-Z0-9._-]{1,64}$"
 SafeIdentifier = Annotated[str, Field(pattern=SAFE_IDENTIFIER)]
@@ -70,16 +71,16 @@ class HttpNode(ContractModel):
     output_validation: dict[str, ValidationContract] | None = None
 
 
-class AgentConfig(ContractModel):
-    runtime: Literal["opencode"]
-    model: str
-    instructions: str
-
-
 class AiNode(ContractModel):
     type: Literal["ai"]
     id: str = Field(pattern=SAFE_IDENTIFIER)
-    agent: AgentConfig
+    agent_id: UUID | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=300)
+    reasoning_effort: str | None = Field(default=None, min_length=1, max_length=80)
+    added_mcp_ids: list[UUID] = Field(default_factory=list)
+    removed_mcp_ids: list[UUID] = Field(default_factory=list)
+    added_skill_ids: list[UUID] = Field(default_factory=list)
+    removed_skill_ids: list[UUID] = Field(default_factory=list)
     prompt_template: str
     inputs: list[SafeIdentifier]
     outputs: list[SafeIdentifier]
@@ -88,6 +89,37 @@ class AiNode(ContractModel):
     # serialization; callers normalize before storing canonical definitions.
     validation: ValidationContract | dict | None = Field(default=None, exclude=True)
     max_validation_cycles: int = 3
+
+    @model_validator(mode="before")
+    @classmethod
+    def trim_overrides(cls, value):
+        if isinstance(value, dict):
+            value = dict(value)
+            for field in ("model", "reasoning_effort"):
+                if isinstance(value.get(field), str):
+                    value[field] = value[field].strip()
+        return value
+
+    @model_validator(mode="after")
+    def validate_reference_deltas(self):
+        for kind in ("mcp", "skill"):
+            added = getattr(self, f"added_{kind}_ids")
+            removed = getattr(self, f"removed_{kind}_ids")
+            if len(added) != len(set(added)) or len(removed) != len(set(removed)):
+                raise ValueError(f"{kind} reference deltas must be unique")
+            if set(added) & set(removed):
+                raise ValueError(f"{kind} reference deltas must be disjoint")
+        return self
+
+    @model_serializer(mode="wrap")
+    def omit_inherited_values(self, handler):
+        result = handler(self)
+        for field in ("agent_id", "model", "reasoning_effort", "added_mcp_ids", "removed_mcp_ids",
+                      "added_skill_ids", "removed_skill_ids"):
+            value = result.get(field)
+            if value is None or value == []:
+                result.pop(field, None)
+        return result
 
 
 class EndNode(ContractModel):

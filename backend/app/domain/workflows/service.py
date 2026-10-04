@@ -2,7 +2,7 @@ from app.domain.workflows.validation import validate_workflow
 from datetime import datetime, timedelta, timezone
 from pydantic import ValidationError
 from shared.errors import ConflictError, ErrorDetail, NotFoundError, PermissionDeniedError, ValidationFailedError
-from shared.graph.schema import WorkflowDefinition, WorkflowNode
+from shared.graph.schema import AiNode, WorkflowDefinition, WorkflowNode
 from shared.graph.output_contract import normalize_validation_contracts
 
 
@@ -50,11 +50,21 @@ class WorkflowService:
                 lambda workflow_id: contracts.get(workflow_id))
 
     async def _validate_definition(self, definition):
+        self._require_ai_agent_references(definition)
         resolvers = await self._workflow_reference_check(definition)
         if resolvers is None:
             validate_workflow(definition)
         else:
             validate_workflow(definition, workflow_exists=resolvers[0], workflow_contract=resolvers[1])
+
+    @staticmethod
+    def _require_ai_agent_references(definition):
+        missing = [node.id for node in definition.nodes if isinstance(node, AiNode) and node.agent_id is None]
+        if missing:
+            raise ValidationFailedError(
+                "errors.workflow.invalid",
+                details=[ErrorDetail("errors.workflow.agent_reference_required", {"node_id": node_id}) for node_id in missing],
+            )
 
     async def publish(self, definition, published_by=None):
         """Bootstrap helper: create a workflow and publish its first version.

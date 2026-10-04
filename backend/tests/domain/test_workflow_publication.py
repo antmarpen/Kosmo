@@ -132,6 +132,31 @@ def test_publication_creates_first_version_without_activating_it():
     assert repository.activations["sample"] == first["id"]
 
 
+def test_incomplete_ai_draft_remains_saveable_but_cannot_validate_or_publish():
+    repository = FakeRepository()
+    service = WorkflowService(repository)
+    user = SimpleNamespace(id="author", role=SimpleNamespace(value="builder"))
+    incomplete = {
+        "schema_version": "v1", "name": "sample",
+        "nodes": [
+            {"type": "start", "id": "start", "input_form": [{"name": "topic", "type": "string", "required": True}]},
+            {"type": "ai", "id": "summarize", "prompt_template": "p", "inputs": ["topic"], "outputs": ["result"]},
+            {"type": "end", "id": "end", "inputs": ["result"]},
+        ], "edges": [{"from": "start", "to": "summarize"}, {"from": "summarize", "to": "end"}],
+    }
+
+    async def scenario():
+        workflow = await service.create_workflow("sample", user.id)
+        draft = await service.get_draft(workflow["id"], workflow["draft_id"], user)
+        await service.save_draft(workflow["id"], draft["id"], user, draft["revision"], incomplete, {})
+        issues = await service.validate_draft(workflow["id"], draft["id"], user)
+        assert any(issue["message_key"] == "errors.workflow.agent_reference_required" for issue in issues)
+        with pytest.raises(ValidationFailedError):
+            await service.publish_draft(workflow["id"], draft["id"], user, 0)
+
+    asyncio.run(scenario())
+
+
 def test_service_publish_rejects_existing_workflow_name():
     """Publication of an existing workflow must go through publish_draft, never append."""
     repository = FakeRepository()
