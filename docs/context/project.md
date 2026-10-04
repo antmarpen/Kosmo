@@ -62,7 +62,7 @@ Kosmo has successfully completed the Phase 1 — Foundations and Execution Proof
 
 ### Implementation Caveats & Residuals
 
-- **AR3-05 (Temporal Integration):** Task inputs are resolved opaquely inside activities with a Temporal patch gate. The history-secrecy and legacy-replay behavioral proof is authored but not executed because the in-process Temporal test server hangs in this sandbox; tests are opt-in (`KOSMO_TEMPORAL_INTEGRATION=1`) and must be run where the server can start (or in CI).
+- **AR3-05 (Temporal Integration): PROVEN and signed off.** Task inputs are resolved opaquely inside activities under the `opaque-task-inputs-v1` Temporal patch gate; the starter no longer carries input values and schema diagnostics no longer echo candidate values. The behavioral proof (`backend/tests/worker/test_task_input_secrecy.py`) passes in the in-process Temporal test server inside the backend container: the sentinel is absent from workflow/activity arguments and the recorded history, and a recorded history replays. The tests are opt-in (`KOSMO_TEMPORAL_INTEGRATION=1`) because the test server can hang on a bare Windows host. **Accepted residuals:** the explicit pre-patch legacy branch is not crafted by a test (only newly recorded history is replayed); substitute activities are not a full production database/executor secrecy test; existing histories are not retroactively sanitized.
 
 ### Outstanding Live Proofs & Phase 2 Roadmap
 
