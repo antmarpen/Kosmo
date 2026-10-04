@@ -45,7 +45,8 @@ Kosmo has successfully completed the Phase 1 — Foundations and Execution Proof
   - **Validation Infrastructure**: Shared async validation gateway with a worker probe; API has no Docker-socket access.
   - **Legacy `levels` Compatibility**: Isolated and non-destructive (no rewriting of published versions/task snapshots/checkpoints); reference seed uses the canonical contract.
   - **AR3 Remediation**: Canonical `rules_code` dispatch; rule sandbox staged on the shared task-storage volume (works from the Compose worker); boolean JSON schemas honored/preserved; new error `workflow.agent.model_default_unavailable` and runtime default-model resolution.
-  - **Verification State**: Backend 412 passed / 49 skipped; frontend 350 passed; build green; E2E 13 passed / 1 skipped (credential-gated).
+  - **Verification State**: Backend 412 passed / 49 skipped; frontend 350 passed; build green; E2E 14 passed / 2 skipped (the credential-gated real-model journey and an AI-failure journey whose premise did not materialize are documented skips).
+  - **AR3 Sign-off**: architecture review APPROVED; AR3-01/02/03/04/06 resolved and AR3-05 (Temporal input secrecy) proven with its behavioral test. A Linux-only latent flake in `backend/tests/worker/test_script_runner.py` (the symlink-rejection test used an undefined `result`) was fixed; the symlink branch passes in the Linux container.
 - **Provider Instance Management (P2-09)**:
   - Provider list actions (verify, delete, edit) are now implemented.
 

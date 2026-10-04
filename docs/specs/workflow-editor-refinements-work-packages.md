@@ -1,6 +1,6 @@
 # Workflow editor refinements — work packages (execution record)
 
-Status: In progress (2026-10-03)
+Status: Complete (2026-10-04) — all work packages done; AR3 closed (architecture APPROVED).
 Spec: `docs/specs/workflow-editor-refinements.md` (Approved 2026-10-03).
 Plan produced by the architect (2026-10-03); this document persists the plan so
 context loss does not lose the wave sequencing.
@@ -296,16 +296,19 @@ Verification: **backend 403 passed / 42 skipped**; frontend **346 passed**, buil
 
 Environment fixes required by the new deps: `jsonschema` (and the evaluator deps) must be synced inside the backend container (`uv sync`), and `@radix-ui/react-popover` inside the frontend container (`pnpm install`); a missing container dep had crashed the API/app.
 
-- **WP-22 — DONE (2026-10-03).** Integrated E2E: **13 passed / 1 skipped**
-  (the credential-gated real-model journey), 5.0 min. The launch and
-  authored-execution journeys pass after: fixing the stale worker (restart to
-  register `validate_start_inputs`), fixing the worker mapper
-  (`tasks.created_by → users`, commit for `tasks/models.py`), and correcting the
-  journeys to round-2 expectations (markdown parse-only, longer timeouts,
-  `waiting_for_input` handling, `report`/`data` names). Commits: E2E journeys +
-  the mapper fix.
-- **Outstanding:** responsive/browser evidence for the modal/popover/loading
-  (768px/desktop/375px), then architecture review and documentator.
+- **WP-22 — DONE.** Integrated E2E now **14 passed / 2 skipped** (~8 min): the
+  credential-gated real-model journey and an AI-failure journey whose premise did
+  not materialize are documented skips. The launch and authored-execution journeys
+  pass after: fixing the stale worker (restart to register `validate_start_inputs`),
+  fixing the worker mapper (`tasks.created_by → users`, commit for
+  `tasks/models.py`), and correcting the journeys to round-2 expectations
+  (markdown parse-only, longer timeouts, `waiting_for_input` handling,
+  `report`/`data` names). Commits: E2E journeys + the mapper fix.
+- **Responsive/browser evidence — DONE (2026-10-04).**
+  `frontend/e2e/responsive.e2e.ts` covers the editor at 1280/768 and the task form
+  at 375 (`a9d972d`).
+- **Architecture review — APPROVED (2026-10-04).** AR3-05's behavioral proof was
+  executed and accepted; only documented residuals remain (see below).
 - Environment notes: the worker does **not** hot-reload — restart it after
   worker-module changes; new backend deps require `uv sync` in the container.
 
@@ -354,3 +357,13 @@ Status: AR3-01/02/03/04/06 IN PROGRESS→RESOLVED; AR3-04/05/06 QUEUED.
   horizontal overflow at 1280px and 768px on the editor and at 375px on the task
   form (2 passed).
 - Also fixed a flaky `ProviderModelSelect` full-suite test (`97562e1`).
+- **Architecture sign-off — APPROVED (2026-10-04).** AR3-01/02/03/04/06 resolved;
+  AR3-05 proven (Temporal test server, 2 passed). Accepted residuals: the explicit
+  pre-patch legacy replay branch is not crafted; substitute activities are not a
+  full production database/executor secrecy test; existing histories are not
+  retroactively sanitized.
+- **Linux-only latent flake fixed (2026-10-04).**
+  `test_rejects_escaping_or_symlink_output_paths` used an undefined `result`; it
+  passed on Windows only because the symlink branch is skipped there. It now
+  assigns and returns `result`, and passes in the Linux container (8/8 in
+  `test_script_runner.py`; verified failing before the fix).

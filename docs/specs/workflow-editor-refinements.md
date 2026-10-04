@@ -1,6 +1,6 @@
 # Workflow editor refinements — node contracts, Start/End and script outputs
 
-Status: Approved (2026-10-03) — scope approved by the owner.
+Status: Implemented (2026-10-04) — approved 2026-10-03; implemented, architecture-reviewed (AR3 closed) and documented.
 Source: owner request, 2026-10-03 (nine items) plus two clarification rounds
 (2026-10-03).
 Related: `docs/specs/phase-2-provider-editor.md` (approved), `docs/architecture.md`,
