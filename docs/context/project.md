@@ -59,6 +59,9 @@ Kosmo has successfully completed the Phase 1 — Foundations and Execution Proof
     - Scoped provider visibility (personal, group, or global).
     - Credential and configuration contents are hidden from non-owners.
 
+### UI conventions
+- **Modals/dialogs never render a "Cancel" button.** Dismissal is the shared top-right close "X" (localized `common.close`). Confirmation and destructive dialogs show only their primary action (e.g. the styled `ConfirmDialog`). This applies to all existing and future modals.
+
 ### Agent, MCP server, and Skill Catalogs & OpenCode 2 Runtime (2026-10-04)
 - **Feature:** First-class, scoped Agent, MCP server, and Skill catalogs with visibility mirroring provider configurations (personal/group/global).
 - **AI Node:** Reference-only AI node that selects an agent and inherits its model, reasoning effort, MCP servers, and skills, with node-level overrides allowed.

@@ -246,9 +246,6 @@ export function WorkflowListPage() {
         ) : null}
         {deleteError && <KosmoErrorAlert error={deleteError} />}
         <DialogFooter>
-          <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-            {t("common.cancel")}
-          </Button>
           <Button
             variant="destructive"
             loading={deleting}
