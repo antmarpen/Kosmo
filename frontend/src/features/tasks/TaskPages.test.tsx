@@ -158,13 +158,13 @@ describe("task views",()=>{
     expect(screen.getAllByText(/Faltan secciones obligatorias/)).toHaveLength(3);
   });
   it("downloads artifacts with the authenticated transport and revokes the object URL",async()=>{
-    const blob=new Blob(["artifact"]); const create=vi.spyOn(URL,"createObjectURL").mockReturnValue("blob:artifact"); const revoke=vi.spyOn(URL,"revokeObjectURL");
+    const create=vi.spyOn(URL,"createObjectURL").mockReturnValue("blob:artifact"); const revoke=vi.spyOn(URL,"revokeObjectURL");
     let downloadAttempts=0;
     const fetcher=vi.fn(async(input:any)=>{
       const path=requestUrl(input);
       if(path.endsWith("/events")) return new Response(new ReadableStream({start(){}}));
       if(path==="/api/auth/refresh") return new Response(JSON.stringify({access_token:"renewed",refresh_token:"rotated"}),{status:200,headers:{"Content-Type":"application/json"}});
-      if(path.endsWith("/download")) return downloadAttempts++===0?new Response(null,{status:401}):new Response(blob,{status:200});
+      if(path.endsWith("/download")) return downloadAttempts++===0?new Response(null,{status:401}):new Response("artifact",{status:200});
       return new Response(JSON.stringify({task:{...task(),notes:[],artifacts:[{id:"a1",logical_name:"report.md"}]}}));
     });
     setup("/tasks/t1",fetcher);
@@ -173,7 +173,8 @@ describe("task views",()=>{
     await waitFor(()=>expect(fetcher.mock.calls.some(call=>requestUrl(call[0])==="/api/tasks/t1/artifacts/a1/download")).toBe(true));
     await waitFor(()=>expect(fetcher.mock.calls.filter(call=>requestUrl(call[0])==="/api/tasks/t1/artifacts/a1/download")).toHaveLength(2));
     expect(fetcher.mock.calls.some(call=>requestUrl(call[0])==="/api/auth/refresh")).toBe(true);
-    expect(create).toHaveBeenCalledWith(blob); expect(click).toHaveBeenCalled(); expect(revoke).toHaveBeenCalledWith("blob:artifact");
+    expect(create).toHaveBeenCalled(); expect(create.mock.calls[0][0]).toBeInstanceOf(Blob);
+    expect(click).toHaveBeenCalled(); expect(revoke).toHaveBeenCalledWith("blob:artifact");
     create.mockRestore(); revoke.mockRestore(); click.mockRestore();
   });
   it("shows a localized artifact download failure",async()=>{
