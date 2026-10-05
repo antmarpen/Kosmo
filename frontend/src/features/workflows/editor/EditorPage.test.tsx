@@ -359,6 +359,25 @@ describe("workflow editor page", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  it("disables publishing while a script analysis is pending", async () => {
+    let resolveAnalysis!: (value: { data: unknown }) => void;
+    post.mockImplementation((path: string) => {
+      if (path === "/workflows/script-analysis") return new Promise((resolve) => { resolveAnalysis = resolve; });
+      if (path === publishPath) return Promise.resolve({ data: publishResponse });
+      return Promise.resolve({ data: null });
+    });
+    renderPage();
+    await screen.findByTestId("flow");
+    const publish = screen.getByRole("button", { name: /publish/i });
+    expect(publish).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Script" }));
+    await waitFor(() => expect(publish).toBeDisabled());
+
+    resolveAnalysis({ data: { outputs: ["report"], issues: [] } });
+    await waitFor(() => expect(publish).toBeEnabled());
+  });
+
   it("publishes with the publication revision and shows the new version", async () => {
     mockGets({
       "/workflows/{workflow_id}/drafts/{draft_id}": { data: { ...draftResponse, definition: validDefinition } },

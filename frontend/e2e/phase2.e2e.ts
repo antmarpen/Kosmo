@@ -419,7 +419,12 @@ test("publishing does not change the active version unless 'Activate after publi
   await expect(activateOption).not.toBeChecked();
 
   // Publish once with the option off: version 1 appears, nothing activates.
+  const publishResponsePromise = page.waitForResponse((response) =>
+    response.url().includes("/publish") && response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: /^publish$|publicar$/i }).click();
+  const publishResponse = await publishResponsePromise;
+  expect(publishResponse.ok(), `Publish rejected: ${await publishResponse.text()}`).toBeTruthy();
   await expect(
     page.locator("[data-testid='editor-notice'][data-key='workflowEditor.publishSuccess']"),
   ).toHaveAttribute("data-version", "1", { timeout: 30_000 });

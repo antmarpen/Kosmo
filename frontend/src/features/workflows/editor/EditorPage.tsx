@@ -118,6 +118,13 @@ export function EditorPage() {
   const [saveError, setSaveError] = useState<KosmoError | null>(null);
   const [validationIssues, setValidationIssues] = useState<NonNullable<KosmoError["details"]>>([]);
   const [analysisIssues, setAnalysisIssues] = useState<Record<string, ValidationIssue[]>>({});
+  // True while any script node's analysis is in flight: publishing is gated on
+  // a settled analysis, so the Publish action must not be clickable into a
+  // silent no-op during that window.
+  const [analysisPending, setAnalysisPending] = useState(false);
+  // Bumped to re-run the analysis effect after a transient failure, so a
+  // network blip does not permanently block publishing.
+  const [analysisRetry, setAnalysisRetry] = useState(0);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -156,16 +163,19 @@ export function EditorPage() {
   // loads (and never creates) the draft exactly once.
   const loadRef = useRef<{ key: string; promise: Promise<{ draft: DraftResponse; workflowName: string }> } | null>(null);
   const scriptAnalysis = useRef(new Map<string, string>());
+  const scriptAnalysisAttempts = useRef(new Map<string, number>());
 
   // Analyze scripts against their exact source and derived inputs. A settled
   // response is accepted only while that same key is still current.
   useEffect(() => {
     if (!state) return;
+    const syncPending = () => setAnalysisPending([...scriptAnalysis.current.values()].some((value) => value.endsWith(":pending")));
     for (const node of state.definition.nodes) {
       if (node.type !== "script") continue;
       const key = JSON.stringify([node.code, node.inputs]);
       if (scriptAnalysis.current.get(node.id) === key || scriptAnalysis.current.get(node.id) === `${key}:pending` || scriptAnalysis.current.get(node.id) === `${key}:failed`) continue;
       scriptAnalysis.current.set(node.id, `${key}:pending`);
+      setAnalysisPending(true);
       void api.POST("/workflows/script-analysis", { body: { code: node.code, inputs: node.inputs } }).then((response) => {
         const result = unwrap(response) as { outputs: string[]; issues: unknown[] };
         if (!result || !Array.isArray(result.outputs) || !Array.isArray(result.issues)) throw new Error("Invalid script analysis response");
@@ -183,13 +193,23 @@ export function EditorPage() {
         });
       }).catch(() => {
         if (scriptAnalysis.current.get(node.id) === `${key}:pending`) {
-          scriptAnalysis.current.set(node.id, `${key}:failed`);
-          setAnalysisIssues((current) => ({ ...current, [node.id]: [{ message_key: "workflowEditor.validation.scriptAnalysisFailed" }] }));
+          const attempts = (scriptAnalysisAttempts.current.get(node.id) ?? 0) + 1;
+          scriptAnalysisAttempts.current.set(node.id, attempts);
+          if (attempts <= 3) {
+            // Transient failure: drop the marker and retry with a small backoff.
+            scriptAnalysis.current.delete(node.id);
+            window.setTimeout(() => setAnalysisRetry((current) => current + 1), 500 * attempts);
+          } else {
+            scriptAnalysis.current.set(node.id, `${key}:failed`);
+            setAnalysisIssues((current) => ({ ...current, [node.id]: [{ message_key: "workflowEditor.validation.scriptAnalysisFailed" }] }));
+          }
         }
+        syncPending();
       });
     }
-    for (const id of scriptAnalysis.current.keys()) if (!state.definition.nodes.some((node) => node.id === id)) scriptAnalysis.current.delete(id);
-  }, [state]);
+    for (const id of scriptAnalysis.current.keys()) if (!state.definition.nodes.some((node) => node.id === id)) { scriptAnalysis.current.delete(id); scriptAnalysisAttempts.current.delete(id); }
+    syncPending();
+  }, [state, analysisRetry]);
 
   useEffect(() => {
     if (!id) {
@@ -574,7 +594,7 @@ export function EditorPage() {
           />
           {t("workflowEditor.activateAfterPublish" as never)}
         </label>}
-        <Button variant="outline" disabled={!ready || busy} loading={publishing} onClick={() => void runPublish(false)}>{t("workflowEditor.publish")}</Button>
+        <Button variant="outline" disabled={!ready || busy || analysisPending} loading={publishing} onClick={() => void runPublish(false)}>{t("workflowEditor.publish")}</Button>
         <Button variant="outline" disabled={!ready || busy} loading={activating} onClick={() => void openActivate()}>{t("workflowEditor.activate")}</Button>
         <Button disabled={!ready || saving || busy} loading={saving} onClick={() => void saveDraft()}>{t("workflowEditor.saveDraft")}</Button>
       </div>
