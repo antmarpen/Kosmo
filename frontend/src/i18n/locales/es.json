@@ -634,7 +634,8 @@
       "levelNameRequired": "Cada nivel de validación necesita un nombre.",
       "levelMessageKeyRequired": "Cada nivel de validación necesita una clave de mensaje.",
       "duplicateProducer": "Dos productores declaran el mismo nombre de salida.",
-      "scriptAnalysisFailed": "No se pudo analizar el script."
+      "scriptAnalysisFailed": "No se pudo analizar el script.",
+      "scriptAnalysisPending": "El análisis del script aún no está listo. Espera un momento y vuelve a publicar."
     },
     "nodeCount_one": "{{count}} nodo",
     "nodeCount_other": "{{count}} nodos",

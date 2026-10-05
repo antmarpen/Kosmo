@@ -146,7 +146,7 @@ export function EditorPage() {
   const [activateAfterPublish, setActivateAfterPublish] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [activating, setActivating] = useState(false);
-  const [publishBlocked, setPublishBlocked] = useState(false);
+  const [publishBlocked, setPublishBlocked] = useState<"validation" | "analysis" | null>(null);
   const [publishError, setPublishError] = useState<KosmoError | null>(null);
   const [activateError, setActivateError] = useState<KosmoError | null>(null);
   const [notices, setNotices] = useState<EditorNotice[]>([]);
@@ -391,14 +391,14 @@ export function EditorPage() {
     const current = stateRef.current;
     if (!id || !draftId || !current || publishing) return;
     if (current.definition.nodes.some((node) => node.type === "script" && scriptAnalysis.current.get(node.id) !== JSON.stringify([node.code, node.inputs]))) {
-      setPublishBlocked(true);
+      setPublishBlocked("analysis");
       return;
     }
     if (validateWorkflow(current).level === "error") {
-      setPublishBlocked(true);
+      setPublishBlocked("validation");
       return;
     }
-    setPublishBlocked(false);
+    setPublishBlocked(null);
     // The endpoint publishes the saved draft revision, so unsaved editor
     // changes must be persisted first (and may still be rejected by the
     // server-side validation, which aborts the publish).
@@ -644,13 +644,20 @@ export function EditorPage() {
     {saveError && <div className="p-4"><KosmoErrorAlert error={saveError} /></div>}
     {publishError && <div className="p-4"><KosmoErrorAlert error={publishError} /></div>}
     {activateError && <div className="p-4"><KosmoErrorAlert error={activateError} /></div>}
-    {publishBlocked && validation?.level === "error" && (
+    {publishBlocked === "validation" && validation?.level === "error" && (
       <div className="p-4">
         <div role="alert" data-testid="publish-blocked" className="rounded-md border border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive">
           <p>{t("workflowEditor.publishBlocked")}</p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             {[...validation.globalErrors, ...Object.values(validation.nodeErrors).flat()].map((issue, index) => <li key={index}>{translateIssue(issue)}</li>)}
           </ul>
+        </div>
+      </div>
+    )}
+    {publishBlocked === "analysis" && (
+      <div className="p-4">
+        <div role="alert" data-testid="publish-blocked" className="rounded-md border border-destructive/50 bg-destructive/5 p-4 text-sm text-destructive">
+          <p>{t("workflowEditor.validation.scriptAnalysisPending")}</p>
         </div>
       </div>
     )}

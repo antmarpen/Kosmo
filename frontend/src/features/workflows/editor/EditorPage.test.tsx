@@ -378,6 +378,23 @@ describe("workflow editor page", () => {
     await waitFor(() => expect(publish).toBeEnabled());
   });
 
+  it("shows an explanation when publishing is blocked by an unsettled script analysis", async () => {
+    post.mockImplementation((path: string) => {
+      if (path === "/workflows/script-analysis") return Promise.resolve({ data: { outputs: [], issues: [{ message_key: "errors.script_contract.bare_return" }] } });
+      if (path === publishPath) return Promise.resolve({ data: publishResponse });
+      return Promise.resolve({ data: null });
+    });
+    renderPage();
+    await screen.findByTestId("flow");
+    fireEvent.click(screen.getByRole("button", { name: "Add Script" }));
+    const publish = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publish).toBeEnabled());
+    fireEvent.click(publish);
+
+    expect(await screen.findByTestId("publish-blocked")).toHaveTextContent(catalogText("workflowEditor.validation.scriptAnalysisPending"));
+    expect(callsTo(publishPath)).toHaveLength(0);
+  });
+
   it("publishes with the publication revision and shows the new version", async () => {
     mockGets({
       "/workflows/{workflow_id}/drafts/{draft_id}": { data: { ...draftResponse, definition: validDefinition } },
