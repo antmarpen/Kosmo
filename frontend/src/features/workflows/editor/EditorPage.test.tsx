@@ -241,7 +241,9 @@ describe("workflow editor page", () => {
     renderPage();
     await screen.findByTestId("flow");
     fireEvent.click(screen.getByRole("button", { name: "connect valid" }));
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
     const [, saveOptions] = put.mock.calls[0] as [string, { body: { definition: { name: string } } }];
@@ -352,7 +354,9 @@ describe("workflow editor page", () => {
   it("blocks publishing with an explanation while the draft fails validation", async () => {
     renderPage();
     await screen.findByTestId("flow");
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     expect(await screen.findByTestId("publish-blocked")).toBeInTheDocument();
     expect(screen.getByTestId("publish-blocked")).toHaveTextContent(catalogText("workflowEditor.validation.noReachableEnd"));
@@ -405,7 +409,9 @@ describe("workflow editor page", () => {
     });
     renderPage();
     await screen.findByTestId("flow");
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     await waitFor(() => expect(callsTo(publishPath)).toHaveLength(1));
     expect(post).toHaveBeenCalledWith(publishPath, {
@@ -433,7 +439,9 @@ describe("workflow editor page", () => {
     await screen.findByTestId("flow");
     // Spec AC-P2-06: the option is off by default; publishing alone changes nothing.
     expect(screen.getByRole("checkbox", { name: catalogText("workflowEditor.activateAfterPublish") })).not.toBeChecked();
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     const notice = await screen.findByTestId("editor-notice");
     expect(notice).toHaveAttribute("data-key", "workflowEditor.publishSuccess");
@@ -445,7 +453,9 @@ describe("workflow editor page", () => {
     renderPage();
     await screen.findByTestId("flow");
     fireEvent.click(screen.getByRole("checkbox", { name: catalogText("workflowEditor.activateAfterPublish") }));
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     await waitFor(() => expect(callsTo(activatePath)).toHaveLength(1));
     expect(post).toHaveBeenCalledWith(activatePath, {
@@ -568,7 +578,9 @@ describe("workflow editor page", () => {
     await screen.findByTestId("flow");
     fireEvent.click(screen.getByRole("button", { name: "select start" }));
     fireEvent.click(screen.getByRole("button", { name: "move start" }));
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     await waitFor(() => expect(callsTo(publishPath)).toHaveLength(1));
     expect(put).toHaveBeenCalledTimes(1);
@@ -581,7 +593,9 @@ describe("workflow editor page", () => {
     post.mockImplementationOnce(() => Promise.resolve({ data: publishResponse }));
     renderPage();
     await screen.findByTestId("flow");
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     await waitFor(() => expect(callsTo(publishPath)).toHaveLength(2));
     expect(callsTo(publishPath)[1]?.[1]?.body).toEqual({ expected_pub_revision: 5, confirm_overwrite: false });
@@ -595,7 +609,9 @@ describe("workflow editor page", () => {
     post.mockImplementationOnce(() => Promise.resolve({ data: publishResponse }));
     renderPage();
     await screen.findByTestId("flow");
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: /anyway/i }));
@@ -611,7 +627,9 @@ describe("workflow editor page", () => {
     post.mockImplementationOnce(() => Promise.resolve({ data: publishResponse }));
     renderPage();
     await screen.findByTestId("flow");
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: /anyway/i }));
@@ -733,7 +751,9 @@ describe("workflow editor page", () => {
     renderPage();
     await screen.findByTestId("flow");
     await waitFor(() => expect(post).toHaveBeenCalledWith("/workflows/script-analysis", expect.anything()));
-    fireEvent.click(screen.getByRole("button", { name: /publish/i }));
+    const publishButton = screen.getByRole("button", { name: /publish/i });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     await waitFor(() => expect(callsTo(publishPath)).toHaveLength(1));
     const [, saveOptions] = put.mock.calls[0] as [string, { body: { definition: { nodes: any[] } } }];

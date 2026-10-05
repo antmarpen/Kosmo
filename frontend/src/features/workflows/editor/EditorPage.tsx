@@ -191,6 +191,7 @@ export function EditorPage() {
           if (JSON.stringify(current.definition.nodes) !== JSON.stringify(next.definition.nodes)) setDirty(true);
           return next;
         });
+        syncPending();
       }).catch(() => {
         if (scriptAnalysis.current.get(node.id) === `${key}:pending`) {
           const attempts = (scriptAnalysisAttempts.current.get(node.id) ?? 0) + 1;
