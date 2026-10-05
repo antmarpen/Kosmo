@@ -112,8 +112,8 @@ context loss does not lose the wave sequencing.
   `0021_editor_contract_cleanup` + disposable-PostgreSQL test (both real bugs —
   the `tasks.definition` column and a 36-char revision id — were caught and
   fixed by running it in-container; 10 migration tests pass against PostgreSQL).
-  Applied to the dev database after a fresh `pg_dump`
-  (taken outside the repository): 185
+  Applied to the dev database after a fresh `pg_dump` (taken outside the
+  repository): 185
   tasks, 110 versions and 89 empty (never-published) E2E workflows removed; the
   reference workflow was reseeded and is active. Final state: 1 workflow, 0
   tasks. Commit `38e3139`.
