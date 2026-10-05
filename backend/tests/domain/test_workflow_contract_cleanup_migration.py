@@ -72,8 +72,10 @@ def test_0021_deletes_only_deprecated_workflows_and_is_idempotent():
             finally:
                 await connection.close()
         asyncio.run(insert_data())
-        alembic("upgrade", "head")
-        alembic("upgrade", "head")
+        # Pin to 0021: later migrations (notably 0025's destructive reset) remove
+        # workflow data, which is out of scope for this 0021 cleanup test.
+        alembic("upgrade", "0021_editor_contract_cleanup")
+        alembic("upgrade", "0021_editor_contract_cleanup")
         async def assert_state():
             connection = await asyncpg.connect(database_url.replace("postgresql+asyncpg://", "postgresql://", 1))
             try:
